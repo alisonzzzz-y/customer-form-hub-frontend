@@ -478,9 +478,11 @@ function PageHeader({
 function DashboardScreen({
   setScreen,
   ticketCompleted,
+  setActiveTicket,
 }: {
   setScreen: (s: Screen) => void;
   ticketCompleted: boolean;
+  setActiveTicket: (t: Ticket) => void;
 }) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -685,7 +687,10 @@ function DashboardScreen({
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
-                            onClick={() => setScreen("intake-upload")}
+                            onClick={() => {
+                              setActiveTicket(t);
+                              setScreen("answer-review");
+                            }}
                             className="flex items-center gap-1 px-3 py-1 text-[9px] font-black bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase transition-all"
                           >
                             Open <ChevronRight size={9} />
@@ -742,8 +747,9 @@ function DashboardScreen({
           <div className="px-4 py-3 border-t border-border flex flex-col gap-2 shrink-0">
             <button
               onClick={() => {
+                if (selected) setActiveTicket(selected);
                 setSelectedId(null);
-                setScreen("intake-upload");
+                setScreen("answer-review");
               }}
               className="flex items-center justify-center gap-1.5 py-2 text-[10px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] w-full shadow-[0_2px_8px_rgba(249,103,2,0.3)] tracking-[0.06em] uppercase transition-all"
             >
@@ -1535,10 +1541,12 @@ function AnswerReviewScreen({
   setScreen,
   addToast,
   addLog,
+  activeTicket,
 }: {
   setScreen: (s: Screen) => void;
   addToast: (m: string, t?: ToastMsg["type"]) => void;
   addLog: (e: string) => void;
+  activeTicket: Ticket | null;
 }) {
   // Sample questions for quick access
   const sampleQuestions = [
@@ -1558,7 +1566,11 @@ function AnswerReviewScreen({
   const [chosenId, setChosenId] = useState<number | null>(null);
   const [history, setHistory] = useState<string[]>([]); // recent searches (session only)
   const [hasSearched, setHasSearched] = useState(false); // whether any search has run yet
-  const customerNda = "No NDA";
+  // Customer context comes from the ticket that was opened (fallback if opened directly from the menu)
+  const customerName = activeTicket?.customerName ?? "No ticket selected";
+  const customerNda = activeTicket?.ndaStatus ?? "Unknown";
+  // The customer is "covered" by an NDA only when their NDA status is explicitly "Yes"
+  const customerHasNda = customerNda === "Yes";
 
   // Call the backend with a given question
   async function runSearch(question: string) {
@@ -1599,7 +1611,7 @@ function AnswerReviewScreen({
       <PageHeader
         back="question-extraction"
         backLabel="Questions"
-        title="Answer Review — Globex Inc"
+        title={`Answer Review — ${customerName}`}
         subtitle="Search the knowledge base for the most relevant approved sources."
         setScreen={setScreen}
       />
@@ -1615,13 +1627,15 @@ function AnswerReviewScreen({
                 Customer
               </span>
               <span className="text-xs font-semibold text-[#0A0A0A]">
-                Globex Inc
+                {customerName}
               </span>
               <span className="text-[#D5D5D5]">·</span>
               <span className="text-[9px] font-black text-[#ABABAB] uppercase tracking-[0.12em]">
                 NDA
               </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold tracking-[0.06em] uppercase bg-[#F5F5F5] text-[#374151] border border-[rgba(0,0,0,0.1)]">
+              <span
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold tracking-[0.06em] uppercase border ${customerHasNda ? "bg-[#F5F5F5] text-[#374151] border-[rgba(0,0,0,0.1)]" : "bg-[#FFF4EC] text-[#C05600] border-[#F96702]/25"}`}
+              >
                 {customerNda}
               </span>
             </div>
@@ -1797,7 +1811,7 @@ function AnswerReviewScreen({
                         </div>
 
                         {/* NDA conflict warning */}
-                        {isNDA && customerNda === "No NDA" && (
+                        {isNDA && !customerHasNda && (
                           <div className="flex items-start gap-2.5 p-3 rounded-lg bg-[#FFF7F0] border border-[#F96702]/20">
                             <AlertTriangle
                               size={13}
@@ -2736,6 +2750,7 @@ function LoginScreen({ onLogin }: { onLogin: (name: string) => void }) {
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function App() {
+  const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [intakeComplete, setIntakeComplete] = useState(false);
@@ -2775,6 +2790,7 @@ export default function App() {
           <DashboardScreen
             setScreen={setScreen}
             ticketCompleted={ticketCompleted}
+            setActiveTicket={setActiveTicket}
           />
         )}
         {screen === "intake-upload" && (
@@ -2809,6 +2825,7 @@ export default function App() {
             setScreen={setScreen}
             addToast={addToast}
             addLog={addLog}
+            activeTicket={activeTicket}
           />
         )}
         {screen === "sme-package" && (
