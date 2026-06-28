@@ -12,6 +12,7 @@ export interface SearchResult {
   sharingStatus: string;
   department: string;
   approved: boolean;
+  similarityScore: number | null;
 }
 
 // Axios instance with the backend base URL
