@@ -31,7 +31,7 @@ import {
   Loader2,
   ChevronDown,
 } from "lucide-react";
-import { searchKnowledgeBase, SearchResult } from "../api";
+import { searchKnowledgeBase, SearchResult, getTickets, Ticket } from "../api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -475,50 +475,6 @@ function PageHeader({
 }
 
 // ─── Screen: Dashboard ────────────────────────────────────────────────────────
-
-const TICKETS = [
-  {
-    id: "T-1024",
-    customer: "Acme Corp",
-    ae: "—",
-    due: "—",
-    nda: "Yes",
-    urgency: "Medium",
-    status: "New",
-    owner: "Unassigned",
-  },
-  {
-    id: "T-1023",
-    customer: "Globex Inc",
-    ae: "Jane Smith",
-    due: "Mon 26 May",
-    nda: "Unknown",
-    urgency: "High",
-    status: "Intake Missing",
-    owner: "Sarah",
-  },
-  {
-    id: "T-1022",
-    customer: "Initech",
-    ae: "—",
-    due: "—",
-    nda: "Yes",
-    urgency: "Medium",
-    status: "In Review",
-    owner: "Sarah",
-  },
-  {
-    id: "T-1021",
-    customer: "Umbrella Co",
-    ae: "—",
-    due: "—",
-    nda: "Yes",
-    urgency: "High",
-    status: "Waiting SME",
-    owner: "Alex",
-  },
-];
-
 function DashboardScreen({
   setScreen,
   ticketCompleted,
@@ -526,13 +482,34 @@ function DashboardScreen({
   setScreen: (s: Screen) => void;
   ticketCompleted: boolean;
 }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const rows = TICKETS.map((t) =>
-    t.id === "T-1023"
-      ? { ...t, status: ticketCompleted ? "Completed" : t.status }
-      : t,
-  );
-  const selected = rows.find((r) => r.id === selectedId) ?? null;
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  // Load tickets from the backend on mount
+  useEffect(() => {
+    getTickets()
+      .then((data) => setTickets(data))
+      .catch((err) => {
+        console.error("Failed to load tickets:", err);
+        setError(true);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Format a backend date string like "2025-05-26T00:00:00" as "26 May 2025"
+  function formatDate(raw: string | null): string {
+    if (!raw) return "—";
+    const date = new Date(raw);
+    return date.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
+
+  const selected = tickets.find((r) => r.id === selectedId) ?? null;
 
   return (
     <div className="flex-1 flex overflow-hidden">
@@ -571,21 +548,23 @@ function DashboardScreen({
             </button>
           </div>
         </div>
+
+        {/* Summary stats */}
         <div className="grid grid-cols-4 divide-x divide-[rgba(0,0,0,0.06)] bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0">
           {[
-            { value: rows.length, label: "Total Tickets", accent: false },
+            { value: tickets.length, label: "Total Tickets", accent: false },
             {
-              value: rows.filter((r) => r.urgency === "High").length,
+              value: tickets.filter((r) => r.urgency === "High").length,
               label: "High Priority",
               accent: true,
             },
             {
-              value: rows.filter((r) => r.status !== "Completed").length,
+              value: tickets.filter((r) => r.status !== "Completed").length,
               label: "In Progress",
               accent: false,
             },
             {
-              value: rows.filter((r) => r.status === "Completed").length,
+              value: tickets.filter((r) => r.status === "Completed").length,
               label: "Completed",
               accent: false,
             },
@@ -602,6 +581,7 @@ function DashboardScreen({
             </div>
           ))}
         </div>
+
         <div className="flex-1 overflow-auto px-8 py-6">
           <div className="flex items-center gap-2 mb-5 flex-wrap">
             {[
@@ -619,93 +599,105 @@ function DashboardScreen({
               </button>
             ))}
             <span className="ml-auto text-[10px] text-[#9CA3AF] font-semibold tracking-[0.06em]">
-              {rows.length} TICKETS
+              {tickets.length} TICKETS
             </span>
           </div>
-          <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-[#FAFAF9] border-b border-[rgba(0,0,0,0.06)]">
-                  {[
-                    "Ticket ID",
-                    "Customer",
-                    "AE",
-                    "Due Date",
-                    "NDA",
-                    "Urgency",
-                    "Status",
-                    "Owner",
-                    "Action",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="text-left px-4 py-3.5 text-[8.5px] font-black text-[#ABABAB] uppercase tracking-[0.14em] whitespace-nowrap"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((t) => {
-                  const isSel = selectedId === t.id;
-                  return (
-                    <tr
-                      key={t.id}
-                      onClick={() => setSelectedId(isSel ? null : t.id)}
-                      className={`border-b border-[rgba(0,0,0,0.04)] last:border-0 cursor-pointer transition-all border-l-[3px] ${isSel ? "bg-[#FFF7F0] border-l-[#F96702]" : t.urgency === "High" ? "border-l-[#F96702]/35 hover:bg-[#FAFAF8]" : "border-l-transparent hover:bg-[#FAFAF8]"}`}
-                    >
-                      <td className="px-4 py-3.5 font-mono text-xs font-black text-[#0A0A0A] tracking-tight">
-                        {t.id}
-                      </td>
-                      <td className="px-4 py-3.5 text-xs font-semibold text-[#0A0A0A]">
-                        {t.customer}
-                      </td>
-                      <td className="px-4 py-3.5 text-xs text-[#6B7280]">
-                        {t.ae}
-                      </td>
-                      <td className="px-4 py-3.5 text-xs text-[#6B7280] whitespace-nowrap">
-                        {t.due}
-                      </td>
-                      <td className="px-4 py-3.5 text-xs font-medium">
-                        <span
-                          className={
-                            t.nda === "Unknown"
-                              ? "text-[#C05600] font-semibold"
-                              : t.nda === "Yes"
-                                ? "text-[#374151] font-medium"
-                                : "text-[#9CA3AF]"
-                          }
-                        >
-                          {t.nda}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <UrgencyPill urgency={t.urgency} />
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <StatusPill status={t.status} />
-                      </td>
-                      <td className="px-4 py-3.5 text-xs text-[#6B7280]">
-                        {t.owner}
-                      </td>
-                      <td
-                        className="px-4 py-3.5"
-                        onClick={(e) => e.stopPropagation()}
+
+          {/* Loading / error / table */}
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 text-sm text-[#6B7280] py-16">
+              <Loader2 size={16} className="animate-spin" /> Loading tickets…
+            </div>
+          ) : error ? (
+            <div className="text-sm text-[#9CA3AF] py-16 text-center">
+              Failed to load tickets. Is the backend running?
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-[#FAFAF9] border-b border-[rgba(0,0,0,0.06)]">
+                    {[
+                      "Ticket ID",
+                      "Customer",
+                      "AE",
+                      "Due Date",
+                      "NDA",
+                      "Urgency",
+                      "Status",
+                      "Owner",
+                      "Action",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className="text-left px-4 py-3.5 text-[8.5px] font-black text-[#ABABAB] uppercase tracking-[0.14em] whitespace-nowrap"
                       >
-                        <button
-                          onClick={() => setScreen("intake-upload")}
-                          className="flex items-center gap-1 px-3 py-1 text-[9px] font-black bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase transition-all"
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tickets.map((t) => {
+                    const isSel = selectedId === t.id;
+                    return (
+                      <tr
+                        key={t.id}
+                        onClick={() => setSelectedId(isSel ? null : t.id)}
+                        className={`border-b border-[rgba(0,0,0,0.04)] last:border-0 cursor-pointer transition-all border-l-[3px] ${isSel ? "bg-[#FFF7F0] border-l-[#F96702]" : t.urgency === "High" ? "border-l-[#F96702]/35 hover:bg-[#FAFAF8]" : "border-l-transparent hover:bg-[#FAFAF8]"}`}
+                      >
+                        <td className="px-4 py-3.5 font-mono text-xs font-black text-[#0A0A0A] tracking-tight">
+                          T-{1000 + t.id}
+                        </td>
+                        <td className="px-4 py-3.5 text-xs font-semibold text-[#0A0A0A]">
+                          {t.customerName}
+                        </td>
+                        <td className="px-4 py-3.5 text-xs text-[#6B7280]">
+                          {t.createdBy || "—"}
+                        </td>
+                        <td className="px-4 py-3.5 text-xs text-[#6B7280] whitespace-nowrap">
+                          {formatDate(t.deadline)}
+                        </td>
+                        <td className="px-4 py-3.5 text-xs font-medium">
+                          <span
+                            className={
+                              t.ndaStatus === "Unknown"
+                                ? "text-[#C05600] font-semibold"
+                                : t.ndaStatus === "Yes"
+                                  ? "text-[#374151] font-medium"
+                                  : "text-[#9CA3AF]"
+                            }
+                          >
+                            {t.ndaStatus || "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <UrgencyPill urgency={t.urgency || "—"} />
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <StatusPill status={t.status} />
+                        </td>
+                        <td className="px-4 py-3.5 text-xs text-[#6B7280]">
+                          {t.assignedTo || "—"}
+                        </td>
+                        <td
+                          className="px-4 py-3.5"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          Open <ChevronRight size={9} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                          <button
+                            onClick={() => setScreen("intake-upload")}
+                            className="flex items-center gap-1 px-3 py-1 text-[9px] font-black bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase transition-all"
+                          >
+                            Open <ChevronRight size={9} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
@@ -713,7 +705,9 @@ function DashboardScreen({
       {selected && (
         <div className="w-60 bg-white border-l border-border flex flex-col shrink-0 overflow-y-auto">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
-            <p className="text-xs font-bold text-[#1F2937]">{selected.id}</p>
+            <p className="text-xs font-bold text-[#1F2937]">
+              T-{1000 + selected.id}
+            </p>
             <button
               onClick={() => setSelectedId(null)}
               className="text-gray-400 hover:text-gray-600"
@@ -723,12 +717,13 @@ function DashboardScreen({
           </div>
           <div className="px-4 py-4 flex flex-col gap-3 flex-1">
             {[
-              ["Customer", selected.customer],
-              ["AE", selected.ae],
-              ["Due Date", selected.due],
-              ["NDA Status", selected.nda],
-              ["Urgency", selected.urgency],
-              ["Owner", selected.owner],
+              ["Customer", selected.customerName],
+              ["AE", selected.createdBy || "—"],
+              ["Due Date", formatDate(selected.deadline)],
+              ["NDA Status", selected.ndaStatus || "—"],
+              ["Urgency", selected.urgency || "—"],
+              ["Owner", selected.assignedTo || "—"],
+              ["Business Impact", selected.businessImpact || "—"],
             ].map(([l, v]) => (
               <div key={l as string}>
                 <p className="text-[10px] text-[#9CA3AF] mb-0.5">
@@ -742,20 +737,6 @@ function DashboardScreen({
             <div>
               <p className="text-[10px] text-[#9CA3AF] mb-1">Status</p>
               <StatusPill status={selected.status} />
-            </div>
-            <div>
-              <p className="text-[10px] text-[#9CA3AF] mb-1">Next Action</p>
-              <p className="text-xs text-[#374151]">
-                {selected.status === "Intake Missing"
-                  ? "Resolve missing intake fields"
-                  : selected.status === "In Review"
-                    ? "Complete answer review"
-                    : selected.status === "Waiting SME"
-                      ? "Awaiting SME tab returns"
-                      : selected.status === "Completed"
-                        ? "No action required"
-                        : "Review ticket"}
-              </p>
             </div>
           </div>
           <div className="px-4 py-3 border-t border-border flex flex-col gap-2 shrink-0">

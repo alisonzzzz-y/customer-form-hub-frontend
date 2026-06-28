@@ -29,3 +29,24 @@ export async function searchKnowledgeBase(
   });
   return response.data;
 }
+
+// One ticket returned by the backend
+export interface Ticket {
+  id: number;
+  customerName: string;
+  createdBy: string | null;
+  assignedTo: string | null;
+  status: string;
+  urgency: string | null;
+  ndaStatus: string | null;
+  deadline: string | null;
+  businessImpact: string | null;
+  eta: string | null;
+  createdAt: string | null;
+}
+
+// Get all tickets
+export async function getTickets(): Promise<Ticket[]> {
+  const response = await api.get<Ticket[]>("/tickets");
+  return response.data;
+}
