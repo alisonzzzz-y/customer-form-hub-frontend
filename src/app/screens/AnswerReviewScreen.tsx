@@ -115,6 +115,7 @@ export function AnswerReviewScreen({
   const [chosenId, setChosenId] = useState<number | null>(null);
   const [editedAnswer, setEditedAnswer] = useState(""); // the editable answer text
   const [isEdited, setIsEdited] = useState(false); // whether the analyst changed it
+  const [isConfirmed, setIsConfirmed] = useState(false); // whether the chosen answer is confirmed
   const [history, setHistory] = useState<string[]>([]); // recent searches (session only)
   const [hasSearched, setHasSearched] = useState(false); // whether any search has run yet
   // Customer context comes from the ticket that was opened (fallback if opened directly from the menu)
@@ -131,9 +132,9 @@ export function AnswerReviewScreen({
     setHasSearched(true);
     setLoading(true);
     setChosenId(null);
-    setChosenId(null);
     setEditedAnswer("");
     setIsEdited(false);
+    setIsConfirmed(false);
     // Add to history (most recent first, no duplicates, keep last 6)
     setHistory((prev) =>
       [trimmed, ...prev.filter((h) => h !== trimmed)].slice(0, 6),
@@ -388,12 +389,20 @@ export function AnswerReviewScreen({
 
                         {/* Editable answer area — appears only for the chosen candidate */}
                         {isChosen ? (
-                          <div className="flex flex-col gap-2.5 pt-2 border-t border-[#F96702]/20 mt-1">
+                          <div
+                            className={`flex flex-col gap-2.5 pt-2 border-t mt-1 ${isConfirmed ? "border-green-300" : "border-[#F96702]/20"}`}
+                          >
                             <div className="flex items-center justify-between">
-                              <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-[#C05600] uppercase tracking-[0.1em]">
-                                <CheckCircle size={11} /> Selected — Review &
-                                Edit
-                              </span>
+                              {isConfirmed ? (
+                                <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-green-700 uppercase tracking-[0.1em]">
+                                  <CheckCircle size={11} /> Answer Confirmed
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-[#C05600] uppercase tracking-[0.1em]">
+                                  <CheckCircle size={11} /> Selected — Review &
+                                  Edit
+                                </span>
+                              )}
                               {isEdited && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold tracking-[0.06em] uppercase bg-[#FFF1E6] text-[#C05600] border border-[#F96702]/30">
                                   <Edit3 size={9} /> Edited
@@ -406,57 +415,104 @@ export function AnswerReviewScreen({
                                 setEditedAnswer(e.target.value);
                                 setIsEdited(e.target.value !== r.content);
                               }}
+                              readOnly={isConfirmed}
                               rows={5}
-                              className="w-full px-3.5 py-3 text-sm text-[#1F2937] leading-relaxed border border-[#F96702]/30 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#F96702]/30 focus:border-[#F96702]/50 transition-all resize-y"
+                              className={`w-full px-3.5 py-3 text-sm text-[#1F2937] leading-relaxed border rounded-lg transition-all resize-y focus:outline-none ${isConfirmed ? "border-green-200 bg-green-50/40 cursor-default" : "border-[#F96702]/30 bg-white focus:ring-2 focus:ring-[#F96702]/30 focus:border-[#F96702]/50"}`}
                             />
-                            <p className="text-[10px] text-[#9CA3AF]">
-                              Final human review. Edit the answer as needed
-                              before it is used in the customer response.
-                            </p>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <button
-                                onClick={() => {
-                                  setChosenId(null);
-                                  setEditedAnswer("");
-                                  setIsEdited(false);
-                                  addToast("Selection cleared.", "info");
-                                }}
-                                className="flex items-center gap-1.5 px-3.5 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase border border-[rgba(0,0,0,0.18)] text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
-                              >
-                                <X size={11} /> Cancel Selection
-                              </button>
-                              {isEdited && (
-                                <button
-                                  onClick={() => {
-                                    setEditedAnswer(r.content);
-                                    setIsEdited(false);
-                                    addToast(
-                                      "Reverted to original source text.",
-                                      "info",
-                                    );
-                                  }}
-                                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase border border-[rgba(0,0,0,0.18)] text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
-                                >
-                                  <RefreshCw size={11} /> Restore Original
-                                </button>
-                              )}
-                              <button
-                                onClick={() => {
-                                  addLog(
-                                    isEdited
-                                      ? `Answer confirmed (edited): ${r.sectionTitle}`
-                                      : `Answer confirmed: ${r.sectionTitle}`,
-                                  );
-                                  addToast(
-                                    "Answer confirmed for this question.",
-                                    "success",
-                                  );
-                                }}
-                                className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)] transition-all"
-                              >
-                                <CheckCircle size={11} /> Confirm Answer
-                              </button>
-                            </div>
+                            {isConfirmed ? (
+                              <>
+                                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-50 border border-green-100">
+                                  <CheckCircle
+                                    size={12}
+                                    className="text-green-500 shrink-0"
+                                  />
+                                  <span className="text-[11px] text-green-700 font-medium">
+                                    This answer has been reviewed and confirmed
+                                    for the customer response
+                                    {isEdited ? " (with analyst edits)." : "."}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <button
+                                    onClick={() => {
+                                      setIsConfirmed(false);
+                                      addToast(
+                                        "Answer unlocked for editing.",
+                                        "info",
+                                      );
+                                    }}
+                                    className="flex items-center gap-1.5 px-3.5 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase border border-[rgba(0,0,0,0.18)] text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+                                  >
+                                    <Edit3 size={11} /> Edit Again
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setChosenId(null);
+                                      setEditedAnswer("");
+                                      setIsEdited(false);
+                                      setIsConfirmed(false);
+                                      addToast("Selection cleared.", "info");
+                                    }}
+                                    className="flex items-center gap-1.5 px-3.5 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase border border-[rgba(0,0,0,0.18)] text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+                                  >
+                                    <X size={11} /> Clear
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-[10px] text-[#9CA3AF]">
+                                  Final human review. Edit the answer as needed
+                                  before confirming.
+                                </p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <button
+                                    onClick={() => {
+                                      setChosenId(null);
+                                      setEditedAnswer("");
+                                      setIsEdited(false);
+                                      setIsConfirmed(false);
+                                      addToast("Selection cleared.", "info");
+                                    }}
+                                    className="flex items-center gap-1.5 px-3.5 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase border border-[rgba(0,0,0,0.18)] text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+                                  >
+                                    <X size={11} /> Cancel Selection
+                                  </button>
+                                  {isEdited && (
+                                    <button
+                                      onClick={() => {
+                                        setEditedAnswer(r.content);
+                                        setIsEdited(false);
+                                        addToast(
+                                          "Reverted to original source text.",
+                                          "info",
+                                        );
+                                      }}
+                                      className="flex items-center gap-1.5 px-3.5 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase border border-[rgba(0,0,0,0.18)] text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+                                    >
+                                      <RefreshCw size={11} /> Restore Original
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      setIsConfirmed(true);
+                                      addLog(
+                                        isEdited
+                                          ? `Answer confirmed (edited): ${r.sectionTitle}`
+                                          : `Answer confirmed: ${r.sectionTitle}`,
+                                      );
+                                      addToast(
+                                        "Answer confirmed for this question.",
+                                        "success",
+                                      );
+                                    }}
+                                    className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)] transition-all"
+                                  >
+                                    <CheckCircle size={11} /> Confirm Answer
+                                  </button>
+                                </div>
+                              </>
+                            )}
                           </div>
                         ) : (
                           <div className="flex justify-end pt-1">
@@ -465,6 +521,7 @@ export function AnswerReviewScreen({
                                 setChosenId(r.id);
                                 setEditedAnswer(r.content);
                                 setIsEdited(false);
+                                setIsConfirmed(false);
                                 addLog(`Selected source: ${r.sectionTitle}`);
                                 addToast(
                                   "Source selected. Review and edit before confirming.",
