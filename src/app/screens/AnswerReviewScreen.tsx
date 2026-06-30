@@ -9,6 +9,9 @@ import {
   CheckCircle,
   ChevronRight,
   AlertTriangle,
+  Edit3,
+  RefreshCw,
+  X,
 } from "lucide-react";
 import { searchKnowledgeBase, SearchResult, Ticket } from "../api";
 import { Screen, ToastMsg } from "../types";
@@ -110,6 +113,8 @@ export function AnswerReviewScreen({
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [chosenId, setChosenId] = useState<number | null>(null);
+  const [editedAnswer, setEditedAnswer] = useState(""); // the editable answer text
+  const [isEdited, setIsEdited] = useState(false); // whether the analyst changed it
   const [history, setHistory] = useState<string[]>([]); // recent searches (session only)
   const [hasSearched, setHasSearched] = useState(false); // whether any search has run yet
   // Customer context comes from the ticket that was opened (fallback if opened directly from the menu)
@@ -126,6 +131,9 @@ export function AnswerReviewScreen({
     setHasSearched(true);
     setLoading(true);
     setChosenId(null);
+    setChosenId(null);
+    setEditedAnswer("");
+    setIsEdited(false);
     // Add to history (most recent first, no duplicates, keep last 6)
     setHistory((prev) =>
       [trimmed, ...prev.filter((h) => h !== trimmed)].slice(0, 6),
@@ -315,10 +323,12 @@ export function AnswerReviewScreen({
                   {results.map((r, i) => {
                     const isNDA = r.sharingStatus === "NDA-required";
                     const isChosen = chosenId === r.id;
+                    // When something is chosen, fade the others to focus attention
+                    const isDimmed = chosenId !== null && !isChosen;
                     return (
                       <div
                         key={r.id}
-                        className={`rounded-xl border p-5 flex flex-col gap-3 transition-all ${isChosen ? "border-[#F96702] bg-[#FFF7F0]" : "border-[rgba(0,0,0,0.08)] bg-[#FAFAF9]"}`}
+                        className={`rounded-xl border p-5 flex flex-col gap-3 transition-all ${isChosen ? "border-[#F96702] bg-[#FFF7F0]" : "border-[rgba(0,0,0,0.08)] bg-[#FAFAF9]"} ${isDimmed ? "opacity-50" : "opacity-100"}`}
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2.5">
@@ -375,24 +385,98 @@ export function AnswerReviewScreen({
                             </div>
                           </div>
                         )}
-                        <div className="flex justify-end pt-1">
-                          <button
-                            onClick={() => {
-                              setChosenId(r.id);
-                              addLog(`Selected source: ${r.sectionTitle}`);
-                              addToast("Source selected as answer.", "success");
-                            }}
-                            className={`flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${isChosen ? "bg-green-600 text-white" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)]"}`}
-                          >
-                            {isChosen ? (
-                              <>
-                                <CheckCircle size={11} /> Selected
-                              </>
-                            ) : (
-                              <>Use this</>
-                            )}
-                          </button>
-                        </div>
+
+                        {/* Editable answer area — appears only for the chosen candidate */}
+                        {isChosen ? (
+                          <div className="flex flex-col gap-2.5 pt-2 border-t border-[#F96702]/20 mt-1">
+                            <div className="flex items-center justify-between">
+                              <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-[#C05600] uppercase tracking-[0.1em]">
+                                <CheckCircle size={11} /> Selected — Review &
+                                Edit
+                              </span>
+                              {isEdited && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold tracking-[0.06em] uppercase bg-[#FFF1E6] text-[#C05600] border border-[#F96702]/30">
+                                  <Edit3 size={9} /> Edited
+                                </span>
+                              )}
+                            </div>
+                            <textarea
+                              value={editedAnswer}
+                              onChange={(e) => {
+                                setEditedAnswer(e.target.value);
+                                setIsEdited(e.target.value !== r.content);
+                              }}
+                              rows={5}
+                              className="w-full px-3.5 py-3 text-sm text-[#1F2937] leading-relaxed border border-[#F96702]/30 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#F96702]/30 focus:border-[#F96702]/50 transition-all resize-y"
+                            />
+                            <p className="text-[10px] text-[#9CA3AF]">
+                              Final human review. Edit the answer as needed
+                              before it is used in the customer response.
+                            </p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                onClick={() => {
+                                  setChosenId(null);
+                                  setEditedAnswer("");
+                                  setIsEdited(false);
+                                  addToast("Selection cleared.", "info");
+                                }}
+                                className="flex items-center gap-1.5 px-3.5 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase border border-[rgba(0,0,0,0.18)] text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+                              >
+                                <X size={11} /> Cancel Selection
+                              </button>
+                              {isEdited && (
+                                <button
+                                  onClick={() => {
+                                    setEditedAnswer(r.content);
+                                    setIsEdited(false);
+                                    addToast(
+                                      "Reverted to original source text.",
+                                      "info",
+                                    );
+                                  }}
+                                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase border border-[rgba(0,0,0,0.18)] text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+                                >
+                                  <RefreshCw size={11} /> Restore Original
+                                </button>
+                              )}
+                              <button
+                                onClick={() => {
+                                  addLog(
+                                    isEdited
+                                      ? `Answer confirmed (edited): ${r.sectionTitle}`
+                                      : `Answer confirmed: ${r.sectionTitle}`,
+                                  );
+                                  addToast(
+                                    "Answer confirmed for this question.",
+                                    "success",
+                                  );
+                                }}
+                                className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)] transition-all"
+                              >
+                                <CheckCircle size={11} /> Confirm Answer
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex justify-end pt-1">
+                            <button
+                              onClick={() => {
+                                setChosenId(r.id);
+                                setEditedAnswer(r.content);
+                                setIsEdited(false);
+                                addLog(`Selected source: ${r.sectionTitle}`);
+                                addToast(
+                                  "Source selected. Review and edit before confirming.",
+                                  "success",
+                                );
+                              }}
+                              className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)] transition-all"
+                            >
+                              Use this
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
