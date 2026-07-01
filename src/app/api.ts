@@ -50,3 +50,27 @@ export async function getTickets(): Promise<Ticket[]> {
   const response = await api.get<Ticket[]>("/tickets");
   return response.data;
 }
+
+// One SME request (ETA tracking row) returned by the backend
+export interface SmeRequest {
+  id: number;
+  ticketId: number;
+  department: string;
+  teamName: string | null;
+  questionCount: number | null;
+  eta: string | null; // full date-time string, or null if not set yet
+  status: string; // Waiting for ETA / ETA Confirmed / Overdue / In Progress / Returned
+  confirmedBy: string | null;
+  sentAt: string | null;
+  returnedAt: string | null;
+}
+
+// Get all SME requests for a given ticket (overdue status is computed by the backend)
+export async function getSmeRequestsByTicket(
+  ticketId: number,
+): Promise<SmeRequest[]> {
+  const response = await api.get<SmeRequest[]>(
+    `/sme-requests/ticket/${ticketId}`,
+  );
+  return response.data;
+}
