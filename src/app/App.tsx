@@ -108,6 +108,7 @@ export default function App() {
             addLog={addLog}
             smeReturned={smeReturned}
             setSmeReturned={setSmeReturned}
+            activeTicket={activeTicket}
           />
         )}
         {screen === "reminder-email" && (
