@@ -51,6 +51,15 @@ export async function getTickets(): Promise<Ticket[]> {
   return response.data;
 }
 
+// Update only the status of a ticket
+export async function updateTicketStatus(
+  id: number,
+  status: string,
+): Promise<Ticket> {
+  const response = await api.patch<Ticket>(`/tickets/${id}/status`, { status });
+  return response.data;
+}
+
 // One SME request (ETA tracking row) returned by the backend
 export interface SmeRequest {
   id: number;

@@ -17,6 +17,7 @@ import {
   BtnPrimary,
   StatusPill,
 } from "../components/shared";
+import { updateTicketStatus, Ticket } from "../api";
 
 // ─── Screen: Final Review ─────────────────────────────────────────────────────
 
@@ -26,12 +27,14 @@ export function FinalReviewScreen({
   addLog,
   onComplete,
   smeReturned,
+  activeTicket,
 }: {
   setScreen: (s: Screen) => void;
   addToast: (m: string, t?: ToastMsg["type"]) => void;
   addLog: (e: string) => void;
   onComplete: () => void;
   smeReturned: boolean;
+  activeTicket: Ticket | null;
 }) {
   const [reviewed, setReviewed] = useState(false);
   const [exportModal, setExportModal] = useState(false);
@@ -186,11 +189,24 @@ export function FinalReviewScreen({
             </button>
             <button
               disabled={!exported}
-              onClick={() => {
+              onClick={async () => {
                 if (!exported) return;
-                onComplete();
-                addToast("Ticket status updated to Completed.", "success");
-                setTimeout(() => setScreen("dashboard"), 600);
+                if (!activeTicket) {
+                  addToast("No ticket selected to update.", "warning");
+                  return;
+                }
+                try {
+                  await updateTicketStatus(activeTicket.id, "Completed");
+                  onComplete();
+                  addLog(
+                    `Ticket ${activeTicket.customerName} marked Completed`,
+                  );
+                  addToast("Ticket status updated to Completed.", "success");
+                  setTimeout(() => setScreen("dashboard"), 600);
+                } catch (error) {
+                  console.error("Failed to update ticket status:", error);
+                  addToast("Failed to update ticket status.", "warning");
+                }
               }}
               className={`flex items-center gap-1.5 px-5 py-2 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!exported ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#0A0A0A] text-white hover:bg-[#222]"}`}
             >

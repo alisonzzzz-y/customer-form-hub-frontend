@@ -125,6 +125,7 @@ export default function App() {
             addLog={addLog}
             onComplete={() => setTicketCompleted(true)}
             smeReturned={smeReturned}
+            activeTicket={activeTicket}
           />
         )}
       </main>
