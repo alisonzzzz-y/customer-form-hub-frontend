@@ -137,3 +137,225 @@ export async function updateKnowledge(
 export async function deleteKnowledge(id: number): Promise<void> {
   await api.delete(`/knowledge-base/${id}`);
 }
+
+// ─────────────────────────────────────────────────────────
+// Form Questions (the questions of a ticket)
+// ─────────────────────────────────────────────────────────
+
+export interface FormQuestion {
+  id: number;
+  ticketId: number;
+  questionText: string;
+  department: string; // InfoSec / Legal / HR / Finance / Compliance / ESG / General
+  status: string; // Needs Review / Source Found / SME Needed / Answered
+  riskLevel: string | null;
+  rowReference: string | null; // the questionnaire section this came from
+  createdAt: string | null;
+}
+
+// All questions of a ticket
+export async function getQuestionsByTicket(
+  ticketId: number,
+): Promise<FormQuestion[]> {
+  const response = await api.get<FormQuestion[]>(
+    `/questions/ticket/${ticketId}`,
+  );
+  return response.data;
+}
+
+// Questions of a ticket in one department
+export async function getQuestionsByDepartment(
+  ticketId: number,
+  department: string,
+): Promise<FormQuestion[]> {
+  const response = await api.get<FormQuestion[]>(
+    `/questions/ticket/${ticketId}/department/${department}`,
+  );
+  return response.data;
+}
+
+// Update only the status of a question
+export async function updateQuestionStatus(
+  id: number,
+  status: string,
+): Promise<FormQuestion> {
+  const response = await api.patch<FormQuestion>(`/questions/${id}/status`, {
+    status,
+  });
+  return response.data;
+}
+
+// ─────────────────────────────────────────────────────────
+// Final Answers (the human-reviewed answer for a question)
+// ─────────────────────────────────────────────────────────
+
+export interface FinalAnswer {
+  id: number;
+  questionId: number;
+  sourceChunkId: number | null;
+  answerText: string;
+  isEdited: boolean;
+  sourceType: string | null; // "Knowledge Base" / "SME" / "Manual"
+  approvalStatus: string; // "Draft" / "Confirmed"
+  approvedBy: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+// Payload to save an answer (no id/timestamps — backend sets those)
+export interface FinalAnswerInput {
+  questionId: number;
+  sourceChunkId: number | null;
+  answerText: string;
+  isEdited: boolean;
+  sourceType: string;
+  approvalStatus: string; // usually "Confirmed"
+  approvedBy: string;
+}
+
+// Save (create or update) the final answer for a question
+export async function saveFinalAnswer(
+  answer: FinalAnswerInput,
+): Promise<FinalAnswer> {
+  const response = await api.post<FinalAnswer>("/final-answers", answer);
+  return response.data;
+}
+
+// Get the final answer for a question (null if none yet)
+export async function getFinalAnswerByQuestion(
+  questionId: number,
+): Promise<FinalAnswer | null> {
+  try {
+    const response = await api.get<FinalAnswer>(
+      `/final-answers/question/${questionId}`,
+    );
+    return response.data;
+  } catch {
+    return null; // no answer yet
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// SME Request Questions (which questions went to which SME + answers)
+// ─────────────────────────────────────────────────────────
+
+export interface SmeRequestQuestion {
+  id: number;
+  smeRequestId: number;
+  questionId: number;
+  status: string; // "Pending" / "Returned"
+  includedReason: string | null;
+  returnedAnswer: string | null;
+  updatedAt: string | null;
+}
+
+// All questions included in an SME request
+export async function getSmeQuestionsByRequest(
+  smeRequestId: number,
+): Promise<SmeRequestQuestion[]> {
+  const response = await api.get<SmeRequestQuestion[]>(
+    `/sme-request-questions/request/${smeRequestId}`,
+  );
+  return response.data;
+}
+
+// Auto-package all "SME Needed" questions of a ticket+department into an SME request
+export async function packageSmeQuestions(
+  smeRequestId: number,
+  ticketId: number,
+  department: string,
+): Promise<SmeRequestQuestion[]> {
+  const response = await api.post<SmeRequestQuestion[]>(
+    "/sme-request-questions/package",
+    { smeRequestId, ticketId, department },
+  );
+  return response.data;
+}
+
+// Record the SME's returned answer for one included question
+export async function recordSmeAnswer(
+  id: number,
+  returnedAnswer: string,
+): Promise<SmeRequestQuestion> {
+  const response = await api.patch<SmeRequestQuestion>(
+    `/sme-request-questions/${id}/answer`,
+    { returnedAnswer },
+  );
+  return response.data;
+}
+
+// ─────────────────────────────────────────────────────────
+// Final Review (all questions of a ticket, each with its answer)
+// ─────────────────────────────────────────────────────────
+
+export interface QuestionWithAnswer {
+  questionId: number;
+  questionText: string;
+  department: string;
+  questionStatus: string;
+  riskLevel: string | null;
+  answerId: number | null;
+  answerText: string | null;
+  isEdited: boolean | null;
+  sourceType: string | null;
+  approvedBy: string | null;
+  answered: boolean; // true if this question has a final answer
+}
+
+// Every question of a ticket combined with its final answer
+export async function getFinalReview(
+  ticketId: number,
+): Promise<QuestionWithAnswer[]> {
+  const response = await api.get<QuestionWithAnswer[]>(
+    `/final-review/ticket/${ticketId}`,
+  );
+  return response.data;
+}
+
+// ─────────────────────────────────────────────────────────
+// Export (download the ticket's answers as Excel)
+// ─────────────────────────────────────────────────────────
+
+// URL that triggers an .xlsx download when opened in the browser
+export function exportTicketUrl(ticketId: number): string {
+  return `http://localhost:8080/api/export/ticket/${ticketId}`;
+}
+
+// ─────────────────────────────────────────────────────────
+// Questionnaire Upload (parse an Excel, classify with AI, save)
+// ─────────────────────────────────────────────────────────
+
+export interface ClassifiedQuestion {
+  section: string;
+  questionText: string;
+  department: string; // assigned by the LLM
+}
+
+// Preview only: parse + classify, without saving
+export async function classifyQuestionnaire(
+  file: File,
+): Promise<ClassifiedQuestion[]> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await api.post<ClassifiedQuestion[]>(
+    "/questionnaire/classify",
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return response.data;
+}
+
+// Import: parse + classify + save all questions under a ticket
+export async function importQuestionnaire(
+  file: File,
+  ticketId: number,
+): Promise<FormQuestion[]> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await api.post<FormQuestion[]>(
+    `/questionnaire/import?ticketId=${ticketId}`,
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return response.data;
+}
