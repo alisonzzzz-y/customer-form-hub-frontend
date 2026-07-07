@@ -82,7 +82,7 @@ function ToggleRow({
         className={`relative w-9 h-5 rounded-full shrink-0 transition-colors ${checked ? "bg-[#F96702]" : "bg-[#D8D5D0] group-hover:bg-[#C8C5C0]"}`}
       >
         <span
-          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${checked ? "left-[18px]" : "left-0.5"}`}
+          className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : ""}`}
         />
       </button>
     </label>
