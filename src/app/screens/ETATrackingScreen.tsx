@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Send, Clock, Bell, RefreshCw, ChevronRight } from "lucide-react";
 import { Screen, ToastMsg } from "../types";
+import { Ticket } from "../api";
 import {
   PageHeader,
   WorkflowStepper,
@@ -9,64 +10,120 @@ import {
   StatusPill,
 } from "../components/shared";
 
+// The prototype story is set in May 2025, so overdue checks are anchored to a
+// fixed "now" instead of the real clock. All ETA times are treated as UTC.
+const MOCK_NOW = new Date("2025-05-22T10:00:00Z");
+
+type DeptRow = {
+  dept: string;
+  team: string;
+  qs: number;
+  eta: string | null; // ISO datetime, UTC
+  confirmedBy?: string;
+};
+
+const INITIAL_ROWS: DeptRow[] = [
+  {
+    dept: "InfoSec",
+    team: "InfoSec Team",
+    qs: 12,
+    eta: "2025-05-23T15:00:00Z",
+  },
+  { dept: "Legal", team: "Legal Team", qs: 5, eta: null },
+  { dept: "HR", team: "HR Ops", qs: 8, eta: "2025-05-20T17:00:00Z" },
+  {
+    dept: "Finance",
+    team: "Finance Team",
+    qs: 6,
+    eta: "2025-05-23T14:00:00Z",
+  },
+  { dept: "ESG", team: "ESG Team", qs: 5, eta: "2025-05-23T12:00:00Z" },
+];
+
+function statusFor(row: DeptRow, smeReturned: boolean): string {
+  if (smeReturned) return "Returned";
+  if (!row.eta) return "Waiting for ETA";
+  return new Date(row.eta) < MOCK_NOW ? "Overdue" : "ETA Confirmed";
+}
+
+function fmtEta(iso: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+  const time = d.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  });
+  return `${date}, ${time} UTC`;
+}
+
 export function ETATrackingScreen({
   setScreen,
   addToast,
   addLog,
   smeReturned,
   setSmeReturned,
+  activeTicket,
 }: {
   setScreen: (s: Screen) => void;
   addToast: (m: string, t?: ToastMsg["type"]) => void;
   addLog: (e: string) => void;
   smeReturned: boolean;
   setSmeReturned: (v: boolean) => void;
+  activeTicket: Ticket | null;
 }) {
+  const [rows, setRows] = useState<DeptRow[]>(INITIAL_ROWS);
   const [etaModal, setEtaModal] = useState(false);
   const [etaDept, setEtaDept] = useState("");
-  const rows = [
-    {
-      dept: "InfoSec",
-      team: "InfoSec Team",
-      qs: 12,
-      eta: "Fri 3pm",
-      status: smeReturned ? "Returned" : "ETA Confirmed",
-    },
-    {
-      dept: "Legal",
-      team: "Legal Team",
-      qs: 5,
-      eta: smeReturned ? "Thu 11am" : "No ETA",
-      status: smeReturned ? "Returned" : "Waiting for ETA",
-    },
-    {
-      dept: "HR",
-      team: "HR Ops",
-      qs: 8,
-      eta: "Tue 5pm",
-      status: smeReturned ? "Returned" : "Overdue",
-    },
-    {
-      dept: "Finance",
-      team: "Finance Team",
-      qs: 6,
-      eta: "Wed 2pm",
-      status: smeReturned ? "Returned" : "In Progress",
-    },
-    {
-      dept: "ESG",
-      team: "ESG Team",
-      qs: 5,
-      eta: "Thu 12pm",
-      status: smeReturned ? "Returned" : "In Progress",
-    },
-  ];
+  const [deptLocked, setDeptLocked] = useState(true);
+  const [etaValue, setEtaValue] = useState("");
+  const [confirmedBy, setConfirmedBy] = useState("");
+
+  const openModal = (dept: string, locked: boolean) => {
+    const row = rows.find((r) => r.dept === dept);
+    setEtaDept(dept);
+    setDeptLocked(locked);
+    setEtaValue(row?.eta ? row.eta.slice(0, 16) : "");
+    setConfirmedBy(row?.confirmedBy ?? "");
+    setEtaModal(true);
+  };
+
+  const saveEta = () => {
+    if (!etaValue) {
+      addToast("Please pick an ETA date and time.", "warning");
+      return;
+    }
+    const iso = new Date(etaValue + ":00Z").toISOString();
+    setRows((p) =>
+      p.map((r) =>
+        r.dept === etaDept
+          ? { ...r, eta: iso, confirmedBy: confirmedBy || undefined }
+          : r,
+      ),
+    );
+    addLog(
+      `ETA recorded for ${etaDept}: ${fmtEta(iso)}${confirmedBy ? ` — ${confirmedBy}` : ""}`,
+    );
+    if (new Date(iso) < MOCK_NOW) {
+      addToast(`ETA recorded for ${etaDept} — already overdue.`, "warning");
+    } else {
+      addToast(`ETA recorded for ${etaDept}.`, "success");
+    }
+    setEtaModal(false);
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <PageHeader
         back="sme-package"
         backLabel="SME Package"
-        title="ETA Tracking — Globex Inc"
+        title={`ETA Tracking — ${activeTicket?.customerName ?? "Globex Inc"}`}
         setScreen={setScreen}
       />
       <WorkflowStepper current="eta-tracking" />
@@ -93,51 +150,52 @@ export function ETATrackingScreen({
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr
-                  key={i}
-                  className={`border-b border-border last:border-0 transition-colors ${r.status === "Overdue" ? "bg-red-50/30" : "hover:bg-gray-50/50"}`}
-                >
-                  <td className="px-4 py-2.5 text-xs font-semibold text-[#1F2937]">
-                    {r.dept}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-[#6B7280]">
-                    {r.team}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs font-mono font-bold text-[#1F2937]">
-                    {r.qs}
-                  </td>
-                  <td
-                    className={`px-4 py-2.5 text-xs font-medium ${r.eta === "No ETA" ? "text-orange-500" : r.status === "Overdue" ? "text-red-600" : "text-[#1F2937]"}`}
+              {rows.map((r) => {
+                const status = statusFor(r, smeReturned);
+                return (
+                  <tr
+                    key={r.dept}
+                    className={`border-b border-border last:border-0 transition-colors ${status === "Overdue" ? "bg-red-50/30" : "hover:bg-gray-50/50"}`}
                   >
-                    {r.eta}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <StatusPill status={r.status} />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => {
-                          setEtaDept(r.dept);
-                          setEtaModal(true);
-                        }}
-                        className="px-3 py-1 text-[9px] font-bold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
-                      >
-                        Record ETA
-                      </button>
-                      {r.status === "Overdue" && (
+                    <td className="px-4 py-2.5 text-xs font-semibold text-[#1F2937]">
+                      {r.dept}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-[#6B7280]">
+                      {r.team}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs font-mono font-bold text-[#1F2937]">
+                      {r.qs}
+                    </td>
+                    <td
+                      title={r.confirmedBy}
+                      className={`px-4 py-2.5 text-xs font-medium whitespace-nowrap ${!r.eta ? "text-orange-500" : status === "Overdue" ? "text-red-600" : "text-[#1F2937]"}`}
+                    >
+                      {r.eta ? fmtEta(r.eta) : "No ETA"}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <StatusPill status={status} />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex gap-1.5">
                         <button
-                          onClick={() => setScreen("reminder-email")}
-                          className="px-3 py-1 text-[9px] font-bold border border-[#FCA5A5]/50 bg-[#FEF2F2] rounded-full text-[#991B1B] hover:bg-[#FEE2E2] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                          onClick={() => openModal(r.dept, true)}
+                          className="px-3 py-1 text-[9px] font-bold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                         >
-                          Reminder
+                          {r.eta ? "Update ETA" : "Record ETA"}
                         </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {status === "Overdue" && (
+                          <button
+                            onClick={() => setScreen("reminder-email")}
+                            className="px-3 py-1 text-[9px] font-bold border border-[#FCA5A5]/50 bg-[#FEF2F2] rounded-full text-[#991B1B] hover:bg-[#FEE2E2] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                          >
+                            Reminder
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -149,8 +207,8 @@ export function ETATrackingScreen({
           </BtnSecondary>
           <BtnSecondary
             onClick={() => {
-              setEtaDept("All Depts");
-              setEtaModal(true);
+              const next = rows.find((r) => !r.eta) ?? rows[0];
+              openModal(next.dept, false);
             }}
           >
             <Clock size={11} /> Record ETA
@@ -196,19 +254,35 @@ export function ETATrackingScreen({
                 <label className="text-[10px] font-medium text-[#6B7280] mb-1 block">
                   Department
                 </label>
-                <input
-                  className="w-full border border-border rounded-md px-2.5 py-1.5 text-xs bg-[#F7F8FA]"
-                  value={etaDept}
-                  readOnly
-                />
+                {deptLocked ? (
+                  <input
+                    className="w-full border border-border rounded-md px-2.5 py-1.5 text-xs bg-[#F7F8FA]"
+                    value={etaDept}
+                    readOnly
+                  />
+                ) : (
+                  <select
+                    className="w-full border border-border rounded-md px-2.5 py-1.5 text-xs bg-white"
+                    value={etaDept}
+                    onChange={(e) => setEtaDept(e.target.value)}
+                  >
+                    {rows.map((r) => (
+                      <option key={r.dept} value={r.dept}>
+                        {r.dept}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div>
                 <label className="text-[10px] font-medium text-[#6B7280] mb-1 block">
-                  ETA Date & Time
+                  ETA Date &amp; Time (UTC)
                 </label>
                 <input
                   type="datetime-local"
                   className="w-full border border-border rounded-md px-2.5 py-1.5 text-xs"
+                  value={etaValue}
+                  onChange={(e) => setEtaValue(e.target.value)}
                 />
               </div>
               <div>
@@ -218,6 +292,8 @@ export function ETATrackingScreen({
                 <input
                   className="w-full border border-border rounded-md px-2.5 py-1.5 text-xs"
                   placeholder="e.g. Confirmed via email by Alex"
+                  value={confirmedBy}
+                  onChange={(e) => setConfirmedBy(e.target.value)}
                 />
               </div>
             </div>
@@ -225,14 +301,7 @@ export function ETATrackingScreen({
               <BtnSecondary onClick={() => setEtaModal(false)}>
                 Cancel
               </BtnSecondary>
-              <BtnPrimary
-                onClick={() => {
-                  setEtaModal(false);
-                  addToast(`ETA recorded for ${etaDept}.`, "success");
-                }}
-              >
-                Save ETA
-              </BtnPrimary>
+              <BtnPrimary onClick={saveEta}>Save ETA</BtnPrimary>
             </div>
           </div>
         </div>
