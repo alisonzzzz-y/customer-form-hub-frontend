@@ -40,6 +40,7 @@ export function FinalReviewScreen({
   const [exportModal, setExportModal] = useState(false);
   const [exported, setExported] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [statusUpdated, setStatusUpdated] = useState(false);
   const depts = ["InfoSec", "Legal", "HR", "Finance", "ESG"];
 
   const handleExport = () => {
@@ -59,9 +60,13 @@ export function FinalReviewScreen({
       <PageHeader
         back="eta-tracking"
         backLabel="ETA Tracking"
-        title="Final Review & Export — T-1023 Globex Inc"
+        title={`Final Review & Export — ${activeTicket?.customerName ?? "T-1023 Globex Inc"}`}
         badge={
-          reviewed && exported ? <StatusPill status="Completed" /> : undefined
+          statusUpdated ? (
+            <StatusPill status="Completed" />
+          ) : exported ? (
+            <StatusPill status="In Review" />
+          ) : undefined
         }
         setScreen={setScreen}
       />
@@ -197,6 +202,7 @@ export function FinalReviewScreen({
                 }
                 try {
                   await updateTicketStatus(activeTicket.id, "Completed");
+                  setStatusUpdated(true);
                   onComplete();
                   addLog(
                     `Ticket ${activeTicket.customerName} marked Completed`,

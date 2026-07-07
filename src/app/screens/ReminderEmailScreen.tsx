@@ -17,6 +17,16 @@ import {
 
 // ─── Screen: Reminder Email ───────────────────────────────────────────────────
 
+const DEFAULT_BODY = `Hi HR team,
+
+Just following up on the HR tab for the Globex Inc customer form. The agreed ETA has passed. Could you please confirm when this can be returned?
+
+We have a customer deadline of Mon 26 May and want to ensure we have time for final review. If you need additional context, please reply to this email.
+
+Thank you,
+Sarah Chen
+GOM Analyst, Cloudera`;
+
 export function ReminderEmailScreen({
   setScreen,
   addToast,
@@ -27,6 +37,9 @@ export function ReminderEmailScreen({
   addLog: (e: string) => void;
 }) {
   const [sent, setSent] = useState(false);
+  const [body, setBody] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draftText, setDraftText] = useState("");
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <PageHeader
@@ -71,6 +84,17 @@ export function ReminderEmailScreen({
                 </div>
               ))}
             </div>
+            {editing ? (
+              <textarea
+                className="w-full min-h-[220px] px-4 py-4 text-xs text-[#374151] leading-relaxed resize-y focus:outline-none"
+                value={draftText}
+                onChange={(e) => setDraftText(e.target.value)}
+              />
+            ) : body ? (
+              <div className="px-4 py-4 text-xs text-[#374151] leading-relaxed whitespace-pre-wrap">
+                {body}
+              </div>
+            ) : (
             <div className="px-4 py-4 text-xs text-[#374151] leading-relaxed space-y-2.5">
               <p>Hi HR team,</p>
               <p>
@@ -91,25 +115,52 @@ export function ReminderEmailScreen({
                 GOM Analyst, Cloudera
               </p>
             </div>
+            )}
           </div>
           <div className="flex gap-2">
-            {!sent && (
-              <BtnPrimary
-                onClick={() => {
-                  setSent(true);
-                  addLog("HR reminder sent");
-                  addToast("Reminder sent.", "success");
-                }}
-              >
-                <Send size={12} /> Send Reminder
-              </BtnPrimary>
+            {editing ? (
+              <>
+                <BtnPrimary
+                  onClick={() => {
+                    setBody(draftText);
+                    setEditing(false);
+                    addToast("Draft updated.", "info");
+                  }}
+                >
+                  <CheckCircle size={12} /> Save Draft
+                </BtnPrimary>
+                <BtnSecondary onClick={() => setEditing(false)}>
+                  Cancel
+                </BtnSecondary>
+              </>
+            ) : (
+              <>
+                {!sent && (
+                  <BtnPrimary
+                    onClick={() => {
+                      setSent(true);
+                      addLog("HR reminder sent");
+                      addToast("Reminder sent.", "success");
+                    }}
+                  >
+                    <Send size={12} /> Send Reminder
+                  </BtnPrimary>
+                )}
+                {!sent && (
+                  <BtnSecondary
+                    onClick={() => {
+                      setDraftText(body ?? DEFAULT_BODY);
+                      setEditing(true);
+                    }}
+                  >
+                    <Edit3 size={12} /> Edit Draft
+                  </BtnSecondary>
+                )}
+                <BtnSecondary onClick={() => setScreen("eta-tracking")}>
+                  <ArrowLeft size={11} /> Back to ETA Tracking
+                </BtnSecondary>
+              </>
             )}
-            <BtnSecondary>
-              <Edit3 size={12} /> Edit Draft
-            </BtnSecondary>
-            <BtnSecondary onClick={() => setScreen("eta-tracking")}>
-              <ArrowLeft size={11} /> Back to SME Tracking
-            </BtnSecondary>
           </div>
         </div>
       </div>
