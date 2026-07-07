@@ -10,6 +10,7 @@ import {
   Clock,
   ArrowLeft,
   ChevronRight,
+  CheckCircle,
 } from "lucide-react";
 import { Screen, ToastMsg } from "../types";
 import {
@@ -32,6 +33,10 @@ export function SMEPackageScreen({
 }) {
   const [excelTab, setExcelTab] = useState("InfoSec");
   const [generating, setGenerating] = useState(false);
+  const [sentTeams, setSentTeams] = useState<Record<string, boolean>>({});
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState(false);
+  const [draftText, setDraftText] = useState("");
   const tabs = [
     { label: "InfoSec", count: 12 },
     { label: "Legal", count: 5 },
@@ -60,6 +65,37 @@ export function SMEPackageScreen({
       "What is your carbon neutrality target?",
       "Do you publish a sustainability report?",
     ],
+  };
+  const defaultBody = (team: string, count: number) =>
+    `Hi ${team} Team,
+
+We have received a security questionnaire from Globex Inc and need your input on the ${team} tab of the attached Excel.
+
+Customer: Globex Inc
+NDA status: No NDA — do not share NDA-restricted materials
+Deadline: Mon 26 May 2025
+Your tab: ${team} (${count} questions)
+Attached: Globex_SME_Request.xlsx
+
+Please complete your tab and reply with your ETA. If any question is outside your scope, note it in the answer column.
+
+Thank you,
+Sarah Chen, GOM Analyst`;
+  const tabCount = (label: string) =>
+    tabs.find((t) => t.label === label)?.count ?? 0;
+  const sentCount = tabs.filter((t) => sentTeams[t.label]).length;
+  const sendCurrent = () => {
+    const updated = { ...sentTeams, [excelTab]: true };
+    setSentTeams(updated);
+    addLog(`SME package sent to ${excelTab} Team`);
+    if (tabs.every((t) => updated[t.label])) {
+      addToast(
+        "All 5 SME emails sent — continue to ETA Tracking.",
+        "success",
+      );
+    } else {
+      addToast(`SME email sent to ${excelTab} Team.`, "success");
+    }
   };
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -96,7 +132,10 @@ export function SMEPackageScreen({
               {tabs.map((t) => (
                 <button
                   key={t.label}
-                  onClick={() => setExcelTab(t.label)}
+                  onClick={() => {
+                    setExcelTab(t.label);
+                    setEditing(false);
+                  }}
                   className={`flex items-center gap-1 px-3 py-1.5 text-[10px] font-medium border-b-2 shrink-0 transition-colors ${excelTab === t.label ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
                 >
                   {t.label}{" "}
@@ -184,7 +223,17 @@ export function SMEPackageScreen({
               <Mail size={12} className="text-[#F96702]" />
               <p className="text-[10px] font-bold text-[#1F2937]">
                 SME Email Draft — {excelTab} Team
+                {drafts[excelTab] && !editing && (
+                  <span className="ml-1.5 font-medium text-[#9CA3AF]">
+                    (edited)
+                  </span>
+                )}
               </p>
+              {sentTeams[excelTab] && (
+                <span className="ml-auto flex items-center gap-1 text-[10px] text-green-600 font-medium">
+                  <CheckCircle size={10} /> Sent
+                </span>
+              )}
             </div>
             <div className="px-3.5 py-3 space-y-1.5 border-b border-border">
               {[
@@ -201,6 +250,17 @@ export function SMEPackageScreen({
                 </div>
               ))}
             </div>
+            {editing ? (
+              <textarea
+                className="mx-3.5 my-3 flex-1 border border-border rounded-md p-2.5 text-[10px] text-[#374151] leading-relaxed resize-none focus:outline-none focus:border-[#F96702]/50"
+                value={draftText}
+                onChange={(e) => setDraftText(e.target.value)}
+              />
+            ) : drafts[excelTab] ? (
+              <div className="px-3.5 py-3 text-[10px] text-[#374151] leading-relaxed whitespace-pre-wrap flex-1 overflow-auto">
+                {drafts[excelTab]}
+              </div>
+            ) : (
             <div className="px-3.5 py-3 text-[10px] text-[#374151] leading-relaxed space-y-2 flex-1 overflow-auto">
               <p>Hi {excelTab} Team,</p>
               <p>
@@ -238,28 +298,72 @@ export function SMEPackageScreen({
                 <strong>Sarah Chen</strong>, GOM Analyst
               </p>
             </div>
+            )}
             <div className="px-3.5 py-2.5 border-t border-border bg-[#F7F8FA] flex gap-1.5">
-              <button
-                onClick={() => {
-                  addLog("SME package sent");
-                  addToast("SME email sent.", "success");
-                  setScreen("eta-tracking");
-                }}
-                className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] flex-1 justify-center shadow-[0_2px_8px_rgba(249,103,2,0.25)] tracking-[0.06em] uppercase transition-all"
-              >
-                <Send size={10} /> Send SME Email
-              </button>
-              <button className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all">
-                <Edit3 size={10} /> Edit
-              </button>
-              <button
-                onClick={() =>
-                  addToast("Use Record ETA on the ETA Tracking screen.", "info")
-                }
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
-              >
-                <Clock size={10} /> Record ETA
-              </button>
+              {editing ? (
+                <>
+                  <button
+                    onClick={() => {
+                      setDrafts((p) => ({ ...p, [excelTab]: draftText }));
+                      setEditing(false);
+                      addToast(`Draft updated for ${excelTab} Team.`, "info");
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] flex-1 justify-center shadow-[0_2px_8px_rgba(249,103,2,0.25)] tracking-[0.06em] uppercase transition-all"
+                  >
+                    <CheckCircle size={10} /> Save Draft
+                  </button>
+                  <button
+                    onClick={() => setEditing(false)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={sendCurrent}
+                    disabled={sentTeams[excelTab]}
+                    className={`flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full flex-1 justify-center tracking-[0.06em] uppercase transition-all ${sentTeams[excelTab] ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)]"}`}
+                  >
+                    {sentTeams[excelTab] ? (
+                      <>
+                        <CheckCircle size={10} /> Sent to {excelTab} Team
+                      </>
+                    ) : (
+                      <>
+                        <Send size={10} /> Send to {excelTab} Team ({sentCount}
+                        /5 sent)
+                      </>
+                    )}
+                  </button>
+                  {!sentTeams[excelTab] && (
+                    <button
+                      onClick={() => {
+                        setDraftText(
+                          drafts[excelTab] ??
+                            defaultBody(excelTab, tabCount(excelTab)),
+                        );
+                        setEditing(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+                    >
+                      <Edit3 size={10} /> Edit
+                    </button>
+                  )}
+                  <button
+                    onClick={() =>
+                      addToast(
+                        "Use Record ETA on the ETA Tracking screen.",
+                        "info",
+                      )
+                    }
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+                  >
+                    <Clock size={10} /> Record ETA
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
