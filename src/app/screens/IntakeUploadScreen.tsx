@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Mail,
   FileSpreadsheet,
@@ -20,6 +20,21 @@ export function IntakeUploadScreen({
   addLog: (e: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
+  const [file, setFile] = useState({
+    name: "Globex_Security_Q.xlsx",
+    size: "142 KB",
+    detail: "36 questions detected",
+  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const handleFilePicked = (picked: File) => {
+    setFile({
+      name: picked.name,
+      size: `${Math.max(1, Math.round(picked.size / 1024))} KB`,
+      detail: "Pending extraction",
+    });
+    addLog(`Form replaced: ${picked.name}`);
+    addToast(`Attached ${picked.name}.`, "info");
+  };
   const handleExtract = () => {
     setLoading(true);
     setTimeout(() => {
@@ -86,10 +101,10 @@ export function IntakeUploadScreen({
                 </div>
                 <div className="text-center">
                   <p className="text-xs font-semibold text-[#1F2937]">
-                    Globex_Security_Q.xlsx
+                    {file.name}
                   </p>
                   <p className="text-[10px] text-[#6B7280] mt-0.5">
-                    Excel · 142 KB · 36 questions detected
+                    Excel · {file.size} · {file.detail}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 px-2.5 py-1 bg-green-50 border border-green-200 rounded-md">
@@ -99,7 +114,21 @@ export function IntakeUploadScreen({
                   </span>
                 </div>
               </div>
-              <button className="flex items-center justify-center gap-1.5 py-1.5 border border-dashed border-border rounded-md text-[10px] text-[#6B7280] hover:border-[#F96702]/40 hover:text-[#F96702]">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={(e) => {
+                  const picked = e.target.files?.[0];
+                  if (picked) handleFilePicked(picked);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center justify-center gap-1.5 py-1.5 border border-dashed border-border rounded-md text-[10px] text-[#6B7280] hover:border-[#F96702]/40 hover:text-[#F96702]"
+              >
                 Replace or upload different file
               </button>
             </div>
@@ -117,8 +146,8 @@ export function IntakeUploadScreen({
                 },
                 {
                   icon: FileSpreadsheet,
-                  label: "Globex_Security_Q.xlsx",
-                  detail: "142 KB · 36 questions",
+                  label: file.name,
+                  detail: `${file.size} · ${file.detail}`,
                 },
               ].map(({ icon: Icon, label, detail }) => (
                 <div
