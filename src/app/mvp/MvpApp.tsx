@@ -227,7 +227,7 @@ export default function MvpApp() {
                 onClick={actions.openNewTicket}
                 className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] bg-[#F96702] text-white rounded-full hover:bg-[#D95400] font-bold tracking-[0.06em] shadow-[0_2px_8px_rgba(249,103,2,0.3)] transition-all"
               >
-                <Plus size={11} /> Create Ticket
+                <Plus size={11} /> New Request
               </button>
             )}
             <button

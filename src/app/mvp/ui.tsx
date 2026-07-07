@@ -22,6 +22,7 @@ const STATUS_STYLES: Record<string, string> = {
   "AI Analysed": "bg-[#EEF2FF] text-[#4338CA] border-[#C7D2FE]",
   Suggested: "bg-[#FFF4EC] text-[#C05600] border-[#F96702]/25",
   "Needs Review": "bg-[#FEFCE8] text-[#854D0E] border-[#FDE68A]",
+  "SME Queued": "bg-[#FFF4EC] text-[#C05600] border-[#F96702]/25",
   "SME Complete": "bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]",
   Ready: "bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]",
   Rejected: "bg-[#FEF2F2] text-[#991B1B] border-[#FCA5A5]/50",

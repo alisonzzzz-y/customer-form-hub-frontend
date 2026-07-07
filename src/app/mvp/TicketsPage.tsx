@@ -1,17 +1,13 @@
-import { useRef, useState } from "react";
-import { Inbox, Plus, Search, Upload, X } from "lucide-react";
-import { BtnPrimary, BtnSecondary } from "../components/shared";
+import { Inbox, Plus, Search, X } from "lucide-react";
 import {
   DEPARTMENTS,
-  MvpTicket,
-  NdaStatus,
-  Urgency,
   fmtDate,
   fmtDateTime,
   isDueToday,
   isOverdueTicket,
 } from "./data";
 import { AppActions, AppState } from "./MvpApp";
+import { NewRequestFlow } from "./NewRequestFlow";
 import { EmptyState, FilterSelect, Pill, Th, UrgencyDot } from "./ui";
 
 // PRD §7: statuses are FILTERS here, never separate sidebar pages (TK-02,
@@ -141,6 +137,7 @@ export function TicketsPage({
                     sorId: `SOR-${88400 + num}`,
                     owner: state.currentUser,
                     status: "New",
+                    stage: "intake",
                     due: "2026-07-28",
                     created: new Date().toISOString().slice(0, 10),
                     urgency: "Medium",
@@ -163,7 +160,7 @@ export function TicketsPage({
               onClick={() => setNewTicketOpen(true)}
               className="flex items-center gap-1.5 px-5 py-2 text-[10px] bg-[#F96702] text-white rounded-full hover:bg-[#D95400] font-bold tracking-[0.06em] shadow-[0_2px_8px_rgba(249,103,2,0.3)] transition-all"
             >
-              <Plus size={12} /> Create Ticket
+              <Plus size={12} /> New Request
             </button>
           </div>
         )}
@@ -264,181 +261,8 @@ export function TicketsPage({
       </div>
 
       {newTicketOpen && (
-        <NewTicketModal state={state} actions={actions} close={() => setNewTicketOpen(false)} />
+        <NewRequestFlow state={state} actions={actions} close={() => setNewTicketOpen(false)} />
       )}
-    </div>
-  );
-}
-
-// PRD §7.1 New Ticket flow (NT-01..05)
-function NewTicketModal({
-  state,
-  actions,
-  close,
-}: {
-  state: AppState;
-  actions: AppActions;
-  close: () => void;
-}) {
-  const [customer, setCustomer] = useState("");
-  const [sorId, setSorId] = useState("");
-  const [due, setDue] = useState("");
-  const [urgency, setUrgency] = useState<Urgency>("Medium");
-  const [nda, setNda] = useState<NdaStatus>("Unknown");
-  const [region, setRegion] = useState("EMEA");
-  const [source, setSource] = useState("Email");
-  const [ae, setAe] = useState("");
-  const [impact, setImpact] = useState("");
-  const [notes, setNotes] = useState("");
-  const [fileName, setFileName] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const create = () => {
-    // NT-01: required fields
-    if (!customer.trim() || !due || !urgency || !nda) {
-      actions.addToast("Customer, due date, urgency and NDA status are required.", "warning");
-      return;
-    }
-    const num = Math.max(...state.tickets.map((t) => parseInt(t.id.slice(3), 10))) + 1;
-    const id = `TK-${num}`;
-    const ticket: MvpTicket = {
-      id,
-      customer: customer.trim(),
-      sorId: sorId.trim() || "—",
-      owner: state.currentUser,
-      // NT-04: unknown NDA keeps the ticket in Intake Review
-      status: nda === "Unknown" ? "Intake Review" : fileName ? "AI Processing" : "New",
-      due,
-      created: new Date().toISOString().slice(0, 10),
-      urgency,
-      nda,
-      region,
-      source,
-      ae: ae.trim() || undefined,
-      businessImpact: impact.trim() || undefined,
-      notes: notes.trim() || undefined,
-      files: fileName
-        ? [
-            {
-              name: fileName,
-              size: "—",
-              kind: "Customer form",
-              uploaded: new Date().toISOString().slice(0, 10),
-              status: "Uploaded",
-            },
-          ]
-        : [],
-    };
-    actions.setTickets((p) => [ticket, ...p]);
-    actions.logActivity(`Created ticket for ${ticket.customer} (${ticket.sorId})`, id);
-    if (nda === "Unknown") {
-      actions.addToast("Ticket created — intake flagged incomplete until NDA status is resolved.", "warning");
-    } else {
-      actions.addToast(`Ticket ${id} created.`, "success");
-    }
-    close();
-    actions.openTicket(id); // NT-05
-  };
-
-  const field = "w-full border border-border rounded-md px-2.5 py-1.5 text-xs";
-  const label = "text-[10px] font-medium text-[#6B7280] mb-1 block";
-
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl p-5 w-[520px] max-h-[85vh] overflow-auto">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-[#1F2937]">New Ticket</h3>
-          <button onClick={close} className="text-gray-400 hover:text-gray-600">
-            <X size={14} />
-          </button>
-        </div>
-        <div className="grid grid-cols-2 gap-2.5">
-          <div>
-            <label className={label}>Customer Name *</label>
-            <input className={field} value={customer} onChange={(e) => setCustomer(e.target.value)} />
-          </div>
-          <div>
-            <label className={label}>Salesforce / SOR Case ID</label>
-            <input className={field} placeholder="SOR-00000" value={sorId} onChange={(e) => setSorId(e.target.value)} />
-          </div>
-          <div>
-            <label className={label}>Due Date *</label>
-            <input type="date" className={field} value={due} onChange={(e) => setDue(e.target.value)} />
-          </div>
-          <div>
-            <label className={label}>Urgency *</label>
-            <select className={`${field} bg-white`} value={urgency} onChange={(e) => setUrgency(e.target.value as Urgency)}>
-              {["High", "Medium", "Low"].map((u) => (
-                <option key={u}>{u}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={label}>NDA Status *</label>
-            <select className={`${field} bg-white`} value={nda} onChange={(e) => setNda(e.target.value as NdaStatus)}>
-              {["In Place", "Missing", "Unknown"].map((n) => (
-                <option key={n}>{n}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={label}>Region</label>
-            <select className={`${field} bg-white`} value={region} onChange={(e) => setRegion(e.target.value)}>
-              {["EMEA", "AMER", "APAC"].map((r) => (
-                <option key={r}>{r}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={label}>Request Source</label>
-            <select className={`${field} bg-white`} value={source} onChange={(e) => setSource(e.target.value)}>
-              {["Email", "Salesforce"].map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={label}>AE / Requester</label>
-            <input className={field} value={ae} onChange={(e) => setAe(e.target.value)} />
-          </div>
-          <div className="col-span-2">
-            <label className={label}>Business Impact</label>
-            <input className={field} placeholder="e.g. Renewal, high value" value={impact} onChange={(e) => setImpact(e.target.value)} />
-          </div>
-          <div className="col-span-2">
-            <label className={label}>Notes</label>
-            <textarea rows={2} className={`${field} resize-y`} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-          <div className="col-span-2">
-            <label className={label}>Attach Customer Form (NT-02)</label>
-            <input
-              ref={fileRef}
-              type="file"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) setFileName(f.name);
-                e.target.value = "";
-              }}
-            />
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="w-full flex items-center justify-center gap-1.5 py-2 border border-dashed border-border rounded-md text-[10px] text-[#6B7280] hover:border-[#F96702]/40 hover:text-[#F96702]"
-            >
-              <Upload size={11} /> {fileName ?? "Choose a file (optional)"}
-            </button>
-          </div>
-        </div>
-        {nda === "Unknown" && (
-          <p className="text-[10px] text-[#C05600] bg-[#FFF4EC] border border-[#F96702]/25 rounded-md px-2.5 py-1.5 mt-2.5">
-            NDA status unknown — the ticket will be flagged Intake Review until resolved (NT-04).
-          </p>
-        )}
-        <div className="flex justify-end gap-2 mt-4">
-          <BtnSecondary onClick={close}>Cancel</BtnSecondary>
-          <BtnPrimary onClick={create}>Create Ticket</BtnPrimary>
-        </div>
-      </div>
     </div>
   );
 }

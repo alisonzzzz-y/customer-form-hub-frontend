@@ -34,11 +34,23 @@ export type QuestionStatus =
   | "AI Analysed"
   | "Suggested"
   | "Needs Review"
+  | "SME Queued" // marked "route to SME" during review; not yet sent
   | "Waiting SME"
   | "SME Complete"
   | "Ready"
   | "Approved"
   | "Rejected";
+
+// Guided workflow stage inside a ticket (mirrors the original prototype flow:
+// intake → grouping → answer review → SME package → ETA tracking → final)
+export type TicketStage =
+  | "intake"
+  | "grouping"
+  | "review"
+  | "sme"
+  | "eta"
+  | "final"
+  | "done";
 
 export type KnowledgeStatus =
   | "Draft"
@@ -86,6 +98,8 @@ export type MvpTicket = {
   sorId: string;
   owner: string;
   status: TicketStatus;
+  stage: TicketStage;
+  aeEmail?: string;
   due: string; // ISO date
   created: string;
   closed?: string;
@@ -184,6 +198,8 @@ export const SEED_TICKETS: MvpTicket[] = [
     sorId: "SOR-88213",
     owner: "Sarah Chen",
     status: "In Progress",
+    stage: "review",
+    aeEmail: "jane.smith@cloudera.com",
     due: "2026-07-23",
     created: "2026-07-01",
     urgency: "High",
@@ -207,7 +223,9 @@ export const SEED_TICKETS: MvpTicket[] = [
     customer: "Globex Inc",
     sorId: "SOR-88102",
     owner: "Sarah Chen",
-    status: "Waiting SME",
+    status: "In Progress",
+    stage: "review",
+    aeEmail: "tom.ryan@cloudera.com",
     due: "2026-07-10",
     created: "2026-06-26",
     urgency: "High",
@@ -232,6 +250,7 @@ export const SEED_TICKETS: MvpTicket[] = [
     sorId: "SOR-88044",
     owner: "Sarah Chen",
     status: "Ready for Review",
+    stage: "final",
     due: "2026-07-07",
     created: "2026-06-24",
     urgency: "Medium",
@@ -254,6 +273,7 @@ export const SEED_TICKETS: MvpTicket[] = [
     sorId: "SOR-87891",
     owner: "Liam O'Brien",
     status: "Waiting SME",
+    stage: "eta",
     due: "2026-07-03",
     created: "2026-06-18",
     urgency: "High",
@@ -276,6 +296,7 @@ export const SEED_TICKETS: MvpTicket[] = [
     sorId: "SOR-87720",
     owner: "Priya Patel",
     status: "Approved",
+    stage: "done",
     due: "2026-07-15",
     created: "2026-06-15",
     urgency: "Medium",
@@ -298,6 +319,7 @@ export const SEED_TICKETS: MvpTicket[] = [
     sorId: "SOR-87544",
     owner: "Sarah Chen",
     status: "Closed",
+    stage: "done",
     due: "2026-06-30",
     created: "2026-06-20",
     closed: "2026-07-02",
@@ -321,6 +343,7 @@ export const SEED_TICKETS: MvpTicket[] = [
     sorId: "SOR-88301",
     owner: "Sarah Chen",
     status: "Intake Review",
+    stage: "intake",
     due: "2026-07-20",
     created: "2026-07-06",
     urgency: "Medium",
@@ -344,6 +367,7 @@ export const SEED_TICKETS: MvpTicket[] = [
     sorId: "SOR-87102",
     owner: "Liam O'Brien",
     status: "Archived",
+    stage: "done",
     due: "2026-05-30",
     created: "2026-05-12",
     closed: "2026-06-02",
@@ -406,10 +430,9 @@ export const SEED_QUESTIONS: MvpQuestion[] = [
     normalised: "What is the annual employee turnover rate?",
     department: "HR",
     risk: "Low",
-    status: "Waiting SME",
+    status: "SME Queued",
     confidence: 0.42,
     sharingStatus: "NDA Required",
-    smeRequestId: 1,
   },
   {
     id: 4,
@@ -546,43 +569,124 @@ export const SEED_QUESTIONS: MvpQuestion[] = [
     normalised: "What are the incident response SLAs?",
     department: "Legal",
     risk: "High",
-    status: "Waiting SME",
+    status: "SME Queued",
     confidence: 0.55,
-    smeRequestId: 3,
     sharingStatus: "Internal",
+  },
+  // TK-1019 — Initech: SME packages already sent, tracking ETAs
+  {
+    id: 20,
+    ticketId: "TK-1019",
+    row: 1,
+    original: "Describe your incident response SLAs.",
+    normalised: "What are the incident response SLAs?",
+    department: "Security",
+    risk: "High",
+    status: "Waiting SME",
+    confidence: 0.51,
+    smeRequestId: 2,
+    sharingStatus: "Internal",
+  },
+  {
+    id: 21,
+    ticketId: "TK-1019",
+    row: 2,
+    original: "Do you carry cyber liability insurance?",
+    normalised: "Does Cloudera maintain cyber liability insurance?",
+    department: "Finance",
+    risk: "Medium",
+    status: "Waiting SME",
+    confidence: 0.62,
+    smeRequestId: 4,
+    sharingStatus: "NDA Required",
+  },
+  {
+    id: 22,
+    ticketId: "TK-1019",
+    row: 3,
+    original: "Do you hold ISO27001?",
+    normalised: "Does Cloudera hold ISO 27001 certification?",
+    department: "Security",
+    risk: "Medium",
+    status: "Approved",
+    confidence: 0.96,
+    finalAnswer: {
+      text: "Yes. Cloudera maintains an ISMS aligned with ISO 27001, certified annually.",
+      sourceType: "AI",
+    },
+    sharingStatus: "Public",
+  },
+  // TK-1022 — Acme: everything answered from knowledge, ready for final review
+  {
+    id: 30,
+    ticketId: "TK-1022",
+    row: 1,
+    original: "Is a data processing agreement available?",
+    normalised: "Is a standard data processing agreement (DPA) available?",
+    department: "Legal",
+    risk: "Medium",
+    status: "Approved",
+    confidence: 0.91,
+    finalAnswer: {
+      text: "Yes. A standard DPA incorporating the EU Standard Contractual Clauses is available.",
+      sourceType: "AI",
+    },
+    sharingStatus: "Public",
+  },
+  {
+    id: 31,
+    ticketId: "TK-1022",
+    row: 2,
+    original: "Does the product support SSO?",
+    normalised: "Does the product support single sign-on (SSO)?",
+    department: "Product",
+    risk: "Low",
+    status: "Approved",
+    confidence: 0.9,
+    finalAnswer: {
+      text: "Yes, SAML 2.0 and OIDC based single sign-on is supported across the platform.",
+      sourceType: "AI Edited",
+    },
+    sharingStatus: "Public",
+  },
+  {
+    id: 32,
+    ticketId: "TK-1022",
+    row: 3,
+    original: "Do you publish a sustainability report?",
+    normalised: "Does Cloudera publish an annual sustainability report?",
+    department: "ESG",
+    risk: "Low",
+    status: "Approved",
+    confidence: 0.88,
+    finalAnswer: {
+      text: "Yes. Cloudera publishes an annual sustainability report covering emissions, diversity and governance targets.",
+      sourceType: "AI",
+    },
+    sharingStatus: "Public",
   },
 ];
 
 export const SEED_SME_REQUESTS: MvpSmeRequest[] = [
-  {
-    id: 1,
-    ticketId: "TK-1027",
-    department: "HR",
-    assignee: "HR Ops",
-    eta: "2026-07-09T15:00:00Z",
-    status: "ETA Set",
-    questionIds: [3],
-    sentAt: "2026-07-02T10:00:00Z",
-  },
   {
     id: 2,
     ticketId: "TK-1019",
     department: "Security",
     assignee: "InfoSec Team",
     eta: "2026-07-05T17:00:00Z",
-    status: "Overdue",
-    questionIds: [],
+    status: "ETA Set",
+    questionIds: [20],
     sentAt: "2026-06-25T09:00:00Z",
   },
   {
-    id: 3,
-    ticketId: "TK-1024",
-    department: "Legal",
-    assignee: "Legal Team",
-    eta: "2026-07-08T12:00:00Z",
-    status: "In Progress",
-    questionIds: [12],
-    sentAt: "2026-06-30T14:00:00Z",
+    id: 4,
+    ticketId: "TK-1019",
+    department: "Finance",
+    assignee: "Finance Team",
+    eta: "2026-07-10T14:00:00Z",
+    status: "ETA Set",
+    questionIds: [21],
+    sentAt: "2026-06-25T09:05:00Z",
   },
 ];
 
