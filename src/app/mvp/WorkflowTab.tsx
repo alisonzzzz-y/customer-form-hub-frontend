@@ -31,11 +31,14 @@ import {
   TicketStage,
   fmtDate,
   fmtDateTime,
+  pendingForms,
 } from "./data";
 import { AppActions, AppState } from "./MvpApp";
 import {
   applyRagResult,
   createBackendSmeRequest,
+  createBackendTicket,
+  parseQuestionnaire,
   fetchSmeEmail,
   packageBackendQuestions,
   ragSearch,
@@ -132,7 +135,15 @@ function StageStepper({ stage }: { stage: TicketStage }) {
   );
 }
 
-// ─── Stage: Intake (resolve missing fields before AI runs) ───────────────────
+// ─── Stage: Intake (same full-page check whether extraction was complete) ────
+
+const MISSING_LABELS: Record<string, string> = {
+  customer: "Customer name — which account is this request for?",
+  due: "Response deadline — by what date does the customer need completed answers?",
+  urgency: "Urgency level — High, Medium or Low?",
+  nda: "NDA status — is there an active NDA with the customer?",
+  impact: "Business impact — renewal, expansion or new deal, and rough value?",
+};
 
 function IntakePanel({
   ticket,
@@ -146,26 +157,85 @@ function IntakePanel({
   const [clarifyOpen, setClarifyOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  const patch = (p: Partial<MvpTicket>) =>
-    actions.setTickets((prev) => prev.map((t) => (t.id === ticket.id ? { ...t, ...p } : t)));
+  const missing = ticket.intakeMissing ?? [];
+  const patch = (p: Partial<MvpTicket>, clearFlag?: string) =>
+    actions.setTickets((prev) =>
+      prev.map((t) =>
+        t.id === ticket.id
+          ? {
+              ...t,
+              ...p,
+              intakeMissing: clearFlag
+                ? (t.intakeMissing ?? []).filter((m) => m !== clearFlag)
+                : t.intakeMissing,
+            }
+          : t,
+      ),
+    );
 
-  const rows: { label: string; value: string; ok: boolean; edit?: React.ReactNode }[] = [
-    { label: "Customer", value: ticket.customer, ok: true },
-    { label: "AE / Requester", value: ticket.ae ?? "—", ok: !!ticket.ae },
+  const input = "border border-border rounded-md px-2 py-1 text-xs w-56";
+  const rows: { key: string; label: string; edit: React.ReactNode }[] = [
     {
-      label: "Deadline",
-      value: fmtDate(ticket.due),
-      ok: !!ticket.due,
+      key: "customer",
+      label: "Customer",
+      edit: (
+        <input
+          className={input}
+          value={ticket.customer}
+          onChange={(e) => patch({ customer: e.target.value }, "customer")}
+        />
+      ),
     },
     {
-      label: "NDA status",
-      value: ticket.nda,
-      ok: ticket.nda !== "Unknown",
+      key: "ae",
+      label: "AE / Requester",
+      edit: (
+        <input
+          className={input}
+          value={ticket.ae ?? ""}
+          placeholder="e.g. Jane Smith"
+          onChange={(e) => patch({ ae: e.target.value || undefined })}
+        />
+      ),
+    },
+    {
+      key: "due",
+      label: "Deadline",
+      edit: (
+        <input
+          type="date"
+          className={input}
+          value={ticket.due}
+          onChange={(e) => patch({ due: e.target.value }, "due")}
+        />
+      ),
+    },
+    {
+      key: "urgency",
+      label: "Urgency level",
       edit: (
         <select
+          className={`${input} bg-white`}
+          value={ticket.urgency}
+          onChange={(e) => patch({ urgency: e.target.value as MvpTicket["urgency"] }, "urgency")}
+        >
+          {["High", "Medium", "Low"].map((u) => (
+            <option key={u}>{u}</option>
+          ))}
+        </select>
+      ),
+    },
+    {
+      key: "nda",
+      label: "NDA status",
+      edit: (
+        <select
+          className={`${input} bg-white`}
           value={ticket.nda}
-          onChange={(e) => patch({ nda: e.target.value as MvpTicket["nda"] })}
-          className="border border-border rounded-md px-2 py-1 text-xs bg-white"
+          onChange={(e) => {
+            const v = e.target.value as MvpTicket["nda"];
+            patch({ nda: v }, v !== "Unknown" ? "nda" : undefined);
+          }}
         >
           {["In Place", "Missing", "Unknown"].map((n) => (
             <option key={n}>{n}</option>
@@ -173,38 +243,91 @@ function IntakePanel({
         </select>
       ),
     },
-    { label: "Urgency level", value: ticket.urgency, ok: true },
     {
+      key: "impact",
       label: "Business impact",
-      value: ticket.businessImpact ?? "—",
-      ok: !!ticket.businessImpact,
       edit: (
         <input
+          className={input}
           value={ticket.businessImpact ?? ""}
-          onChange={(e) => patch({ businessImpact: e.target.value })}
-          placeholder="e.g. Renewal, high value"
-          className="border border-border rounded-md px-2 py-1 text-xs w-44"
+          placeholder="e.g. Renewal, ~$450k ARR"
+          onChange={(e) => patch({ businessImpact: e.target.value || undefined }, "impact")}
         />
       ),
     },
   ];
-  const ready = ticket.nda !== "Unknown";
 
-  const confirm = () => {
+  const isMissing = (key: string) =>
+    missing.includes(key) || (key === "nda" && ticket.nda === "Unknown") || (key === "due" && !ticket.due);
+  const requiredMissing = ["customer", "due", "urgency", "nda"].filter(isMissing);
+  const ready = requiredMissing.length === 0;
+
+  const confirm = async () => {
     setProcessing(true);
     patch({ status: "AI Processing" });
     actions.logActivity("Confirmed intake complete — AI analysis started", ticket.id);
+
+    // sync the ticket to the backend now that the fields are final
+    let backendId = ticket.backendId ?? null;
+    if (!backendId) {
+      backendId = await createBackendTicket({ ...ticket });
+      if (backendId) patch({ backendId });
+    }
+
+    // real file → backend parse + LLM classification; otherwise simulation
+    const base = Math.max(0, ...state.questions.map((q) => q.id));
+    const file = pendingForms.get(ticket.id);
+    let newQs: MvpQuestion[] = [];
+    let live = false;
+    if (file) {
+      const parsed = await parseQuestionnaire(file, backendId);
+      if (parsed && parsed.length > 0) {
+        live = true;
+        pendingForms.delete(ticket.id);
+        newQs = parsed.map((pq, i) => ({
+          id: base + i + 1,
+          backendId: pq.backendId,
+          ticketId: ticket.id,
+          row: i + 1,
+          original: pq.text,
+          normalised: pq.text,
+          department: pq.department,
+          risk: "Medium" as const,
+          status: "AI Analysed" as const,
+          confidence: null,
+        }));
+      }
+    }
+    if (newQs.length === 0) newQs = extractQuestionsFor(ticket.id, base);
+
     setTimeout(() => {
-      const base = Math.max(0, ...state.questions.map((q) => q.id));
-      const newQs = extractQuestionsFor(ticket.id, base);
       actions.setQuestions((p) => [...p, ...newQs]);
-      patch({ status: "In Progress", stage: "grouping" });
+      actions.setTickets((p) =>
+        p.map((t) =>
+          t.id === ticket.id
+            ? {
+                ...t,
+                status: "In Progress",
+                stage: "grouping",
+                files: t.files.map((fl) =>
+                  fl.kind === "Customer form" ? { ...fl, status: "Processed" } : fl,
+                ),
+              }
+            : t,
+        ),
+      );
+      syncTicketStatus(backendId ?? undefined, "In Progress");
       actions.logActivity(
-        `AI extracted ${newQs.length} questions and classified departments (1 possible duplicate flagged)`,
+        live
+          ? `AI parsed ${file!.name} and classified ${newQs.length} questions by department (live backend)`
+          : `AI extracted ${newQs.length} questions and classified departments (1 possible duplicate flagged)`,
         ticket.id,
       );
-      actions.addToast(`${newQs.length} questions extracted — review the department grouping.`, "success");
-    }, 1500);
+      actions.addToast(
+        `${newQs.length} questions ${live ? "parsed from the uploaded form" : "extracted"} — review the department grouping.`,
+        "success",
+      );
+    }, live ? 300 : 1400);
   };
 
   if (processing)
@@ -213,34 +336,49 @@ function IntakePanel({
   return (
     <Card title="Intake Check">
       <div className="px-4 py-3">
-        {!ready && (
+        {!ready ? (
           <div className="bg-orange-50 border border-orange-200 rounded-lg px-3.5 py-2.5 flex items-start gap-2.5 mb-3">
             <AlertTriangle size={13} className="text-orange-500 shrink-0 mt-0.5" />
             <div className="text-xs text-orange-700">
               <p className="font-semibold mb-0.5">Intake incomplete</p>
               <p>
-                Fill the missing fields directly in the table below, or use{" "}
-                <strong>Draft Clarification Email</strong> underneath to ask the AE — the draft
-                lists only what is missing. AI analysis starts once the NDA status is resolved
-                (NT-04).
+                Fill the missing fields directly in the table below, or{" "}
+                <button
+                  onClick={() => setClarifyOpen(true)}
+                  className="font-bold underline hover:text-orange-900"
+                >
+                  email the AE to clarify
+                </button>{" "}
+                — the draft lists only what is missing. AI analysis starts once the required
+                fields are resolved (NT-04).
               </p>
             </div>
+          </div>
+        ) : (
+          <div className="bg-[#FFF4EC] border border-[#F96702]/25 rounded-lg px-3.5 py-2.5 flex items-center gap-2.5 mb-3">
+            <CheckCircle size={13} className="text-[#F96702] shrink-0" />
+            <p className="text-xs font-semibold text-[#C05600]">
+              All required intake fields resolved — review and continue to AI analysis.
+            </p>
           </div>
         )}
         <table className="w-full">
           <tbody>
             {rows.map((r) => (
-              <tr key={r.label} className={`border-b border-border last:border-0 ${!r.ok ? "bg-orange-50/40" : ""}`}>
+              <tr
+                key={r.key}
+                className={`border-b border-border last:border-0 ${isMissing(r.key) ? "bg-orange-50/40" : ""}`}
+              >
                 <td className="px-3 py-2.5 text-xs font-medium text-[#1F2937] w-44">{r.label}</td>
-                <td className="px-3 py-2.5 text-xs text-[#374151]">{r.edit ?? r.value}</td>
+                <td className="px-3 py-2.5">{r.edit}</td>
                 <td className="px-3 py-2.5 w-28">
-                  {r.ok ? (
-                    <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
-                      <CheckCircle size={11} /> Found
-                    </span>
-                  ) : (
+                  {isMissing(r.key) ? (
                     <span className="inline-flex items-center gap-1 text-xs text-orange-600 font-medium">
                       <AlertTriangle size={11} /> Missing
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
+                      <CheckCircle size={11} /> Found
                     </span>
                   )}
                 </td>
@@ -248,6 +386,12 @@ function IntakePanel({
             ))}
           </tbody>
         </table>
+        {pendingForms.has(ticket.id) && (
+          <p className="text-[10px] text-[#6B7280] mt-2 flex items-center gap-1">
+            <FileSpreadsheet size={10} className="text-green-600" />
+            {pendingForms.get(ticket.id)!.name} attached — it will be parsed right after this step.
+          </p>
+        )}
         <div className="flex items-center gap-2 mt-4 flex-wrap">
           <span title="Confirm the intake fields — AI then extracts and classifies the questions automatically">
             <BtnPrimary onClick={confirm} disabled={!ready}>
@@ -256,37 +400,24 @@ function IntakePanel({
           </span>
           <button
             onClick={() => setClarifyOpen(true)}
-            title="Auto-drafts an email to the AE asking only for the missing intake fields"
+            title="Auto-drafts an editable email to the AE asking only for the missing intake fields"
             className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-semibold border border-[#F96702]/30 text-[#C05600] bg-[#FFF4EC] rounded-full hover:bg-[#FFE8D0] transition-colors"
           >
             <Mail size={11} /> Draft Clarification Email
           </button>
-          {!ready && (
-            <p className="text-[10px] text-[#9CA3AF]">
-              Required intake fields must be resolved before continuing.
-            </p>
-          )}
         </div>
       </div>
       {clarifyOpen && (
         <ClarificationEmailModal
-          fields={{
-            customer: ticket.customer,
-            ae: ticket.ae ?? "",
-            aeEmail: ticket.aeEmail ?? "",
-            urgency: ticket.urgency,
-            nda: ticket.nda,
-            due: ticket.due,
-            businessImpact: ticket.businessImpact ?? "",
-            requestType: "",
-          }}
-          actions={actions}
-          onReply={(p) =>
-            patch({
-              nda: (p.nda as MvpTicket["nda"]) ?? ticket.nda,
-              businessImpact: p.businessImpact || ticket.businessImpact,
-            })
+          customer={ticket.customer}
+          ae={ticket.ae}
+          aeEmail={ticket.aeEmail}
+          missing={
+            requiredMissing.length > 0
+              ? requiredMissing.concat(missing.includes("impact") ? ["impact"] : []).map((k) => MISSING_LABELS[k])
+              : Object.values(MISSING_LABELS)
           }
+          actions={actions}
           close={() => setClarifyOpen(false)}
         />
       )}
@@ -631,23 +762,8 @@ function ReviewPanel({
             <ArrowLeft size={11} /> Back: Grouping
           </BtnSecondary>
         </span>
-        {allResolved && (
-          <span title={queued.length > 0 ? "Package the queued questions into per-department SME emails" : "All questions answered — run the completeness checks and export"}>
-            <BtnPrimary onClick={continueNext}>
-              {queued.length > 0 ? (
-                <>
-                  Next: SME Package ({queued.length}) <ChevronRight size={11} />
-                </>
-              ) : (
-                <>
-                  Next: Final Review <ChevronRight size={11} />
-                </>
-              )}
-            </BtnPrimary>
-          </span>
-        )}
       </div>
-      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col min-h-[460px]">
+      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col h-[calc(100vh-330px)] min-h-[440px]">
         {/* department tabs */}
         <div className="flex border-b border-border overflow-x-auto shrink-0">
           {["All", ...depts].map((d) => {
@@ -690,8 +806,9 @@ function ReviewPanel({
               </button>
             ))}
           </div>
-          {/* Answer card */}
-          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
+          {/* Answer card: content scrolls, the action bar below stays visible */}
+          <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
             <div className="flex items-start justify-between gap-4 pb-4 border-b border-[rgba(0,0,0,0.06)]">
               <div>
                 <h3 className="text-base font-bold text-[#0A0A0A] leading-snug tracking-tight">
@@ -831,7 +948,9 @@ function ReviewPanel({
               </p>
             )}
 
-            <div className="flex flex-wrap items-center gap-2 mt-auto pt-4 border-t border-[rgba(0,0,0,0.06)]">
+            </div>
+            {/* pinned action bar — always visible next to the stage Next button */}
+            <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-t border-[rgba(0,0,0,0.06)] bg-[#FAFAFA] shrink-0">
               {editing ? (
                 <>
                   <BtnPrimary
@@ -964,6 +1083,16 @@ function ReviewPanel({
                   >
                     Next Question <ChevronRight size={11} />
                   </button>
+                  {allResolved && (
+                    <span title={queued.length > 0 ? "Package the queued questions into per-department SME emails" : "All questions answered — run the completeness checks and export"}>
+                      <BtnPrimary onClick={continueNext}>
+                        {queued.length > 0
+                          ? `Next: SME Package (${queued.length})`
+                          : "Next: Final Review"}{" "}
+                        <ChevronRight size={11} />
+                      </BtnPrimary>
+                    </span>
+                  )}
                 </>
               )}
             </div>
@@ -995,29 +1124,34 @@ function SmePackagePanel({
   const tabQueued = queued.filter((q) => q.department === tab);
   const tabSent = tab !== "" && tabQueued.length === 0 && waiting.some((q) => q.department === tab);
   const allSent = queued.length === 0;
+  const unsentDepts = depts.filter((d) => queued.some((q) => q.department === d));
+  const [selected, setSelected] = useState<string[]>([]);
 
-  const sendDept = async () => {
+  const sendOne = async (dept: string) => {
+    const deptQueued = state.questions.filter(
+      (q) => q.ticketId === ticket.id && q.status === "SME Queued" && q.department === dept,
+    );
+    if (deptQueued.length === 0) return;
     const req: MvpSmeRequest = {
-      id: Math.max(0, ...state.smeRequests.map((r) => r.id)) + 1,
+      id: Math.max(0, ...state.smeRequests.map((r) => r.id)) + 1 + Math.floor(Math.random() * 1000),
       ticketId: ticket.id,
-      department: tab,
-      assignee: `${tab} Team`,
+      department: dept,
+      assignee: `${dept} Team`,
       eta: null,
       status: "Requested",
-      questionIds: tabQueued.map((q) => q.id),
+      questionIds: deptQueued.map((q) => q.id),
       sentAt: new Date().toISOString(),
     };
-    // Live backend: create the request, link questions, use its composed email
     if (ticket.backendId) {
       const backendReqId = await createBackendSmeRequest(
-        ticket.backendId, tab, `${tab} Team`, tabQueued.length,
+        ticket.backendId, dept, `${dept} Team`, deptQueued.length,
       );
       if (backendReqId) {
         req.backendId = backendReqId;
-        const srqByBackendQ = await packageBackendQuestions(backendReqId, ticket.backendId, tab);
+        const srqByBackendQ = await packageBackendQuestions(backendReqId, ticket.backendId, dept);
         if (srqByBackendQ) {
           req.srqIds = {};
-          for (const q of tabQueued) {
+          for (const q of deptQueued) {
             if (q.backendId && srqByBackendQ[q.backendId] !== undefined)
               req.srqIds[q.id] = srqByBackendQ[q.backendId];
           }
@@ -1032,21 +1166,28 @@ function SmePackagePanel({
         req.questionIds.includes(q.id) ? { ...q, status: "Waiting SME", smeRequestId: req.id } : q,
       ),
     );
-    actions.logActivity(
-      `Sent ${tab} SME package (${tabQueued.length} questions) — awaiting ETA`,
-      ticket.id,
-    );
-    const remaining = queued.filter((q) => q.department !== tab).length;
-    if (remaining === 0) {
+    actions.logActivity(`Sent ${dept} SME package (${deptQueued.length} questions) — awaiting ETA`, ticket.id);
+  };
+
+  const sendMany = async (deptList: string[]) => {
+    for (const d of deptList) await sendOne(d);
+    setSelected([]);
+    const remaining = unsentDepts.filter((d) => !deptList.includes(d));
+    if (remaining.length === 0) {
       actions.setTickets((p) =>
         p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta", status: "Waiting SME" } : t)),
       );
       syncTicketStatus(ticket.backendId, "Waiting SME");
       actions.addToast("All SME packages sent — track ETAs next.", "success");
     } else {
-      actions.addToast(`${tab} SME email sent. ${remaining} question(s) left in other departments.`, "success");
+      actions.addToast(
+        `${deptList.length} SME package${deptList.length === 1 ? "" : "s"} sent. ${remaining.join(", ")} still queued.`,
+        "success",
+      );
     }
   };
+
+  const sendDept = () => sendMany([tab]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -1058,6 +1199,49 @@ function SmePackagePanel({
           tracking step.
         </p>
       </div>
+      {unsentDepts.length > 0 && (
+        <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] px-4 py-2.5 flex items-center gap-3 flex-wrap">
+          <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide">
+            Send packages
+          </p>
+          {unsentDepts.map((d) => (
+            <label
+              key={d}
+              title={`Include the ${d} package in the batch send`}
+              className="flex items-center gap-1.5 text-xs text-[#374151] cursor-pointer border border-border rounded-full px-3 py-1 hover:border-[#F96702]/40"
+            >
+              <input
+                type="checkbox"
+                className="accent-[#F96702]"
+                checked={selected.includes(d)}
+                onChange={(e) =>
+                  setSelected((p) => (e.target.checked ? [...p, d] : p.filter((x) => x !== d)))
+                }
+              />
+              {d}
+              <span className="text-[9px] font-bold text-[#C05600]">
+                {queued.filter((q) => q.department === d).length}
+              </span>
+            </label>
+          ))}
+          <span className="flex-1" />
+          <button
+            onClick={() => sendMany(selected)}
+            disabled={selected.length === 0}
+            title="Send the ticked departments in one go"
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${selected.length === 0 ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400]"}`}
+          >
+            <Send size={10} /> Send Selected ({selected.length})
+          </button>
+          <button
+            onClick={() => sendMany(unsentDepts)}
+            title="Send every remaining department package at once"
+            className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase transition-all"
+          >
+            <Send size={10} /> Send All ({unsentDepts.length})
+          </button>
+        </div>
+      )}
       <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden">
         <div className="flex border-b border-border overflow-x-auto">
           {depts.map((d) => {
@@ -1490,41 +1674,54 @@ function ReminderModal({
   actions: AppActions;
   close: () => void;
 }) {
+  const [subject, setSubject] = useState(
+    `Follow-up: ${req.department} tab overdue — ${ticket.customer} customer form (${ticket.id})`,
+  );
+  const [body, setBody] = useState(
+    [
+      `Hi ${req.department} team,`,
+      "",
+      `Following up on the ${req.department} tab for the ${ticket.customer} customer form — the agreed ETA (${req.eta ? fmtDateTime(req.eta) : "—"}) has passed. Could you confirm when this can be returned?`,
+      "",
+      `Our customer deadline is ${fmtDate(ticket.due)} and we need time for final review.`,
+      "",
+      "Thanks,",
+      "Sarah Chen, GOM Analyst",
+    ].join("\n"),
+  );
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl w-[480px] overflow-hidden">
-        <div className="px-4 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center justify-between">
+      <div className="bg-white rounded-xl shadow-xl w-[520px] max-h-[85vh] overflow-hidden flex flex-col">
+        <div className="px-4 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center justify-between shrink-0">
           <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide">
-            Auto-generated overdue reminder
+            Overdue reminder — auto-drafted, editable
           </p>
           <span className="flex items-center gap-1 text-[10px] text-red-600 font-medium">
             <AlertTriangle size={10} /> {req.department} tab overdue
           </span>
         </div>
-        <div className="px-4 py-2.5 space-y-1 border-b border-border text-xs">
-          {[
-            ["To", `${req.department.toLowerCase()}-team@cloudera.com`],
-            ["Subject", `Follow-up: ${req.department} tab overdue — ${ticket.customer} customer form (${ticket.id})`],
-          ].map(([l, v]) => (
-            <div key={l} className="flex gap-2">
-              <span className="text-[#9CA3AF] w-12 shrink-0">{l}:</span>
-              <span className="text-[#1F2937]">{v}</span>
-            </div>
-          ))}
+        <div className="px-4 py-2.5 space-y-2 border-b border-border text-xs shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[#9CA3AF] w-14 shrink-0">To:</span>
+            <span className="text-[#1F2937]">{req.department.toLowerCase()}-team@cloudera.com</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[#9CA3AF] w-14 shrink-0">Subject:</span>
+            <input
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="flex-1 border border-border rounded-md px-2 py-1 text-xs"
+            />
+          </div>
         </div>
-        <div className="px-4 py-4 text-xs text-[#374151] leading-relaxed space-y-2.5">
-          <p>Hi {req.department} team,</p>
-          <p>
-            Following up on the <strong>{req.department} tab</strong> for the {ticket.customer}{" "}
-            customer form — the agreed ETA ({req.eta ? fmtDateTime(req.eta) : "—"}) has passed.
-            Could you confirm when this can be returned?
-          </p>
-          <p>
-            Our customer deadline is <strong>{fmtDate(ticket.due)}</strong> and we need time for
-            final review.
-          </p>
-        </div>
-        <div className="px-4 py-3 border-t border-border flex gap-2 bg-[#FAFAFA]">
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={10}
+          className="flex-1 px-4 py-3 text-xs text-[#374151] leading-relaxed resize-none focus:outline-none"
+        />
+        <div className="px-4 py-3 border-t border-border flex gap-2 bg-[#FAFAFA] shrink-0">
           <BtnPrimary
             onClick={() => {
               actions.logActivity(`Sent overdue reminder to ${req.assignee}`, ticket.id);
@@ -1646,6 +1843,21 @@ function FinalPanel({
         </div>
       </Card>
       <div className="flex gap-2.5 flex-wrap items-center">
+        <span title={reqs.length > 0 ? "Go back to the SME ETA tracking for this ticket" : "Go back and review the answers again"}>
+          <BtnSecondary
+            onClick={() =>
+              actions.setTickets((p) =>
+                p.map((t) =>
+                  t.id === ticket.id
+                    ? { ...t, stage: reqs.length > 0 ? "eta" : "review", status: "In Progress" }
+                    : t,
+                ),
+              )
+            }
+          >
+            <ArrowLeft size={11} /> {reqs.length > 0 ? "Back: ETA Tracking" : "Back: Answer Review"}
+          </BtnSecondary>
+        </span>
         <button
           disabled={!allComplete}
           onClick={() => {

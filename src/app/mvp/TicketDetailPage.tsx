@@ -66,22 +66,24 @@ export function TicketDetailPage({
           </div>
           <div className="flex items-center gap-2 mt-1">
             <Pill value={ticket.status} />
-            {ticket.status === "Approved" && (
-              <BtnSecondary
-                onClick={() => {
-                  actions.setTickets((p) =>
-                    p.map((t) =>
-                      t.id === ticket.id
-                        ? { ...t, status: "Ready for Review", stage: "final" }
-                        : t,
-                    ),
-                  );
-                  actions.logActivity("Reopened ticket for further review", ticket.id);
-                  actions.addToast("Ticket reopened — back in final review.", "info");
-                }}
-              >
-                Reopen
-              </BtnSecondary>
+            {["Approved", "Sent", "Closed"].includes(ticket.status) && (
+              <span title="Reopen the ticket — it returns to Final Review so answers can be revisited">
+                <BtnSecondary
+                  onClick={() => {
+                    actions.setTickets((p) =>
+                      p.map((t) =>
+                        t.id === ticket.id
+                          ? { ...t, status: "Ready for Review", stage: "final", closed: undefined }
+                          : t,
+                      ),
+                    );
+                    actions.logActivity("Reopened ticket for further review", ticket.id);
+                    actions.addToast("Ticket reopened — back in final review.", "info");
+                  }}
+                >
+                  Reopen
+                </BtnSecondary>
+              </span>
             )}
             {ticket.status === "Approved" && (
               <BtnSecondary

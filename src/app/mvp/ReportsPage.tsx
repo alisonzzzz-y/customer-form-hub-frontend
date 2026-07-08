@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { BarChart3, Download, Loader2, Sparkles } from "lucide-react";
-import { BtnPrimary } from "../components/shared";
+import { BarChart3, Download, FileText, Loader2, Printer, Sparkles, X } from "lucide-react";
+import { BtnPrimary, BtnSecondary } from "../components/shared";
 import { DEPARTMENTS, MOCK_NOW, MvpReport, fmtDate, isOverdueTicket } from "./data";
 import { AppActions, AppState } from "./MvpApp";
 import { Card, EmptyState, FilterSelect, Pill, Th } from "./ui";
@@ -29,6 +29,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [summary, setSummary] = useState("");
   const [reports, setReports] = useState<MvpReport[]>([]);
+  const [openReport, setOpenReport] = useState<MvpReport | null>(null);
 
   const companies = [...new Set(state.tickets.map((t) => t.customer))];
 
@@ -103,6 +104,14 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
         createdAt: new Date().toISOString(),
         filters: JSON.stringify({ range, status, company, dept }),
         summary: s,
+        metrics: [
+          { label: "Ticket Volume", value: String(m.volume) },
+          { label: "Avg Completion (days)", value: m.avgCompletionDays },
+          { label: "Avg SME Turnaround (days)", value: m.avgSmeTurnaroundDays },
+          { label: "Overdue Tickets", value: String(m.overdue) },
+          { label: "AI Acceptance Rate", value: m.aiAcceptance },
+          { label: "Knowledge Reuse Rate", value: m.knowledgeReuse },
+        ],
         status: "Ready",
       };
       setReports((p) => [rec, ...p]);
@@ -112,15 +121,54 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
     }, 900);
   };
 
-  const exportJson = (r: MvpReport) => {
-    const blob = new Blob([JSON.stringify(r, null, 2)], { type: "application/json" });
+  const downloadBlob = (content: string, mime: string, name: string) => {
+    const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `report-${r.id}.json`;
+    a.download = name;
     a.click();
     URL.revokeObjectURL(url);
-    actions.addToast("Report exported as JSON.", "info");
+  };
+
+  // Excel-friendly CSV of the metrics + summary
+  const exportExcel = (r: MvpReport) => {
+    const rows = [
+      ["Report", r.title],
+      ["Created by", r.createdBy],
+      ["Created at", fmtDate(r.createdAt)],
+      [],
+      ["Metric", "Value"],
+      ...r.metrics.map((m) => [m.label, m.value]),
+      [],
+      ["AI Summary", `"${r.summary.replace(/"/g, '""')}"`],
+    ];
+    downloadBlob(rows.map((row) => row.join(",")).join("\n"), "text/csv", `report-${r.id}.csv`);
+    actions.addToast("Report exported for Excel (.csv).", "info");
+  };
+
+  // Print-friendly window — save as PDF from the browser dialog
+  const exportPdf = (r: MvpReport) => {
+    const w = window.open("", "_blank", "width=840,height=640");
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><title>${r.title}</title><style>
+      body{font-family:Inter,system-ui,sans-serif;color:#1F2937;padding:36px;max-width:720px;margin:0 auto}
+      h1{font-size:20px;border-left:4px solid #F96702;padding-left:12px}
+      .meta{color:#6B7280;font-size:12px;margin-bottom:24px}
+      table{border-collapse:collapse;width:100%;margin-bottom:24px}
+      th{background:#F96702;color:#fff;text-align:left;padding:8px 12px;font-size:11px;text-transform:uppercase}
+      td{border-bottom:1px solid #E5E7EB;padding:8px 12px;font-size:13px}
+      .summary{background:#FFF7F0;border:1px solid #F9670233;border-radius:8px;padding:16px;font-size:13px;line-height:1.6}
+    </style></head><body>
+      <h1>${r.title}</h1>
+      <p class="meta">${r.type} report · ${r.createdBy} · ${fmtDate(r.createdAt)}</p>
+      <table><tr><th>Metric</th><th>Value</th></tr>
+        ${r.metrics.map((m) => `<tr><td>${m.label}</td><td><strong>${m.value}</strong></td></tr>`).join("")}
+      </table>
+      <div class="summary"><strong>AI Executive Summary</strong><br/>${r.summary}</div>
+      <script>window.onload = () => window.print();</` + `script></body></html>`);
+    w.document.close();
+    actions.addToast("Print dialog opened — choose 'Save as PDF'.", "info");
   };
 
   const metricCards = metrics
@@ -216,7 +264,12 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
               </thead>
               <tbody>
                 {reports.map((r) => (
-                  <tr key={r.id} className="border-b border-border last:border-0">
+                  <tr
+                    key={r.id}
+                    onClick={() => setOpenReport(r)}
+                    title="Open the report in the app"
+                    className="border-b border-border last:border-0 cursor-pointer hover:bg-gray-50/60 transition-colors"
+                  >
                     <td className="px-4 py-2.5 text-xs font-semibold text-[#1F2937]">{r.title}</td>
                     <td className="px-4 py-2.5 text-xs text-[#6B7280]">{r.type}</td>
                     <td className="px-4 py-2.5 text-xs text-[#6B7280] whitespace-nowrap">{r.createdBy}</td>
@@ -224,10 +277,13 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
                     <td className="px-4 py-2.5"><Pill value={r.status} /></td>
                     <td className="px-4 py-2.5">
                       <button
-                        onClick={() => exportJson(r)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenReport(r);
+                        }}
                         className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.06em] uppercase transition-all"
                       >
-                        <Download size={9} /> JSON
+                        <FileText size={9} /> Open
                       </button>
                     </td>
                   </tr>
@@ -237,6 +293,59 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
           </Card>
         )}
       </div>
+
+      {openReport && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-[640px] max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="px-4 py-2.5 bg-[#F96702] flex items-center gap-2 shrink-0">
+              <p className="text-[10px] font-bold text-white uppercase tracking-[0.08em] flex-1">
+                {openReport.title}
+              </p>
+              <button onClick={() => setOpenReport(null)} className="text-white/80 hover:text-white">
+                <X size={14} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-5 flex flex-col gap-4">
+              <p className="text-[11px] text-[#6B7280]">
+                {openReport.type} report · generated by {openReport.createdBy} ·{" "}
+                {fmtDate(openReport.createdAt)}
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                {openReport.metrics.map((m) => (
+                  <div key={m.label} className="bg-[#FAFAF9] rounded-lg border border-[rgba(0,0,0,0.05)] px-3.5 py-3">
+                    <p className="text-[20px] font-black tracking-tight leading-none text-[#0A0A0A]">
+                      {m.value}
+                    </p>
+                    <p className="text-[9px] font-black uppercase tracking-[0.1em] text-[#B8B5B0] mt-1.5">
+                      {m.label}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-[#FFF7F0] border border-[#F96702]/20 rounded-lg p-4">
+                <p className="text-[10px] font-bold text-[#C05600] uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                  <Sparkles size={11} /> AI Executive Summary
+                </p>
+                <p className="text-xs text-[#374151] leading-relaxed">{openReport.summary}</p>
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t border-border flex items-center gap-2 bg-[#FAFAFA] shrink-0">
+              <span title="Opens the print dialog — choose 'Save as PDF' there">
+                <BtnPrimary onClick={() => exportPdf(openReport)}>
+                  <Printer size={11} /> Export PDF
+                </BtnPrimary>
+              </span>
+              <span title="Downloads a .csv that opens directly in Excel">
+                <BtnSecondary onClick={() => exportExcel(openReport)}>
+                  <Download size={11} /> Export Excel
+                </BtnSecondary>
+              </span>
+              <span className="flex-1" />
+              <BtnSecondary onClick={() => setOpenReport(null)}>Close</BtnSecondary>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

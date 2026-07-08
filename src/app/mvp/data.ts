@@ -95,6 +95,8 @@ export type MvpFile = {
 export type MvpTicket = {
   id: string;
   backendId?: number; // id in Alison's backend once synced
+  // intake fields the email extraction could not find (cleared as the analyst fills them)
+  intakeMissing?: string[];
   customer: string;
   sorId: string;
   owner: string;
@@ -199,6 +201,7 @@ export type MvpReport = {
   createdAt: string;
   filters: string;
   summary: string;
+  metrics: { label: string; value: string }[];
   status: "Ready" | "Archived";
 };
 
@@ -878,6 +881,10 @@ export const SEED_ACTIVITY: MvpActivity[] = [
   { id: 5, ticketId: "TK-1012", actor: "Sarah Chen", action: "Ticket closed and archived to history", at: "2026-07-02T09:00:00Z" },
   { id: 6, actor: "Sarah Chen", action: "Submitted “Data Retention Defaults” to Knowledge Pending Review", at: "2026-07-03T14:20:00Z" },
 ];
+
+// Files attached in the New Request modal, waiting for AI analysis at intake
+// confirmation (keyed by local ticket id). Kept outside React state on purpose.
+export const pendingForms = new Map<string, File>();
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
