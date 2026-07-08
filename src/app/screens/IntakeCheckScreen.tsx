@@ -162,9 +162,11 @@ export function IntakeCheckScreen({
             </table>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <BtnPrimary onClick={() => setScreen("clarification-email")}>
-              <Mail size={12} /> Generate Clarification Email
-            </BtnPrimary>
+            {!intakeComplete && (
+              <BtnPrimary onClick={() => setScreen("clarification-email")}>
+                <Mail size={12} /> Generate Clarification Email
+              </BtnPrimary>
+            )}
             {!intakeComplete && (
               <button
                 onClick={() => {
