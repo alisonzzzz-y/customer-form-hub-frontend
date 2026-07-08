@@ -47,17 +47,15 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
     return a.due.localeCompare(b.due);
   });
 
-  // DB-03: SME tracker aggregated by department
-  const activeSme = smeRequests.filter((r) => !["Returned", "Closed"].includes(r.status));
-  const byDept = new Map<string, { pending: number; overdue: number; nextEta: string | null }>();
-  for (const r of activeSme) {
-    const isOver = r.status === "Overdue" || (r.eta !== null && new Date(r.eta) < MOCK_NOW);
-    const cur = byDept.get(r.department) ?? { pending: 0, overdue: 0, nextEta: null };
-    cur.pending += 1;
-    if (isOver) cur.overdue += 1;
-    if (r.eta && (!cur.nextEta || r.eta < cur.nextEta)) cur.nextEta = r.eta;
-    byDept.set(r.department, cur);
-  }
+  // DB-03: one row per active SME request, linked to its ticket, overdue first
+  const activeSme = smeRequests
+    .filter((r) => !["Returned", "Closed"].includes(r.status))
+    .map((r) => ({
+      ...r,
+      over: r.status === "Overdue" || (r.eta !== null && new Date(r.eta) < MOCK_NOW),
+      ticket: tickets.find((t) => t.id === r.ticketId),
+    }))
+    .sort((a, b) => Number(b.over) - Number(a.over));
 
   const pendingKnowledge = knowledge.filter((k) => k.status === "Pending Review");
   const greeting = role === "Manager" ? "Team overview" : `Good morning, ${currentUser.split(" ")[0]}`;
@@ -156,32 +154,39 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
             )}
           </Card>
 
-          {/* DB-03 SME ETA Tracker */}
+          {/* DB-03 SME ETA Tracker — rows link to their ticket */}
           <Card title="SME ETA Tracker" className="col-span-2 overflow-hidden">
-            {byDept.size === 0 ? (
+            {activeSme.length === 0 ? (
               <EmptyState icon={Clock} title="No pending SME requests." />
             ) : (
               <div className="divide-y divide-border">
-                {[...byDept.entries()].map(([dept, d]) => (
-                  <div
-                    key={dept}
-                    className={`px-4 py-2.5 flex items-center gap-3 ${d.overdue > 0 ? "bg-red-50/40" : ""}`}
+                {activeSme.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => actions.openTicket(r.ticketId)}
+                    className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors ${r.over ? "bg-red-50/40 hover:bg-red-50/70" : "hover:bg-gray-50/60"}`}
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-[#1F2937]">{dept}</p>
-                      <p className="text-[10px] text-[#9CA3AF]">
-                        Next ETA: {d.nextEta ? fmtDateTime(d.nextEta) : "—"}
+                      <p className="text-xs font-semibold text-[#1F2937]">
+                        {r.department} · {r.assignee}
+                      </p>
+                      <p className="text-[10px] text-[#9CA3AF] mt-0.5">
+                        <span className="font-mono font-bold text-[#C05600]">{r.ticketId}</span>
+                        {r.ticket ? ` ${r.ticket.customer}` : ""} · ETA{" "}
+                        {r.eta ? fmtDateTime(r.eta) : "not set"}
                       </p>
                     </div>
                     <span className="text-[10px] text-[#6B7280] whitespace-nowrap">
-                      {d.pending} pending
+                      {r.questionIds.length} question{r.questionIds.length === 1 ? "" : "s"}
                     </span>
-                    {d.overdue > 0 && (
+                    {r.over ? (
                       <span className="text-[9px] font-bold text-[#991B1B] bg-[#FEF2F2] border border-[#FCA5A5]/50 rounded-full px-2 py-0.5 whitespace-nowrap">
-                        {d.overdue} overdue
+                        Overdue
                       </span>
+                    ) : (
+                      <ChevronRight size={12} className="text-[#C0BEBA] shrink-0" />
                     )}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
