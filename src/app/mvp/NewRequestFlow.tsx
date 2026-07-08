@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Brain,
   CheckCircle,
+  ChevronRight,
   ClipboardPaste,
   Loader2,
   Mail,
@@ -213,30 +214,74 @@ export function NewRequestFlow({
               autoFocus
               className="w-full border border-border rounded-lg px-3 py-2.5 text-xs leading-relaxed resize-y focus:outline-none focus:border-[#F96702]/50 focus:ring-2 focus:ring-[#F96702]/20 font-mono"
             />
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setEmailText(SAMPLE_AE_EMAIL)}
-                className="flex items-center gap-1.5 text-[10px] font-semibold text-[#C05600] hover:underline"
-              >
-                <ClipboardPaste size={11} /> Use sample email (demo)
-              </button>
-              <span className="flex-1" />
-              <input
-                ref={fileRef}
-                type="file"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) setAttached(f);
-                  e.target.value = "";
-                }}
-              />
-              <button
-                onClick={() => fileRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold border border-dashed border-border rounded-md text-[#6B7280] hover:border-[#F96702]/40 hover:text-[#F96702]"
-              >
-                <Upload size={11} /> {attached?.name ?? "Attach customer form (optional)"}
-              </button>
+            <button
+              onClick={() => setEmailText(SAMPLE_AE_EMAIL)}
+              className="flex items-center gap-1.5 text-[10px] font-semibold text-[#C05600] hover:underline self-start"
+            >
+              <ClipboardPaste size={11} /> Use sample email (demo)
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) setAttached(f);
+                e.target.value = "";
+              }}
+            />
+            {/* Customer form drop zone */}
+            <div
+              onClick={() => fileRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files?.[0];
+                if (f) setAttached(f);
+              }}
+              title="The attached form is parsed and its questions classified automatically after intake is confirmed"
+              className={`border-2 border-dashed rounded-xl px-6 py-6 flex items-center gap-4 cursor-pointer transition-colors ${attached ? "border-green-300 bg-green-50/50" : "border-[#F96702]/30 bg-[#FFF8F4] hover:bg-[#FFF1E6]"}`}
+            >
+              <div className={`w-11 h-11 rounded-lg flex items-center justify-center shrink-0 ${attached ? "bg-green-100" : "bg-[#FFE8D0]"}`}>
+                {attached ? (
+                  <CheckCircle size={20} className="text-green-600" />
+                ) : (
+                  <Upload size={20} className="text-[#F96702]" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                {attached ? (
+                  <>
+                    <p className="text-xs font-semibold text-[#1F2937] truncate">{attached.name}</p>
+                    <p className="text-[10px] text-[#6B7280] mt-0.5">
+                      {Math.max(1, Math.round(attached.size / 1024))} KB · will be parsed and
+                      classified by AI after intake is confirmed
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-semibold text-[#1F2937]">
+                      Attach the customer form (optional)
+                    </p>
+                    <p className="text-[10px] text-[#6B7280] mt-0.5">
+                      Click to browse or drag the .xlsx / .docx here — questions are extracted
+                      automatically after intake
+                    </p>
+                  </>
+                )}
+              </div>
+              {attached && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAttached(null);
+                  }}
+                  title="Remove the attached file"
+                  className="text-[10px] font-semibold text-[#9CA3AF] hover:text-[#F96702] shrink-0"
+                >
+                  Remove
+                </button>
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <BtnSecondary onClick={close}>Cancel</BtnSecondary>
@@ -260,10 +305,19 @@ export function NewRequestFlow({
             {countMissing(fields) > 0 ? (
               <div className="bg-orange-50 border border-orange-200 rounded-lg px-3.5 py-2.5 flex items-start gap-2.5">
                 <AlertTriangle size={13} className="text-orange-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-orange-700">
-                  Some required fields could not be extracted. Fill them in below, or draft a
-                  clarification email to the AE.
-                </p>
+                <div className="text-xs text-orange-700">
+                  <p className="font-semibold mb-0.5">Some required fields could not be extracted.</p>
+                  <p>
+                    Fill them in below, or{" "}
+                    <button
+                      onClick={() => setClarifyOpen(true)}
+                      className="font-bold underline hover:text-orange-900"
+                    >
+                      email the AE to clarify
+                    </button>{" "}
+                    — the draft asks only for what is missing, and their reply fills the fields.
+                  </p>
+                </div>
               </div>
             ) : (
               <div className="bg-[#FFF4EC] border border-[#F96702]/25 rounded-lg px-3.5 py-2.5 flex items-center gap-2.5">
@@ -390,9 +444,11 @@ export function NewRequestFlow({
                 </button>
               )}
               <span className="flex-1" />
-              <BtnPrimary onClick={confirmIntake} disabled={!requiredReady}>
-                <CheckCircle size={12} /> Confirm Intake &amp; Analyse
-              </BtnPrimary>
+              <span title="Creates the request; AI then extracts and classifies the questions automatically">
+                <BtnPrimary onClick={confirmIntake} disabled={!requiredReady}>
+                  Next: AI Analysis <ChevronRight size={12} />
+                </BtnPrimary>
+              </span>
             </div>
           </div>
         )}

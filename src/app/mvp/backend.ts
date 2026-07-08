@@ -182,21 +182,28 @@ export async function ragSearch(question: string): Promise<SearchResult[] | null
   return attempt(searchKnowledgeBase(question));
 }
 
-// Apply the top retrieval hit to a question (AI-03/04/05 confidence bands).
+// Apply the retrieval hits to a question. Mirrors RetrievalService: cosine
+// similarity >= 0.35, top 3 — first hit becomes the primary suggestion, the
+// rest are shown as alternative matches (AI-03/04/05).
 export function applyRagResult(q: MvpQuestion, results: SearchResult[]): MvpQuestion {
-  const top = results[0];
-  const score = top?.similarityScore ?? null;
-  if (!top || score === null || score < 0.35) return { ...q, status: "New", confidence: score };
-  const pct = Math.round(score * 100);
+  const hits = results.filter((r) => (r.similarityScore ?? 0) >= 0.35).slice(0, 3);
+  const describe = (r: SearchResult) =>
+    `Matched "${r.documentTitle} — ${r.sectionTitle}" (${Math.round((r.similarityScore ?? 0) * 100)}% similarity, updated ${r.lastUpdated?.slice(0, 10) ?? "n/a"})`;
+  const top = hits[0];
+  if (!top) return { ...q, status: "New", confidence: results[0]?.similarityScore ?? null };
+  const score = top.similarityScore ?? 0;
   return {
     ...q,
     confidence: score,
     sharingStatus: mapSharing(top.sharingStatus),
-    suggested: {
-      text: top.content,
-      knowledgeId: top.id,
-      reasoning: `Matched "${top.documentTitle} — ${top.sectionTitle}" (${pct}% similarity, updated ${top.lastUpdated?.slice(0, 10) ?? "n/a"})`,
-    },
+    suggested: { text: top.content, knowledgeId: top.id, reasoning: describe(top) },
+    alternatives: hits.slice(1).map((r) => ({
+      text: r.content,
+      knowledgeId: r.id,
+      confidence: r.similarityScore ?? 0,
+      reasoning: describe(r),
+      sharingStatus: mapSharing(r.sharingStatus),
+    })),
     status: score >= 0.9 ? "Suggested" : "Needs Review",
   };
 }

@@ -216,9 +216,15 @@ function IntakePanel({
         {!ready && (
           <div className="bg-orange-50 border border-orange-200 rounded-lg px-3.5 py-2.5 flex items-start gap-2.5 mb-3">
             <AlertTriangle size={13} className="text-orange-500 shrink-0 mt-0.5" />
-            <p className="text-xs text-orange-700">
-              Intake incomplete — resolve the NDA status before the form can be analysed (NT-04).
-            </p>
+            <div className="text-xs text-orange-700">
+              <p className="font-semibold mb-0.5">Intake incomplete</p>
+              <p>
+                Fill the missing fields directly in the table below, or use{" "}
+                <strong>Draft Clarification Email</strong> underneath to ask the AE — the draft
+                lists only what is missing. AI analysis starts once the NDA status is resolved
+                (NT-04).
+              </p>
+            </div>
           </div>
         )}
         <table className="w-full">
@@ -243,11 +249,14 @@ function IntakePanel({
           </tbody>
         </table>
         <div className="flex items-center gap-2 mt-4 flex-wrap">
-          <BtnPrimary onClick={confirm} disabled={!ready}>
-            <Brain size={12} /> Confirm Intake &amp; Analyse Form
-          </BtnPrimary>
+          <span title="Confirm the intake fields — AI then extracts and classifies the questions automatically">
+            <BtnPrimary onClick={confirm} disabled={!ready}>
+              <Brain size={12} /> Next: Analyse Form <ChevronRight size={11} />
+            </BtnPrimary>
+          </span>
           <button
             onClick={() => setClarifyOpen(true)}
+            title="Auto-drafts an email to the AE asking only for the missing intake fields"
             className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-semibold border border-[#F96702]/30 text-[#C05600] bg-[#FFF4EC] rounded-full hover:bg-[#FFE8D0] transition-colors"
           >
             <Mail size={11} /> Draft Clarification Email
@@ -294,7 +303,7 @@ function ProcessingCard({ text }: { text: string }) {
   );
 }
 
-// ─── Stage: Grouping (adjust AI department classification) ───────────────────
+// ─── Stage: Grouping (adjust AI department classification, per-dept tabs) ───
 
 function GroupingPanel({
   ticket,
@@ -306,7 +315,25 @@ function GroupingPanel({
   actions: AppActions;
 }) {
   const [processing, setProcessing] = useState(false);
-  const depts = DEPARTMENTS.filter((d) => qs.some((q) => q.department === d));
+  const [tab, setTab] = useState("");
+  const [customFor, setCustomFor] = useState<number | null>(null);
+  const [customName, setCustomName] = useState("");
+
+  // standard departments first, then any custom ones already assigned
+  const customs = [...new Set(qs.map((q) => q.department))].filter(
+    (d) => !DEPARTMENTS.includes(d),
+  );
+  const knownDepts = [...DEPARTMENTS, ...customs];
+  const depts = knownDepts.filter((d) => qs.some((q) => q.department === d));
+  const active = depts.includes(tab) ? tab : (depts[0] ?? "");
+  const dq = qs.filter((q) => q.department === active);
+
+  const moveDept = (q: MvpQuestion, dept: string) => {
+    actions.setQuestions((p) =>
+      p.map((x) => (x.id === q.id ? { ...x, department: dept } : x)),
+    );
+    actions.logActivity(`Moved question #${q.row} to ${dept}`, ticket.id);
+  };
 
   const confirm = async () => {
     setProcessing(true);
@@ -360,62 +387,107 @@ function GroupingPanel({
         </span>
       }
     >
-      <div className="divide-y divide-border">
-        {depts.map((d) => {
-          const dq = qs.filter((q) => q.department === d);
-          return (
-            <div key={d}>
-              <div className="px-4 py-2 bg-[#F7F8FA] flex items-center gap-2">
-                <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide">{d}</p>
-                <span className="text-[9px] font-bold bg-[#FFF4EC] text-[#C05600] rounded px-1.5 py-0.5">
-                  {dq.length}
+      {/* department tabs: jump between groups instead of scrolling one long list */}
+      <div className="flex border-b border-border overflow-x-auto">
+        {depts.map((d) => (
+          <button
+            key={d}
+            onClick={() => setTab(d)}
+            title={`Show the ${d} questions`}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 shrink-0 transition-colors ${active === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
+          >
+            {d}
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${active === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
+              {qs.filter((q) => q.department === d).length}
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="divide-y divide-border/60">
+        {dq.map((q) => (
+          <div key={q.id} className="px-4 py-2.5 flex items-center gap-3">
+            <span className="text-[10px] font-mono text-[#9CA3AF] w-5 shrink-0">{q.row}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-[#1F2937]">{q.original}</p>
+              {q.duplicateOf && (
+                <span className="text-[9px] font-bold text-[#4338CA] bg-[#EEF2FF] border border-[#C7D2FE] rounded-full px-2 py-0.5 mt-1 inline-block">
+                  Possible duplicate — confirm before answering
                 </span>
-              </div>
-              {dq.map((q) => (
-                <div key={q.id} className="px-4 py-2.5 flex items-center gap-3 border-t border-border/60">
-                  <span className="text-[10px] font-mono text-[#9CA3AF] w-5 shrink-0">{q.row}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-[#1F2937]">{q.original}</p>
-                    {q.duplicateOf && (
-                      <span className="text-[9px] font-bold text-[#4338CA] bg-[#EEF2FF] border border-[#C7D2FE] rounded-full px-2 py-0.5 mt-1 inline-block">
-                        Possible duplicate — confirm before answering
-                      </span>
-                    )}
-                  </div>
-                  <ConfidenceBadge confidence={q.confidence} />
-                  <select
-                    value={q.department}
-                    onChange={(e) => {
-                      actions.setQuestions((p) =>
-                        p.map((x) => (x.id === q.id ? { ...x, department: e.target.value } : x)),
-                      );
-                      actions.logActivity(
-                        `Moved question #${q.row} to ${e.target.value}`,
-                        ticket.id,
-                      );
-                    }}
-                    className="border border-[rgba(0,0,0,0.15)] rounded-full px-2.5 py-1 text-[10px] font-semibold bg-white shrink-0"
-                  >
-                    {DEPARTMENTS.map((dep) => (
-                      <option key={dep}>{dep}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
+              )}
             </div>
-          );
-        })}
+            <ConfidenceBadge confidence={q.confidence} />
+            <select
+              value={q.department}
+              title="Change which department this question belongs to"
+              onChange={(e) => {
+                if (e.target.value === "__custom__") {
+                  setCustomFor(q.id);
+                  setCustomName("");
+                  return;
+                }
+                moveDept(q, e.target.value);
+              }}
+              className="border border-[rgba(0,0,0,0.15)] rounded-full px-2.5 py-1 text-[10px] font-semibold bg-white shrink-0"
+            >
+              {knownDepts.map((dep) => (
+                <option key={dep}>{dep}</option>
+              ))}
+              <option value="__custom__">＋ Custom department…</option>
+            </select>
+          </div>
+        ))}
       </div>
       <div className="px-4 py-3 border-t border-border bg-[#FAFAFA]">
-        <BtnPrimary onClick={confirm}>
-          <CheckCircle size={12} /> Confirm Grouping &amp; Generate AI Answers
-        </BtnPrimary>
+        <span title="AI retrieves approved knowledge and drafts an answer for every question">
+          <BtnPrimary onClick={confirm}>
+            Next: Generate AI Answers <ChevronRight size={11} />
+          </BtnPrimary>
+        </span>
       </div>
+
+      {customFor !== null && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-5 w-80">
+            <h3 className="text-sm font-semibold text-[#1F2937] mb-0.5">Custom Department</h3>
+            <p className="text-xs text-[#6B7280] mb-3">
+              Name a department that is not in the standard list — it becomes a tab and gets its
+              own SME package later.
+            </p>
+            <input
+              autoFocus
+              value={customName}
+              onChange={(e) => setCustomName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && customName.trim()) {
+                  const q = qs.find((x) => x.id === customFor);
+                  if (q) moveDept(q, customName.trim());
+                  setCustomFor(null);
+                }
+              }}
+              placeholder="e.g. Procurement"
+              className="w-full border border-border rounded-md px-2.5 py-1.5 text-xs"
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <BtnSecondary onClick={() => setCustomFor(null)}>Cancel</BtnSecondary>
+              <BtnPrimary
+                disabled={!customName.trim()}
+                onClick={() => {
+                  const q = qs.find((x) => x.id === customFor);
+                  if (q) moveDept(q, customName.trim());
+                  setCustomFor(null);
+                }}
+              >
+                Assign
+              </BtnPrimary>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
 
-// ─── Stage: Answer Review (card-by-card, route-to-SME queues only) ──────────
+// ─── Stage: Answer Review (per-department tabs, card-by-card) ───────────────
 
 function ReviewPanel({
   ticket,
@@ -428,31 +500,50 @@ function ReviewPanel({
   state: AppState;
   actions: AppActions;
 }) {
+  const [deptTab, setDeptTab] = useState("All");
   const [selectedId, setSelectedId] = useState<number | null>(qs[0]?.id ?? null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saveToKb, setSaveToKb] = useState(false);
+  const [showAlternatives, setShowAlternatives] = useState(false);
 
-  const q = qs.find((x) => x.id === selectedId) ?? qs[0];
-  const resolved = qs.filter((x) =>
-    ["Approved", "Ready", "SME Queued", "Waiting SME", "SME Complete", "Rejected"].includes(x.status),
-  );
+  const customs = [...new Set(qs.map((x) => x.department))].filter((d) => !DEPARTMENTS.includes(d));
+  const depts = [...DEPARTMENTS, ...customs].filter((d) => qs.some((x) => x.department === d));
+  const visible = deptTab === "All" ? qs : qs.filter((x) => x.department === deptTab);
+
+  const q = visible.find((x) => x.id === selectedId) ?? visible[0] ?? qs[0];
+  const RESOLVED = ["Approved", "Ready", "SME Queued", "Waiting SME", "SME Complete", "Rejected"];
+  const resolved = qs.filter((x) => RESOLVED.includes(x.status));
   const queued = qs.filter((x) => x.status === "SME Queued");
   const allResolved = qs.length > 0 && resolved.length === qs.length;
+  const isResolvedDept = (d: string) =>
+    qs.filter((x) => x.department === d).every((x) => RESOLVED.includes(x.status));
 
   const update = (id: number, patch: Partial<MvpQuestion>, log: string) => {
     actions.setQuestions((p) => p.map((x) => (x.id === id ? { ...x, ...patch } : x)));
     actions.logActivity(log, ticket.id);
   };
 
-  const advance = () => {
-    const next = qs.find(
-      (x) =>
-        x.id !== q?.id &&
-        !["Approved", "Ready", "SME Queued", "Waiting SME", "SME Complete", "Rejected"].includes(x.status),
-    );
-    if (next) setSelectedId(next.id);
+  const select = (id: number) => {
+    setSelectedId(id);
     setEditing(false);
+    setShowAlternatives(false);
+  };
+
+  // after an action: next unresolved question, preferring the current tab
+  const advance = () => {
+    const next =
+      visible.find((x) => x.id !== q?.id && !RESOLVED.includes(x.status)) ??
+      qs.find((x) => x.id !== q?.id && !RESOLVED.includes(x.status));
+    if (next) select(next.id);
+    else setEditing(false);
+  };
+
+  // explicit Next: following question in the current tab, wrapping around
+  const nextQuestion = () => {
+    if (!q || visible.length === 0) return;
+    const idx = visible.findIndex((x) => x.id === q.id);
+    select(visible[(idx + 1) % visible.length].id);
   };
 
   const maybeSaveKb = (answerText: string, question: MvpQuestion) => {
@@ -462,7 +553,7 @@ function ReviewPanel({
         id: Math.max(...p.map((k) => k.id)) + 1,
         title: question.normalised,
         content: answerText,
-        department: question.department,
+        department: DEPARTMENTS.includes(question.department) ? question.department : "General",
         source: `Ticket ${ticket.id}`,
         lastUpdated: new Date().toISOString().slice(0, 10),
         sharingStatus: question.sharingStatus ?? "Internal",
@@ -487,283 +578,395 @@ function ReviewPanel({
       actions.setTickets((p) =>
         p.map((t) => (t.id === ticket.id ? { ...t, stage: "final", status: "Ready for Review" } : t)),
       );
+      syncTicketStatus(ticket.backendId, "Ready for Review");
       actions.logActivity("Answer review complete — no SME input needed", ticket.id);
     }
+  };
+
+  // swap an alternative KB match into the primary suggestion slot
+  const useAlternative = (altIndex: number) => {
+    if (!q?.alternatives) return;
+    const alt = q.alternatives[altIndex];
+    const demoted = q.suggested
+      ? [{
+          text: q.suggested.text,
+          knowledgeId: q.suggested.knowledgeId,
+          confidence: q.confidence ?? 0,
+          reasoning: q.suggested.reasoning,
+          sharingStatus: q.sharingStatus,
+        }]
+      : [];
+    update(
+      q.id,
+      {
+        suggested: { text: alt.text, knowledgeId: alt.knowledgeId, reasoning: alt.reasoning },
+        confidence: alt.confidence,
+        sharingStatus: alt.sharingStatus ?? q.sharingStatus,
+        alternatives: [...q.alternatives.filter((_, i) => i !== altIndex), ...demoted],
+      },
+      `Switched question #${q.row} to an alternative knowledge match`,
+    );
+    actions.addToast("Switched to the alternative match.", "info");
   };
 
   if (!q) return null;
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <p className="text-xs text-[#6B7280]">
           <strong className="text-[#1F2937]">{resolved.length}</strong> of{" "}
           <strong className="text-[#1F2937]">{qs.length}</strong> resolved ·{" "}
           <strong className="text-[#C05600]">{queued.length}</strong> queued for SME
         </p>
         <span className="flex-1" />
-        <BtnSecondary
-          onClick={() =>
-            actions.setTickets((p) =>
-              p.map((t) => (t.id === ticket.id ? { ...t, stage: "grouping" } : t)),
-            )
-          }
-        >
-          <ArrowLeft size={11} /> Back to Grouping
-        </BtnSecondary>
+        <span title="Go back and adjust the department grouping — decisions made here are kept">
+          <BtnSecondary
+            onClick={() =>
+              actions.setTickets((p) =>
+                p.map((t) => (t.id === ticket.id ? { ...t, stage: "grouping" } : t)),
+              )
+            }
+          >
+            <ArrowLeft size={11} /> Back: Grouping
+          </BtnSecondary>
+        </span>
         {allResolved && (
-          <BtnPrimary onClick={continueNext}>
-            {queued.length > 0 ? (
-              <>
-                Continue to SME Package ({queued.length}) <ChevronRight size={11} />
-              </>
-            ) : (
-              <>
-                Continue to Final Review <ChevronRight size={11} />
-              </>
-            )}
-          </BtnPrimary>
+          <span title={queued.length > 0 ? "Package the queued questions into per-department SME emails" : "All questions answered — run the completeness checks and export"}>
+            <BtnPrimary onClick={continueNext}>
+              {queued.length > 0 ? (
+                <>
+                  Next: SME Package ({queued.length}) <ChevronRight size={11} />
+                </>
+              ) : (
+                <>
+                  Next: Final Review <ChevronRight size={11} />
+                </>
+              )}
+            </BtnPrimary>
+          </span>
         )}
       </div>
-      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex min-h-[440px]">
-        {/* Question list */}
-        <div className="w-72 border-r border-[rgba(0,0,0,0.06)] overflow-y-auto shrink-0 bg-[#FAFAF9]">
-          {qs.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => {
-                setSelectedId(item.id);
-                setEditing(false);
-              }}
-              className={`w-full text-left px-4 py-3 border-b border-[rgba(0,0,0,0.04)] flex flex-col gap-1.5 transition-all border-l-[3px] ${item.id === q.id ? "bg-[#FFF7F0] border-l-[#F96702]" : "hover:bg-white border-l-transparent"}`}
-            >
-              <p className="text-[11px] text-[#0A0A0A] leading-snug font-medium">{item.original}</p>
-              <div className="flex items-center gap-1.5">
-                <Pill value={item.status} />
-                <span className="text-[9px] text-[#9CA3AF]">{item.department}</span>
-              </div>
-            </button>
-          ))}
+      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col min-h-[460px]">
+        {/* department tabs */}
+        <div className="flex border-b border-border overflow-x-auto shrink-0">
+          {["All", ...depts].map((d) => {
+            const count = d === "All" ? qs.length : qs.filter((x) => x.department === d).length;
+            const done = d !== "All" && isResolvedDept(d);
+            return (
+              <button
+                key={d}
+                onClick={() => {
+                  setDeptTab(d);
+                  const first = (d === "All" ? qs : qs.filter((x) => x.department === d))[0];
+                  if (first) select(first.id);
+                }}
+                title={d === "All" ? "Review every question in one list" : `Review only the ${d} questions`}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 shrink-0 transition-colors ${deptTab === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
+              >
+                {d}
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${deptTab === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
+                  {count}
+                </span>
+                {done && <CheckCircle size={11} className="text-green-500" />}
+              </button>
+            );
+          })}
         </div>
-        {/* Answer card */}
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
-          <div className="flex items-start justify-between gap-4 pb-4 border-b border-[rgba(0,0,0,0.06)]">
-            <div>
-              <h3 className="text-base font-bold text-[#0A0A0A] leading-snug tracking-tight">
-                {q.normalised}
-              </h3>
-              <p className="text-[11px] text-[#9CA3AF] mt-1 italic">Customer wording: “{q.original}”</p>
-            </div>
-            <Pill value={q.status} />
+        <div className="flex flex-1 min-h-0">
+          {/* Question list */}
+          <div className="w-72 border-r border-[rgba(0,0,0,0.06)] overflow-y-auto shrink-0 bg-[#FAFAF9]">
+            {visible.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => select(item.id)}
+                className={`w-full text-left px-4 py-3 border-b border-[rgba(0,0,0,0.04)] flex flex-col gap-1.5 transition-all border-l-[3px] ${item.id === q.id ? "bg-[#FFF7F0] border-l-[#F96702]" : "hover:bg-white border-l-transparent"}`}
+              >
+                <p className="text-[11px] text-[#0A0A0A] leading-snug font-medium">{item.original}</p>
+                <div className="flex items-center gap-1.5">
+                  <Pill value={item.status} />
+                  <span className="text-[9px] text-[#9CA3AF]">{item.department}</span>
+                </div>
+              </button>
+            ))}
           </div>
-
-          {ndaBlocked && (
-            <div className="bg-[#FFF7F0] border border-[#F96702]/25 rounded-lg px-3.5 py-2.5 flex items-start gap-2.5">
-              <Lock size={13} className="text-[#C05600] shrink-0 mt-0.5" />
-              <p className="text-[11px] text-[#8B4500]">
-                <strong>NDA conflict</strong> — this answer is NDA-restricted but the ticket NDA
-                status is <strong>{ticket.nda}</strong>. Route to SME or confirm the NDA with the AE
-                before approving.
-              </p>
-            </div>
-          )}
-
-          {editing ? (
-            <div className="bg-[#F5F4F1] rounded-xl p-4 flex flex-col gap-2">
-              <p className="text-[9px] font-black text-[#ABABAB] uppercase tracking-[0.14em]">
-                {q.suggested ? "Edit answer" : "Manual answer"}
-              </p>
-              <textarea
-                rows={6}
-                autoFocus
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                className="w-full text-xs text-[#1F2937] bg-white border border-[rgba(0,0,0,0.1)] rounded-lg p-3 resize-y focus:outline-none focus:ring-2 focus:ring-[#F96702]/30 leading-relaxed"
-              />
-              <label className="flex items-center gap-2 text-[11px] text-[#374151] cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-[#F96702]"
-                  checked={saveToKb}
-                  onChange={(e) => setSaveToKb(e.target.checked)}
-                />
-                Save to Knowledge Base after approval (Pending Review)
-              </label>
-            </div>
-          ) : q.finalAnswer ? (
-            <div className="bg-green-50 border border-green-100 rounded-xl p-4">
-              <p className="text-[9px] font-black text-green-700 uppercase tracking-[0.14em] mb-2">
-                Final answer · {q.finalAnswer.sourceType}
-              </p>
-              <p className="text-xs text-[#1F2937] leading-relaxed">{q.finalAnswer.text}</p>
-            </div>
-          ) : q.suggested ? (
-            <div className="border border-[#F96702]/25 rounded-xl overflow-hidden">
-              <div className="px-3.5 py-2 bg-[#FFF4EC] flex items-center gap-2">
-                <Brain size={11} className="text-[#C05600]" />
-                <p className="text-[10px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
-                  AI Suggested Answer — provisional
-                </p>
-                <ConfidenceBadge confidence={q.confidence} />
+          {/* Answer card */}
+          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-4 pb-4 border-b border-[rgba(0,0,0,0.06)]">
+              <div>
+                <h3 className="text-base font-bold text-[#0A0A0A] leading-snug tracking-tight">
+                  {q.normalised}
+                </h3>
+                <p className="text-[11px] text-[#9CA3AF] mt-1 italic">Customer wording: “{q.original}”</p>
               </div>
-              <p className="px-3.5 py-3 text-xs text-[#1F2937] leading-relaxed">{q.suggested.text}</p>
-              <div className="px-3.5 py-2 bg-[#FAFAFA] border-t border-border grid grid-cols-2 gap-2 text-[10px] text-[#6B7280]">
-                <p>
-                  <strong>Source:</strong>{" "}
-                  {source ? (
-                    <button
-                      onClick={() => actions.openKnowledge("all", source.id, ticket.id)}
-                      className="text-[#C05600] font-semibold hover:underline"
-                    >
-                      {source.title}
-                    </button>
-                  ) : (
-                    "Knowledge entry"
-                  )}
-                </p>
-                <p>
-                  <strong>Last updated:</strong> {source ? `${source.lastUpdated} (UTC)` : "—"}
-                </p>
-                <p>
-                  <strong>Sharing:</strong> {q.sharingStatus ?? "—"}
-                </p>
-                <p>
-                  <strong>Why:</strong> {q.suggested.reasoning}
+              <Pill value={q.status} />
+            </div>
+
+            {ndaBlocked && (
+              <div className="bg-[#FFF7F0] border border-[#F96702]/25 rounded-lg px-3.5 py-2.5 flex items-start gap-2.5">
+                <Lock size={13} className="text-[#C05600] shrink-0 mt-0.5" />
+                <p className="text-[11px] text-[#8B4500]">
+                  <strong>NDA conflict</strong> — this answer is NDA-restricted but the ticket NDA
+                  status is <strong>{ticket.nda}</strong>. Route to SME or confirm the NDA with the AE
+                  before approving.
                 </p>
               </div>
-            </div>
-          ) : (
-            <div className="bg-[#F7F8FA] border border-border rounded-xl px-4 py-3.5 text-[11px] text-[#6B7280]">
-              No approved knowledge match — <strong>Research Required</strong>. Enter a manual
-              answer or route this question to the {q.department} SME team.
-            </div>
-          )}
+            )}
 
-          {q.status === "SME Queued" && (
-            <p className="text-[11px] text-[#C05600] flex items-center gap-1.5">
-              <Clock size={11} /> Queued for the {q.department} SME package — it will be sent with
-              the other unresolved {q.department} questions.
-            </p>
-          )}
-
-          <div className="flex flex-wrap gap-2 mt-auto pt-4 border-t border-[rgba(0,0,0,0.06)]">
             {editing ? (
+              <div className="bg-[#F5F4F1] rounded-xl p-4 flex flex-col gap-2">
+                <p className="text-[9px] font-black text-[#ABABAB] uppercase tracking-[0.14em]">
+                  {q.suggested ? "Edit answer" : "Manual answer"}
+                </p>
+                <textarea
+                  rows={6}
+                  autoFocus
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  className="w-full text-xs text-[#1F2937] bg-white border border-[rgba(0,0,0,0.1)] rounded-lg p-3 resize-y focus:outline-none focus:ring-2 focus:ring-[#F96702]/30 leading-relaxed"
+                />
+                <label className="flex items-center gap-2 text-[11px] text-[#374151] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="accent-[#F96702]"
+                    checked={saveToKb}
+                    onChange={(e) => setSaveToKb(e.target.checked)}
+                  />
+                  Save to Knowledge Base after approval (Pending Review)
+                </label>
+              </div>
+            ) : q.finalAnswer ? (
+              <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+                <p className="text-[9px] font-black text-green-700 uppercase tracking-[0.14em] mb-2">
+                  Final answer · {q.finalAnswer.sourceType}
+                </p>
+                <p className="text-xs text-[#1F2937] leading-relaxed">{q.finalAnswer.text}</p>
+              </div>
+            ) : q.suggested ? (
               <>
-                <BtnPrimary
-                  onClick={() => {
-                    if (!draft.trim()) {
-                      actions.addToast("Answer text cannot be empty.", "warning");
-                      return;
-                    }
-                    update(
-                      q.id,
-                      {
-                        status: "Approved",
-                        finalAnswer: {
-                          text: draft.trim(),
-                          sourceType: q.suggested ? "AI Edited" : "Manual",
-                        },
-                      },
-                      `${q.suggested ? "Edited and approved" : "Manually answered"} question #${q.row}`,
-                    );
-                    syncFinalAnswer(q, draft.trim(), true, state.currentUser);
-                    maybeSaveKb(draft.trim(), q);
-                    actions.addToast("Answer approved.", "success");
-                    advance();
-                  }}
-                >
-                  <CheckCircle size={11} /> Save &amp; Approve
-                </BtnPrimary>
-                <BtnSecondary onClick={() => setEditing(false)}>Cancel</BtnSecondary>
+                <div className="border border-[#F96702]/25 rounded-xl overflow-hidden">
+                  <div className="px-3.5 py-2 bg-[#FFF4EC] flex items-center gap-2">
+                    <Brain size={11} className="text-[#C05600]" />
+                    <p className="text-[10px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
+                      AI Suggested Answer — best match
+                    </p>
+                    <ConfidenceBadge confidence={q.confidence} />
+                  </div>
+                  <p className="px-3.5 py-3 text-xs text-[#1F2937] leading-relaxed">{q.suggested.text}</p>
+                  <div className="px-3.5 py-2 bg-[#FAFAFA] border-t border-border grid grid-cols-2 gap-2 text-[10px] text-[#6B7280]">
+                    <p>
+                      <strong>Source:</strong>{" "}
+                      {source ? (
+                        <button
+                          onClick={() => actions.openKnowledge("all", source.id, ticket.id)}
+                          title="Open the knowledge entry — a back-to-ticket button brings you straight back"
+                          className="text-[#C05600] font-semibold hover:underline"
+                        >
+                          {source.title}
+                        </button>
+                      ) : (
+                        "Knowledge entry"
+                      )}
+                    </p>
+                    <p>
+                      <strong>Last updated:</strong> {source ? `${source.lastUpdated} (UTC)` : "—"}
+                    </p>
+                    <p>
+                      <strong>Sharing:</strong> {q.sharingStatus ?? "—"}
+                    </p>
+                    <p>
+                      <strong>Why:</strong> {q.suggested.reasoning}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Other matches above the 0.35 similarity threshold (top 3 total) */}
+                {(q.alternatives?.length ?? 0) > 0 && (
+                  <div className="border border-border rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => setShowAlternatives((o) => !o)}
+                      title="The Knowledge Base returned more than one relevant entry — compare and pick the best fit"
+                      className="w-full px-3.5 py-2 bg-[#F7F8FA] flex items-center gap-2 hover:bg-[#F0F1F3] transition-colors"
+                    >
+                      <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide flex-1 text-left">
+                        {q.alternatives!.length} other possible match
+                        {q.alternatives!.length === 1 ? "" : "es"} from the Knowledge Base
+                      </p>
+                      <ChevronRight
+                        size={12}
+                        className={`text-[#9CA3AF] transition-transform ${showAlternatives ? "rotate-90" : ""}`}
+                      />
+                    </button>
+                    {showAlternatives &&
+                      q.alternatives!.map((alt, i) => (
+                        <div key={i} className="px-3.5 py-3 border-t border-border flex flex-col gap-1.5">
+                          <div className="flex items-center gap-2">
+                            <ConfidenceBadge confidence={alt.confidence} />
+                            <span className="text-[10px] text-[#9CA3AF] flex-1">{alt.reasoning}</span>
+                            <button
+                              onClick={() => useAlternative(i)}
+                              title="Replace the suggestion above with this match"
+                              className="px-3 py-1 text-[9px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                            >
+                              Use this answer
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-[#374151] leading-relaxed">{alt.text}</p>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </>
             ) : (
-              <>
-                {q.suggested && !q.finalAnswer && q.status !== "SME Queued" && (
-                  <button
+              <div className="bg-[#F7F8FA] border border-border rounded-xl px-4 py-3.5 text-[11px] text-[#6B7280]">
+                No approved knowledge match — <strong>Research Required</strong>. Enter a manual
+                answer or route this question to the {q.department} SME team.
+              </div>
+            )}
+
+            {q.status === "SME Queued" && (
+              <p className="text-[11px] text-[#C05600] flex items-center gap-1.5">
+                <Clock size={11} /> Queued for the {q.department} SME package — it will be sent with
+                the other unresolved {q.department} questions.
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2 mt-auto pt-4 border-t border-[rgba(0,0,0,0.06)]">
+              {editing ? (
+                <>
+                  <BtnPrimary
                     onClick={() => {
+                      if (!draft.trim()) {
+                        actions.addToast("Answer text cannot be empty.", "warning");
+                        return;
+                      }
                       update(
                         q.id,
                         {
                           status: "Approved",
-                          finalAnswer: { text: q.suggested!.text, sourceType: "AI" },
+                          finalAnswer: {
+                            text: draft.trim(),
+                            sourceType: q.suggested ? "AI Edited" : "Manual",
+                          },
                         },
-                        `Approved AI answer for question #${q.row}`,
+                        `${q.suggested ? "Edited and approved" : "Manually answered"} question #${q.row}`,
                       );
-                      syncFinalAnswer(q, q.suggested!.text, false, state.currentUser);
+                      syncFinalAnswer(q, draft.trim(), true, state.currentUser);
+                      maybeSaveKb(draft.trim(), q);
                       actions.addToast("Answer approved.", "success");
                       advance();
                     }}
-                    disabled={ndaBlocked}
-                    className={`flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${ndaBlocked ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-green-600 text-white hover:bg-green-700"}`}
                   >
-                    <CheckCircle size={11} /> Approve
-                  </button>
-                )}
-                <BtnSecondary
-                  onClick={() => {
-                    setDraft(q.finalAnswer?.text ?? q.suggested?.text ?? "");
-                    setEditing(true);
-                  }}
-                >
-                  <Edit3 size={11} /> {q.suggested || q.finalAnswer ? "Edit" : "Manual Answer"}
-                </BtnSecondary>
-                {q.status === "Approved" && q.finalAnswer && (
-                  <BtnSecondary
-                    onClick={() => {
-                      update(
-                        q.id,
-                        {
-                          status: q.suggested
-                            ? (q.confidence ?? 0) >= 0.9
-                              ? "Suggested"
-                              : "Needs Review"
-                            : "New",
-                          finalAnswer: undefined,
-                        },
-                        `Reverted approval on question #${q.row}`,
-                      );
-                      syncQuestionStatus(q.backendId, "Needs Review");
-                      actions.addToast("Approval undone — the question is back in review.", "info");
-                    }}
-                  >
-                    <RefreshCw size={11} /> Unapprove
-                  </BtnSecondary>
-                )}
-                {q.status !== "SME Queued" && !q.finalAnswer && (
+                    <CheckCircle size={11} /> Save &amp; Approve
+                  </BtnPrimary>
+                  <BtnSecondary onClick={() => setEditing(false)}>Cancel</BtnSecondary>
+                </>
+              ) : (
+                <>
+                  {q.suggested && !q.finalAnswer && q.status !== "SME Queued" && (
+                    <button
+                      onClick={() => {
+                        update(
+                          q.id,
+                          {
+                            status: "Approved",
+                            finalAnswer: { text: q.suggested!.text, sourceType: "AI" },
+                          },
+                          `Approved AI answer for question #${q.row}`,
+                        );
+                        syncFinalAnswer(q, q.suggested!.text, false, state.currentUser);
+                        actions.addToast("Answer approved.", "success");
+                        advance();
+                      }}
+                      disabled={ndaBlocked}
+                      title={ndaBlocked ? "Blocked: this answer needs an NDA that the ticket does not have" : "Accept this AI answer as the final answer for this question"}
+                      className={`flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${ndaBlocked ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-green-600 text-white hover:bg-green-700"}`}
+                    >
+                      <CheckCircle size={11} /> Approve
+                    </button>
+                  )}
+                  <span title={q.suggested || q.finalAnswer ? "Rewrite the answer before approving it" : "Write the answer yourself — no knowledge match was found"}>
+                    <BtnSecondary
+                      onClick={() => {
+                        setDraft(q.finalAnswer?.text ?? q.suggested?.text ?? "");
+                        setEditing(true);
+                      }}
+                    >
+                      <Edit3 size={11} /> {q.suggested || q.finalAnswer ? "Edit" : "Manual Answer"}
+                    </BtnSecondary>
+                  </span>
+                  {q.status === "Approved" && q.finalAnswer && (
+                    <span title="Undo the approval — the question goes back into review">
+                      <BtnSecondary
+                        onClick={() => {
+                          update(
+                            q.id,
+                            {
+                              status: q.suggested
+                                ? (q.confidence ?? 0) >= 0.9
+                                  ? "Suggested"
+                                  : "Needs Review"
+                                : "New",
+                              finalAnswer: undefined,
+                            },
+                            `Reverted approval on question #${q.row}`,
+                          );
+                          syncQuestionStatus(q.backendId, "Needs Review");
+                          actions.addToast("Approval undone — the question is back in review.", "info");
+                        }}
+                      >
+                        <RefreshCw size={11} /> Unapprove
+                      </BtnSecondary>
+                    </span>
+                  )}
+                  {q.status !== "SME Queued" && !q.finalAnswer && (
+                    <button
+                      onClick={() => {
+                        update(q.id, { status: "SME Queued" }, `Routed question #${q.row} to ${q.department} SME queue`);
+                        syncQuestionStatus(q.backendId, "SME Needed");
+                        actions.addToast(`Added to the ${q.department} SME queue.`, "info");
+                        advance();
+                      }}
+                      title={`Queue this question for the ${q.department} SME team — nothing is sent yet; all queued questions go out together as one package per department`}
+                      className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)] tracking-[0.06em] uppercase transition-all"
+                    >
+                      <Send size={11} /> Route to SME
+                    </button>
+                  )}
+                  {q.status === "SME Queued" && (
+                    <span title="Take this question out of the SME queue and answer it here instead">
+                      <BtnSecondary
+                        onClick={() => {
+                          update(q.id, { status: q.suggested ? "Needs Review" : "New" }, `Removed question #${q.row} from SME queue`);
+                          syncQuestionStatus(q.backendId, "Needs Review");
+                          actions.addToast("Removed from SME queue.", "info");
+                        }}
+                      >
+                        Remove from Queue
+                      </BtnSecondary>
+                    </span>
+                  )}
                   <button
                     onClick={() => {
-                      update(q.id, { status: "SME Queued" }, `Routed question #${q.row} to ${q.department} SME queue`);
-                      syncQuestionStatus(q.backendId, "SME Needed");
-                      actions.addToast(`Added to the ${q.department} SME queue.`, "info");
-                      advance();
+                      actions.logActivity(`Asked AE for context on question #${q.row}`, ticket.id);
+                      actions.addToast(`Clarification request sent to ${ticket.ae ?? "the AE"}.`, "info");
                     }}
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)] tracking-[0.06em] uppercase transition-all"
+                    title="Email the account executive for missing context about this question"
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-semibold border border-[rgba(0,0,0,0.18)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
                   >
-                    <Send size={11} /> Route to SME
+                    <Mail size={11} /> Ask AE
                   </button>
-                )}
-                {q.status === "SME Queued" && (
-                  <BtnSecondary
-                    onClick={() => {
-                      update(q.id, { status: q.suggested ? "Needs Review" : "New" }, `Removed question #${q.row} from SME queue`);
-                      syncQuestionStatus(q.backendId, "Needs Review");
-                      actions.addToast("Removed from SME queue.", "info");
-                    }}
+                  <span className="flex-1" />
+                  <button
+                    onClick={nextQuestion}
+                    title="Move on to the next question in this tab (wraps around)"
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase transition-all"
                   >
-                    Remove from Queue
-                  </BtnSecondary>
-                )}
-                <button
-                  onClick={() => {
-                    actions.logActivity(`Asked AE for context on question #${q.row}`, ticket.id);
-                    actions.addToast(`Clarification request sent to ${ticket.ae ?? "the AE"}.`, "info");
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-semibold border border-[rgba(0,0,0,0.18)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
-                >
-                  <Mail size={11} /> Ask AE
-                </button>
-              </>
-            )}
+                    Next Question <ChevronRight size={11} />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -990,30 +1193,40 @@ function SmePackagePanel({
           </div>
         </div>
       </div>
-      <div className="flex">
-        <BtnSecondary
-          onClick={() =>
-            actions.setTickets((p) =>
-              p.map((t) => (t.id === ticket.id ? { ...t, stage: "review" } : t)),
-            )
-          }
-        >
-          <ArrowLeft size={11} /> Back to Answer Review
-        </BtnSecondary>
-      </div>
-      {allSent && (
-        <div className="flex justify-end">
-          <BtnPrimary
+      <div className="flex items-center gap-2">
+        <span title="Go back to answer review — queued and sent questions are kept as they are">
+          <BtnSecondary
             onClick={() =>
               actions.setTickets((p) =>
-                p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta", status: "Waiting SME" } : t)),
+                p.map((t) => (t.id === ticket.id ? { ...t, stage: "review" } : t)),
               )
             }
           >
-            Continue to ETA Tracking <ChevronRight size={11} />
+            <ArrowLeft size={11} /> Back: Answer Review
+          </BtnSecondary>
+        </span>
+        <span className="flex-1" />
+        {!allSent && (
+          <p className="text-[10px] text-[#9CA3AF]">
+            {queued.length} question(s) not sent yet — you can still jump ahead and come back.
+          </p>
+        )}
+        <span title="Track the expected return date of each SME package — you can come back here anytime">
+          <BtnPrimary
+            onClick={() =>
+              actions.setTickets((p) =>
+                p.map((t) =>
+                  t.id === ticket.id
+                    ? { ...t, stage: "eta", status: allSent ? "Waiting SME" : t.status }
+                    : t,
+                ),
+              )
+            }
+          >
+            Next: ETA Tracking <ChevronRight size={11} />
           </BtnPrimary>
-        </div>
-      )}
+        </span>
+      </div>
     </div>
   );
 }
@@ -1185,25 +1398,38 @@ function EtaPanel({
           </tbody>
         </table>
       </Card>
-      <div className="flex gap-2 items-center">
+      <div className="flex gap-2 items-center flex-wrap">
+        <span title="Go back to the per-department SME packages (e.g. to send a remaining one)">
+          <BtnSecondary
+            onClick={() =>
+              actions.setTickets((p) =>
+                p.map((t) => (t.id === ticket.id ? { ...t, stage: "sme" } : t)),
+              )
+            }
+          >
+            <ArrowLeft size={11} /> Back: SME Package
+          </BtnSecondary>
+        </span>
         <BtnSecondary onClick={() => actions.addToast("SME emails resent.", "success")}>
           <Send size={11} /> Resend SME Emails
         </BtnSecondary>
         <span className="flex-1" />
         {allReturned && (
-          <BtnPrimary
-            onClick={() => {
-              actions.setTickets((p) =>
-                p.map((t) =>
-                  t.id === ticket.id ? { ...t, stage: "final", status: "Ready for Review" } : t,
-                ),
-              );
-              syncTicketStatus(ticket.backendId, "Ready for Review");
-              actions.logActivity("All SME tabs returned — final review unlocked", ticket.id);
-            }}
-          >
-            Proceed to Final Review <ChevronRight size={11} />
-          </BtnPrimary>
+          <span title="All SME answers are back — run the completeness checks and export">
+            <BtnPrimary
+              onClick={() => {
+                actions.setTickets((p) =>
+                  p.map((t) =>
+                    t.id === ticket.id ? { ...t, stage: "final", status: "Ready for Review" } : t,
+                  ),
+                );
+                syncTicketStatus(ticket.backendId, "Ready for Review");
+                actions.logActivity("All SME tabs returned — final review unlocked", ticket.id);
+              }}
+            >
+              Next: Final Review <ChevronRight size={11} />
+            </BtnPrimary>
+          </span>
         )}
       </div>
 

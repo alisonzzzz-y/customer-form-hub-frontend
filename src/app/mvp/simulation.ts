@@ -216,9 +216,22 @@ export function extractQuestionsFor(ticketId: string, baseId: number): MvpQuesti
 export function attachSuggestions(q: MvpQuestion): MvpQuestion {
   const template = TEMPLATES.find((t) => t.normalised === q.normalised);
   if (q.confidence !== null && q.confidence >= 0.7 && template?.suggestion) {
+    // demo an alternative KB match on the ISO question (top-3 rule, like the backend)
+    const alternatives = q.normalised.includes("ISO 27001")
+      ? [
+          {
+            text: "Cloudera's certifications, including ISO 27001 scope details and audit cadence, are documented in the annually refreshed Security & Trust overview.",
+            knowledgeId: 89,
+            confidence: 0.71,
+            reasoning: "Matched Security overview entry (71% similarity).",
+            sharingStatus: "Internal" as const,
+          },
+        ]
+      : undefined;
     return {
       ...q,
       suggested: template.suggestion,
+      alternatives,
       status: q.confidence >= 0.9 ? "Suggested" : "Needs Review",
     };
   }
