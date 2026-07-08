@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -1468,6 +1468,7 @@ function EtaPanel({
   const [etaValue, setEtaValue] = useState("");
   const [confirmedBy, setConfirmedBy] = useState("");
   const [nudgeFor, setNudgeFor] = useState<MvpSmeRequest | null>(null);
+  const [recordFor, setRecordFor] = useState<MvpSmeRequest | null>(null);
 
   const isOver = (r: MvpSmeRequest) =>
     r.status !== "Returned" && r.eta !== null && new Date(r.eta) < MOCK_NOW;
@@ -1490,29 +1491,6 @@ function EtaPanel({
     );
     actions.addToast(`ETA recorded for ${etaModal.department}.`, "success");
     setEtaModal(null);
-  };
-
-  const markReturned = (r: MvpSmeRequest) => {
-    const returnedAt = new Date().toISOString();
-    actions.setSmeRequests((p) =>
-      p.map((x) => (x.id === r.id ? { ...x, status: "Returned", returnedAt } : x)),
-    );
-    syncSmeRequest(r.backendId, { status: "Returned", returnedAt });
-    actions.setQuestions((p) =>
-      p.map((q) => {
-        if (!r.questionIds.includes(q.id)) return q;
-        const answer = smeAnswerFor(q, r.assignee);
-        syncSmeAnswer(r.srqIds?.[q.id], answer);
-        syncFinalAnswer(q, answer, false, r.assignee);
-        return {
-          ...q,
-          status: "SME Complete",
-          finalAnswer: { text: answer, sourceType: "SME" },
-        };
-      }),
-    );
-    actions.logActivity(`${r.department} SME tab returned (${r.questionIds.length} answers)`, ticket.id);
-    actions.addToast(`${r.department} SME answers received.`, "success");
   };
 
   return (
@@ -1576,10 +1554,11 @@ function EtaPanel({
                             <Bell size={9} className="inline mr-0.5" /> Nudge
                           </button>
                           <button
-                            onClick={() => markReturned(r)}
-                            className="px-3 py-1 text-[9px] font-bold border border-[rgba(0,0,0,0.12)] rounded-full text-[#374151] hover:bg-[#F5F5F5] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                            onClick={() => setRecordFor(r)}
+                            title="The SME replied? Upload their returned Excel or paste the answers per question"
+                            className="px-3 py-1 text-[9px] font-bold border border-green-600/40 bg-green-50 rounded-full text-green-700 hover:bg-green-100 tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                           >
-                            <RefreshCw size={9} className="inline mr-0.5" /> Mark Returned
+                            <Download size={9} className="inline mr-0.5" /> Record Answers
                           </button>
                         </>
                       )}
@@ -1697,6 +1676,187 @@ function EtaPanel({
       {nudgeFor && (
         <NudgeModal ticket={ticket} req={nudgeFor} actions={actions} close={() => setNudgeFor(null)} />
       )}
+      {recordFor && (
+        <RecordAnswersModal
+          ticket={ticket}
+          req={recordFor}
+          qs={qs}
+          actions={actions}
+          close={() => setRecordFor(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// The SME replied by email with the completed Excel — this is where those
+// answers enter the system. Upload the returned file (parsed automatically;
+// real parsing needs a backend endpoint, see NOTES_FOR_ALISON) or paste each
+// answer by hand. Partial returns are allowed.
+function RecordAnswersModal({
+  ticket,
+  req,
+  qs,
+  actions,
+  close,
+}: {
+  ticket: MvpTicket;
+  req: MvpSmeRequest;
+  qs: MvpQuestion[];
+  actions: AppActions;
+  close: () => void;
+}) {
+  const openQs = qs.filter((q) => req.questionIds.includes(q.id) && q.status === "Waiting SME");
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const fillFromExcel = (fileName?: string) => {
+    setAnswers((p) => {
+      const next = { ...p };
+      for (const q of openQs) if (!next[q.id]?.trim()) next[q.id] = smeAnswerFor(q, req.assignee);
+      return next;
+    });
+    actions.addToast(
+      `${fileName ? `Parsed ${fileName}` : "Sample answers filled"} — review and edit before saving.`,
+      "info",
+    );
+  };
+
+  const filled = openQs.filter((q) => answers[q.id]?.trim());
+
+  const save = () => {
+    if (filled.length === 0) {
+      actions.addToast("Enter at least one answer (or cancel).", "warning");
+      return;
+    }
+    const allAnswered = filled.length === openQs.length;
+    const returnedAt = new Date().toISOString();
+    actions.setQuestions((p) =>
+      p.map((q) => {
+        if (!answers[q.id]?.trim() || !req.questionIds.includes(q.id)) return q;
+        const text = answers[q.id].trim();
+        syncSmeAnswer(req.srqIds?.[q.id], text);
+        syncFinalAnswer(q, text, false, req.assignee);
+        return { ...q, status: "SME Complete", finalAnswer: { text, sourceType: "SME" } };
+      }),
+    );
+    if (allAnswered) {
+      actions.setSmeRequests((p) =>
+        p.map((x) => (x.id === req.id ? { ...x, status: "Returned", returnedAt } : x)),
+      );
+      syncSmeRequest(req.backendId, { status: "Returned", returnedAt });
+      actions.logActivity(
+        `Recorded ${filled.length} returned ${req.department} SME answer(s) — request complete`,
+        ticket.id,
+      );
+      actions.addToast(`${req.department} SME answers recorded — request returned.`, "success");
+    } else {
+      actions.setSmeRequests((p) =>
+        p.map((x) => (x.id === req.id ? { ...x, status: "In Progress" } : x)),
+      );
+      syncSmeRequest(req.backendId, { status: "In Progress" });
+      actions.logActivity(
+        `Recorded ${filled.length}/${openQs.length} returned ${req.department} SME answer(s) — partial return`,
+        ticket.id,
+      );
+      actions.addToast(
+        `${filled.length} of ${openQs.length} answers recorded — the rest stay with the SME.`,
+        "info",
+      );
+    }
+    close();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl w-[640px] max-h-[88vh] overflow-hidden flex flex-col">
+        <div className="px-4 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center justify-between shrink-0">
+          <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide">
+            Record returned answers — {req.department} · {req.assignee}
+          </p>
+          <button onClick={close} className="text-gray-400 hover:text-gray-600">
+            <X size={13} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4 flex flex-col gap-3">
+          {/* upload the returned Excel */}
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) fillFromExcel(f.name);
+              e.target.value = "";
+            }}
+          />
+          <div
+            onClick={() => fileRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const f = e.dataTransfer.files?.[0];
+              if (f) fillFromExcel(f.name);
+            }}
+            title="Upload the Excel the SME sent back — the answer column is read into the fields below for review"
+            className="border-2 border-dashed border-green-300 bg-green-50/40 rounded-xl px-5 py-4 flex items-center gap-3 cursor-pointer hover:bg-green-50 transition-colors"
+          >
+            <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
+              <FileSpreadsheet size={16} className="text-green-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-[#1F2937]">Upload the returned Excel</p>
+              <p className="text-[10px] text-[#6B7280] mt-0.5">
+                Answers are read into the fields below for review — or{" "}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fillFromExcel();
+                  }}
+                  className="font-bold text-green-700 underline"
+                >
+                  fill sample answers
+                </button>{" "}
+                / type them in manually.
+              </p>
+            </div>
+          </div>
+
+          {openQs.map((q) => (
+            <div key={q.id} className="border border-border rounded-lg p-3 flex flex-col gap-1.5">
+              <p className="text-xs font-medium text-[#1F2937]">
+                <span className="text-[10px] font-mono text-[#9CA3AF] mr-1.5">#{q.row}</span>
+                {q.original}
+              </p>
+              <textarea
+                rows={2}
+                value={answers[q.id] ?? ""}
+                onChange={(e) => setAnswers((p) => ({ ...p, [q.id]: e.target.value }))}
+                placeholder="Paste the SME's answer for this question… (leave blank if not answered yet)"
+                className="w-full border border-border rounded-md px-2.5 py-1.5 text-xs resize-y focus:outline-none focus:border-green-400"
+              />
+            </div>
+          ))}
+          {openQs.length === 0 && (
+            <p className="text-xs text-[#9CA3AF] italic">All questions in this request already have answers.</p>
+          )}
+        </div>
+
+        <div className="px-4 py-3 border-t border-border flex items-center gap-2 bg-[#FAFAFA] shrink-0">
+          <p className="text-[10px] text-[#6B7280] flex-1">
+            {filled.length}/{openQs.length} answered — unanswered questions stay Waiting SME
+            (partial returns are fine).
+          </p>
+          <BtnSecondary onClick={close}>Cancel</BtnSecondary>
+          <span title={filled.length === openQs.length ? "Saves every answer and marks the request Returned" : "Saves the filled answers; the request stays open for the rest"}>
+            <BtnPrimary onClick={save} disabled={filled.length === 0}>
+              <CheckCircle size={11} /> Save Answers{filled.length > 0 ? ` (${filled.length})` : ""}
+            </BtnPrimary>
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
