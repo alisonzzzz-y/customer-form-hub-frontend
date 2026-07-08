@@ -145,9 +145,8 @@ export function Card({
   return (
     <div className={`bg-white rounded-xl border border-[rgba(0,0,0,0.06)] shadow-sm ${className}`}>
       {title !== undefined && (
-        <div className="px-4 py-2.5 bg-[#FFF7F0] border-b border-[#F96702]/15 rounded-t-xl flex items-center gap-2">
-          <span className="w-[3px] h-3.5 bg-[#F96702] rounded-full shrink-0" />
-          <p className="text-[10px] font-bold text-[#C05600] uppercase tracking-[0.08em] flex-1">
+        <div className="px-4 py-2.5 bg-[#F96702] rounded-t-xl flex items-center gap-2 shadow-[0_1px_4px_rgba(249,103,2,0.25)]">
+          <p className="text-[10px] font-bold text-white uppercase tracking-[0.08em] flex-1">
             {title}
           </p>
           {right}

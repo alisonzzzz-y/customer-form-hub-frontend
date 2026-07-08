@@ -355,7 +355,7 @@ function GroupingPanel({
     <Card
       title={`Department Grouping — ${qs.length} questions`}
       right={
-        <span className="text-[10px] text-[#9CA3AF]">
+        <span className="text-[10px] text-white/85">
           AI classified each question — adjust below, then confirm
         </span>
       }

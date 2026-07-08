@@ -191,8 +191,8 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
             </div>
             <Card
               title={
-                <span className="flex items-center gap-1.5">
-                  <Sparkles size={11} className="text-[#C05600]" /> AI Executive Summary — draft
+                <span className="flex items-center gap-1.5 text-white">
+                  <Sparkles size={11} /> AI Executive Summary — draft
                 </span>
               }
             >

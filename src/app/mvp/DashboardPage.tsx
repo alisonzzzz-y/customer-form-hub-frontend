@@ -234,7 +234,7 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
             right={
               <button
                 onClick={() => actions.openKnowledge("pending")}
-                className="text-[10px] font-bold text-[#C05600] hover:underline flex items-center gap-0.5"
+                className="text-[10px] font-bold text-white hover:underline flex items-center gap-0.5"
               >
                 Review all <ChevronRight size={10} />
               </button>
