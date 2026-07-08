@@ -1,4 +1,12 @@
 import React from "react";
+
+// Opens a pre-filled draft in the user's mail client (Outlook/Gmail via the
+// OS handler). Browsers cannot attach files through mailto: — callers should
+// remind the user to attach any downloaded Excel manually.
+export function openMailDraft(to: string, subject: string, body: string) {
+  const href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = href;
+}
 import { AlertTriangle, Lock, Globe2, Building2 } from "lucide-react";
 import { SharingStatus, confidenceBand } from "./data";
 

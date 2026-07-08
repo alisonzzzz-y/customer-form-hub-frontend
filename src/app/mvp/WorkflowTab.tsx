@@ -51,7 +51,7 @@ import {
 import { ClarificationEmailModal } from "./NewRequestFlow";
 import { attachSuggestions, extractQuestionsFor, smeAnswerFor } from "./simulation";
 import { exportTicketUrl } from "../api";
-import { Card, ConfidenceBadge, Pill, SharingBadge, Th } from "./ui";
+import { Card, ConfidenceBadge, Pill, SharingBadge, Th, openMailDraft } from "./ui";
 
 // Guided per-ticket workflow, ported from the original prototype:
 // Intake → Grouping → Answer Review → SME Package → ETA Tracking → Final Review.
@@ -1167,6 +1167,7 @@ function SmePackagePanel({
       ),
     );
     actions.logActivity(`Sent ${dept} SME package (${deptQueued.length} questions) — awaiting ETA`, ticket.id);
+    return req;
   };
 
   const sendMany = async (deptList: string[]) => {
@@ -1187,7 +1188,41 @@ function SmePackagePanel({
     }
   };
 
-  const sendDept = () => sendMany([tab]);
+  const sendDept = async () => {
+    const req = await sendOne(tab);
+    if (req) {
+      // The system never sends email itself — open the draft in the mail app.
+      const to = `${tab.toLowerCase()}-team@cloudera.com`;
+      const subject =
+        req.sentEmail?.subject ?? `ETA request — ${ticket.customer} customer form, ${tab} tab`;
+      const bodyText =
+        req.sentEmail?.body ??
+        [
+          `Hi ${tab} Team,`,
+          "",
+          `We need your input on the ${tab} tab of the attached Excel for ${ticket.customer}.`,
+          `NDA status: ${ticket.nda}. Deadline: ${fmtDate(ticket.due)}.`,
+          "",
+          "Please complete your tab and reply with your ETA.",
+          "",
+          "Thanks,",
+          "Sarah Chen, GOM Analyst",
+        ].join("\n");
+      openMailDraft(to, subject, bodyText);
+      actions.addToast(
+        "Draft opened in your mail app — attach the downloaded Excel before sending.",
+        "info",
+      );
+    }
+    const remaining = unsentDepts.filter((d) => d !== tab);
+    if (remaining.length === 0) {
+      actions.setTickets((p) =>
+        p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta", status: "Waiting SME" } : t)),
+      );
+      syncTicketStatus(ticket.backendId, "Waiting SME");
+      actions.addToast("All SME packages sent — track ETAs next.", "success");
+    }
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -1195,8 +1230,9 @@ function SmePackagePanel({
         <Info size={13} className="text-[#9CA3AF] shrink-0 mt-0.5" />
         <p className="text-xs text-[#6B7280]">
           SMEs do not log into this system. Every question routed during review is packaged here by
-          department into an Excel tab plus an email — send each package, then record ETAs on the
-          tracking step.
+          department into an Excel tab plus an email. Sending opens a pre-filled draft in your mail
+          app (Outlook/Gmail) — <strong>attach the downloaded Excel manually</strong>, browsers
+          cannot pre-attach files. Batch send marks packages as sent without opening drafts.
         </p>
       </div>
       {unsentDepts.length > 0 && (
@@ -1228,14 +1264,14 @@ function SmePackagePanel({
           <button
             onClick={() => sendMany(selected)}
             disabled={selected.length === 0}
-            title="Send the ticked departments in one go"
+            title="Marks the ticked departments as sent in one go (per-department send opens the mail draft)"
             className={`flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${selected.length === 0 ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400]"}`}
           >
             <Send size={10} /> Send Selected ({selected.length})
           </button>
           <button
             onClick={() => sendMany(unsentDepts)}
-            title="Send every remaining department package at once"
+            title="Marks every remaining package as sent at once (per-department send opens the mail draft)"
             className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase transition-all"
           >
             <Send size={10} /> Send All ({unsentDepts.length})
@@ -1431,7 +1467,7 @@ function EtaPanel({
   const [etaModal, setEtaModal] = useState<MvpSmeRequest | null>(null);
   const [etaValue, setEtaValue] = useState("");
   const [confirmedBy, setConfirmedBy] = useState("");
-  const [reminderFor, setReminderFor] = useState<MvpSmeRequest | null>(null);
+  const [nudgeFor, setNudgeFor] = useState<MvpSmeRequest | null>(null);
 
   const isOver = (r: MvpSmeRequest) =>
     r.status !== "Returned" && r.eta !== null && new Date(r.eta) < MOCK_NOW;
@@ -1526,14 +1562,19 @@ function EtaPanel({
                           >
                             {r.eta ? "Update ETA" : "Record ETA"}
                           </button>
-                          {over && (
-                            <button
-                              onClick={() => setReminderFor(r)}
-                              className="px-3 py-1 text-[9px] font-bold border border-[#FCA5A5]/50 bg-[#FEF2F2] rounded-full text-[#991B1B] hover:bg-[#FEE2E2] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
-                            >
-                              <Bell size={9} className="inline mr-0.5" /> Reminder
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setNudgeFor(r)}
+                            title={
+                              over
+                                ? "Overdue — drafts a follow-up email in your mail app"
+                                : !r.eta
+                                  ? "No ETA yet — drafts an ETA-confirmation chaser in your mail app"
+                                  : "Drafts a context-aware check-in email in your mail app"
+                            }
+                            className={`px-3 py-1 text-[9px] font-bold rounded-full tracking-[0.06em] uppercase whitespace-nowrap transition-all ${over ? "border border-[#FCA5A5]/50 bg-[#FEF2F2] text-[#991B1B] hover:bg-[#FEE2E2]" : "border border-[#F96702]/40 text-[#C05600] hover:bg-[#FFF4EC]"}`}
+                          >
+                            <Bell size={9} className="inline mr-0.5" /> Nudge
+                          </button>
                           <button
                             onClick={() => markReturned(r)}
                             className="px-3 py-1 text-[9px] font-bold border border-[rgba(0,0,0,0.12)] rounded-full text-[#374151] hover:bg-[#F5F5F5] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
@@ -1594,9 +1635,6 @@ function EtaPanel({
             <ArrowLeft size={11} /> Back: SME Package
           </BtnSecondary>
         </span>
-        <BtnSecondary onClick={() => actions.addToast("SME emails resent.", "success")}>
-          <Send size={11} /> Resend SME Emails
-        </BtnSecondary>
         <span className="flex-1" />
         {allReturned && (
           <span title="All SME answers are back — run the completeness checks and export">
@@ -1656,14 +1694,17 @@ function EtaPanel({
         </div>
       )}
 
-      {reminderFor && (
-        <ReminderModal ticket={ticket} req={reminderFor} actions={actions} close={() => setReminderFor(null)} />
+      {nudgeFor && (
+        <NudgeModal ticket={ticket} req={nudgeFor} actions={actions} close={() => setNudgeFor(null)} />
       )}
     </div>
   );
 }
 
-function ReminderModal({
+// Context-aware nudge: the template matches the SME request's actual state
+// (no ETA yet / due soon / overdue / general check-in). Editable, then opens
+// a draft in the analyst's mail client.
+function NudgeModal({
   ticket,
   req,
   actions,
@@ -1674,20 +1715,62 @@ function ReminderModal({
   actions: AppActions;
   close: () => void;
 }) {
-  const [subject, setSubject] = useState(
-    `Follow-up: ${req.department} tab overdue — ${ticket.customer} customer form (${ticket.id})`,
-  );
+  const over = req.eta !== null && new Date(req.eta) < MOCK_NOW;
+  const dueSoon =
+    !over && req.eta !== null && new Date(req.eta).getTime() - MOCK_NOW.getTime() < 24 * 3600 * 1000;
+  const variant = !req.eta ? "no-eta" : over ? "overdue" : dueSoon ? "due-soon" : "check-in";
+
+  const templates: Record<string, { label: string; subject: string; lines: string[] }> = {
+    "no-eta": {
+      label: "ETA confirmation chaser",
+      subject: `ETA needed — ${ticket.customer} customer form, ${req.department} tab (${ticket.id})`,
+      lines: [
+        `Hi ${req.assignee},`,
+        "",
+        `We sent the ${req.department} tab of the ${ticket.customer} questionnaire on ${fmtDate(req.sentAt)} and haven't received an ETA yet.`,
+        "",
+        `Could you reply with a realistic return date? Our customer deadline is ${fmtDate(ticket.due)} and we plan the final review around your ETA.`,
+      ],
+    },
+    "due-soon": {
+      label: "ETA due soon — friendly heads-up",
+      subject: `Heads-up: ${req.department} tab due ${req.eta ? fmtDateTime(req.eta) : ""} — ${ticket.customer} (${ticket.id})`,
+      lines: [
+        `Hi ${req.assignee},`,
+        "",
+        `A quick heads-up that the agreed ETA for the ${req.department} tab (${req.eta ? fmtDateTime(req.eta) : "—"}) is coming up.`,
+        "",
+        `If anything blocks the return, let us know early so we can re-plan — the customer deadline is ${fmtDate(ticket.due)}.`,
+      ],
+    },
+    overdue: {
+      label: "Overdue follow-up",
+      subject: `Follow-up: ${req.department} tab overdue — ${ticket.customer} customer form (${ticket.id})`,
+      lines: [
+        `Hi ${req.assignee},`,
+        "",
+        `Following up on the ${req.department} tab for the ${ticket.customer} customer form — the agreed ETA (${req.eta ? fmtDateTime(req.eta) : "—"}) has passed. Could you confirm when this can be returned?`,
+        "",
+        `Our customer deadline is ${fmtDate(ticket.due)} and we need time for final review.`,
+      ],
+    },
+    "check-in": {
+      label: "Progress check-in",
+      subject: `Checking in: ${req.department} tab — ${ticket.customer} customer form (${ticket.id})`,
+      lines: [
+        `Hi ${req.assignee},`,
+        "",
+        `Just checking in on the ${req.department} tab ahead of your ETA (${req.eta ? fmtDateTime(req.eta) : "—"}). No action needed if everything is on track.`,
+        "",
+        `If any question is out of scope or blocked, flag it now so we can reroute before the ${fmtDate(ticket.due)} customer deadline.`,
+      ],
+    },
+  };
+  const t = templates[variant];
+  const to = `${req.department.toLowerCase()}-team@cloudera.com`;
+  const [subject, setSubject] = useState(t.subject);
   const [body, setBody] = useState(
-    [
-      `Hi ${req.department} team,`,
-      "",
-      `Following up on the ${req.department} tab for the ${ticket.customer} customer form — the agreed ETA (${req.eta ? fmtDateTime(req.eta) : "—"}) has passed. Could you confirm when this can be returned?`,
-      "",
-      `Our customer deadline is ${fmtDate(ticket.due)} and we need time for final review.`,
-      "",
-      "Thanks,",
-      "Sarah Chen, GOM Analyst",
-    ].join("\n"),
+    [...t.lines, "", "Thanks,", "Sarah Chen, GOM Analyst"].join("\n"),
   );
 
   return (
@@ -1695,16 +1778,18 @@ function ReminderModal({
       <div className="bg-white rounded-xl shadow-xl w-[520px] max-h-[85vh] overflow-hidden flex flex-col">
         <div className="px-4 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center justify-between shrink-0">
           <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide">
-            Overdue reminder — auto-drafted, editable
+            {t.label} — auto-drafted, editable
           </p>
-          <span className="flex items-center gap-1 text-[10px] text-red-600 font-medium">
-            <AlertTriangle size={10} /> {req.department} tab overdue
-          </span>
+          {variant === "overdue" && (
+            <span className="flex items-center gap-1 text-[10px] text-red-600 font-medium">
+              <AlertTriangle size={10} /> {req.department} tab overdue
+            </span>
+          )}
         </div>
         <div className="px-4 py-2.5 space-y-2 border-b border-border text-xs shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-[#9CA3AF] w-14 shrink-0">To:</span>
-            <span className="text-[#1F2937]">{req.department.toLowerCase()}-team@cloudera.com</span>
+            <span className="text-[#1F2937]">{to}</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[#9CA3AF] w-14 shrink-0">Subject:</span>
@@ -1721,16 +1806,19 @@ function ReminderModal({
           rows={10}
           className="flex-1 px-4 py-3 text-xs text-[#374151] leading-relaxed resize-none focus:outline-none"
         />
-        <div className="px-4 py-3 border-t border-border flex gap-2 bg-[#FAFAFA] shrink-0">
-          <BtnPrimary
-            onClick={() => {
-              actions.logActivity(`Sent overdue reminder to ${req.assignee}`, ticket.id);
-              actions.addToast(`Reminder sent to ${req.assignee}.`, "success");
-              close();
-            }}
-          >
-            <Send size={11} /> Send Reminder
-          </BtnPrimary>
+        <div className="px-4 py-3 border-t border-border flex items-center gap-2 bg-[#FAFAFA] shrink-0">
+          <span title="Opens the draft in your mail app (Outlook/Gmail) — the system never sends email itself">
+            <BtnPrimary
+              onClick={() => {
+                openMailDraft(to, subject, body);
+                actions.logActivity(`Nudged ${req.assignee} (${t.label.toLowerCase()})`, ticket.id);
+                actions.addToast("Draft opened in your mail app.", "info");
+                close();
+              }}
+            >
+              <Send size={11} /> Open in Mail App
+            </BtnPrimary>
+          </span>
           <BtnSecondary onClick={close}>Cancel</BtnSecondary>
         </div>
       </div>
@@ -1842,6 +1930,22 @@ function FinalPanel({
           )}
         </div>
       </Card>
+      <div className="bg-[#FAFAFA] border border-[rgba(0,0,0,0.06)] rounded-lg px-4 py-2.5 flex items-center gap-2 text-[10px] font-semibold">
+        <span className="text-[#6B7280] uppercase tracking-[0.08em]">Three steps:</span>
+        <span className={reviewed ? "text-green-700" : "text-[#C05600]"}>
+          1 · Confirm review {reviewed && "✓"}
+        </span>
+        <ChevronRight size={10} className="text-[#C0BEBA]" />
+        <span className={exported ? "text-green-700" : reviewed ? "text-[#C05600]" : "text-[#C0BEBA]"}>
+          2 · Export package {exported && "✓"}
+        </span>
+        <ChevronRight size={10} className="text-[#C0BEBA]" />
+        <span className={exported ? "text-[#C05600]" : "text-[#C0BEBA]"}>3 · Approve ticket</span>
+        <span className="flex-1" />
+        <span className="text-[#9CA3AF] font-normal normal-case">
+          each step unlocks the next — hover a button for details
+        </span>
+      </div>
       <div className="flex gap-2.5 flex-wrap items-center">
         <span title={reqs.length > 0 ? "Go back to the SME ETA tracking for this ticket" : "Go back and review the answers again"}>
           <BtnSecondary
@@ -1865,6 +1969,11 @@ function FinalPanel({
             actions.logActivity("Final review complete", ticket.id);
             actions.addToast("Final review complete.", "success");
           }}
+          title={
+            !allComplete
+              ? "Blocked: some departments still have unanswered questions (see checklist above)"
+              : "Step 1 — confirm you have reviewed every answer; this unlocks the export"
+          }
           className={`flex items-center gap-1.5 px-5 py-2 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!allComplete ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : reviewed ? "bg-green-600 text-white" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.3)]"}`}
         >
           {reviewed ? (
@@ -1873,12 +1982,17 @@ function FinalPanel({
             </>
           ) : (
             <>
-              <CheckSquare size={11} /> Mark Final Review Complete
+              <CheckSquare size={11} /> 1 · Mark Review Complete
             </>
           )}
         </button>
         <button
           disabled={!reviewed || exporting}
+          title={
+            !reviewed
+              ? "Blocked: complete step 1 (confirm review) first"
+              : "Step 2 — downloads the completed answer package for the customer"
+          }
           onClick={() => setExportModal(true)}
           className={`flex items-center gap-1.5 px-5 py-2 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!reviewed || exporting ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : exported ? "bg-green-600 text-white" : "border border-[rgba(0,0,0,0.18)] text-[#374151] hover:border-[#F96702]/60 hover:text-[#F96702]"}`}
         >
@@ -1892,12 +2006,17 @@ function FinalPanel({
             </>
           ) : (
             <>
-              <Download size={11} /> Export Response
+              <Download size={11} /> 2 · Export Response
             </>
           )}
         </button>
         <button
           disabled={!exported}
+          title={
+            !exported
+              ? "Blocked: complete step 2 (export) first"
+              : "Step 3 — locks the ticket as Approved; finish with 'Mark Sent & Close' in the header"
+          }
           onClick={() => {
             actions.setTickets((p) =>
               p.map((t) => (t.id === ticket.id ? { ...t, status: "Approved", stage: "done" } : t)),
@@ -1908,7 +2027,7 @@ function FinalPanel({
           }}
           className={`flex items-center gap-1.5 px-5 py-2 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!exported ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#0A0A0A] text-white hover:bg-[#222]"}`}
         >
-          <RefreshCw size={11} /> Approve Ticket
+          <RefreshCw size={11} /> 3 · Approve Ticket
         </button>
       </div>
 

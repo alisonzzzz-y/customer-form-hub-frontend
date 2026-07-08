@@ -12,6 +12,7 @@ import {
 import { BtnPrimary, BtnSecondary } from "../components/shared";
 import { MvpTicket, NdaStatus, Urgency, pendingForms } from "./data";
 import { AppActions, AppState } from "./MvpApp";
+import { openMailDraft } from "./ui";
 import { SAMPLE_AE_EMAIL, parseIntakeEmail } from "./simulation";
 
 // New Request: paste the AE email (+ optionally attach the customer form).
@@ -292,15 +293,18 @@ export function ClarificationEmailModal({
         <div className="px-4 py-3 border-t border-border flex items-center gap-2 bg-[#FAFAFA] shrink-0">
           {!sent ? (
             <>
-              <BtnPrimary
-                onClick={() => {
-                  setSent(true);
-                  actions.logActivity("Sent clarification email to AE for missing intake fields");
-                  actions.addToast("Clarification email sent.", "success");
-                }}
-              >
-                Send Email
-              </BtnPrimary>
+              <span title="Opens the draft in your mail app (Outlook/Gmail) — the system never sends email itself">
+                <BtnPrimary
+                  onClick={() => {
+                    openMailDraft(to, subject, body);
+                    setSent(true);
+                    actions.logActivity("Sent clarification email to AE for missing intake fields");
+                    actions.addToast("Draft opened in your mail app.", "info");
+                  }}
+                >
+                  Open in Mail App
+                </BtnPrimary>
+              </span>
               <BtnSecondary onClick={close}>Cancel</BtnSecondary>
             </>
           ) : (

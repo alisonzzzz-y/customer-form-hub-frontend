@@ -1,5 +1,17 @@
 import { useState } from "react";
 import { BarChart3, Download, FileText, Loader2, Printer, Sparkles, X } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip as ChartTooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { BtnPrimary, BtnSecondary } from "../components/shared";
 import { DEPARTMENTS, MOCK_NOW, MvpReport, fmtDate, isOverdueTicket } from "./data";
 import { AppActions, AppState } from "./MvpApp";
@@ -32,6 +44,48 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
   const [openReport, setOpenReport] = useState<MvpReport | null>(null);
 
   const companies = [...new Set(state.tickets.map((t) => t.customer))];
+
+  // ── Visual overview data (user feedback: graphical progress of multiple tickets) ──
+  const RESOLVED = ["Approved", "Ready", "SME Complete"];
+  const progressData = state.tickets
+    .filter((t) => !["Closed", "Archived", "Sent"].includes(t.status))
+    .map((t) => {
+      const tq = state.questions.filter((q) => q.ticketId === t.id);
+      const pct = tq.length
+        ? Math.round((tq.filter((q) => RESOLVED.includes(q.status)).length / tq.length) * 100)
+        : 0;
+      return { name: `${t.id} · ${t.customer}`, progress: pct, remaining: 100 - pct };
+    })
+    .sort((a, b) => b.progress - a.progress);
+
+  const STATUS_COLORS: Record<string, string> = {
+    New: "#4338CA", "AI Processing": "#6366F1", "Intake Review": "#F59E0B",
+    "In Progress": "#1F2937", "Waiting SME": "#EAB308", "Ready for Review": "#10B981",
+    Approved: "#16A34A", Sent: "#16A34A", Closed: "#9CA3AF",
+  };
+  const statusData = Object.entries(
+    state.tickets
+      .filter((t) => t.status !== "Archived")
+      .reduce<Record<string, number>>((acc, t) => {
+        acc[t.status] = (acc[t.status] ?? 0) + 1;
+        return acc;
+      }, {}),
+  ).map(([name, value]) => ({ name, value }));
+
+  const deptSet = [...new Set(state.questions.map((q) => q.department))];
+  const deptData = deptSet
+    .map((d) => {
+      const dq = state.questions.filter((q) => q.department === d);
+      return {
+        dept: d,
+        Resolved: dq.filter((q) => RESOLVED.includes(q.status)).length,
+        "With SME": dq.filter((q) => ["Waiting SME", "SME Queued"].includes(q.status)).length,
+        Open: dq.filter(
+          (q) => !RESOLVED.includes(q.status) && !["Waiting SME", "SME Queued"].includes(q.status),
+        ).length,
+      };
+    })
+    .filter((d) => d.Resolved + d["With SME"] + d.Open > 0);
 
   const compute = (): Metrics => {
     let ts = state.tickets;
@@ -194,6 +248,88 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
         </div>
       </div>
       <div className="flex-1 overflow-auto px-8 py-6 flex flex-col gap-4">
+        {/* Visual overview — live charts over the current workload */}
+        <div className="grid grid-cols-5 gap-4">
+          <Card title="Ticket Progress — open tickets" className="col-span-2">
+            <div className="px-2 py-2" style={{ height: Math.max(180, progressData.length * 34 + 40) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={progressData} layout="vertical" margin={{ left: 8, right: 28, top: 4 }}>
+                  <XAxis type="number" domain={[0, 100]} hide />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={150}
+                    tick={{ fontSize: 10, fill: "#6B7280" }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <ChartTooltip
+                    formatter={(v: number, key: string) => [`${v}%`, key === "progress" ? "Resolved" : "Remaining"]}
+                    contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                  />
+                  <Bar dataKey="progress" stackId="p" fill="#F96702" radius={[4, 0, 0, 4]} isAnimationActive={false} />
+                  <Bar dataKey="remaining" stackId="p" fill="#F0EEEB" radius={[0, 4, 4, 0]} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+          <Card title="Status Mix" className="col-span-1">
+            <div className="px-2 py-2 h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={statusData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius="52%"
+                    outerRadius="80%"
+                    paddingAngle={2}
+                    isAnimationActive={false}
+                  >
+                    {statusData.map((d) => (
+                      <Cell key={d.name} fill={STATUS_COLORS[d.name] ?? "#D8D5D0"} />
+                    ))}
+                  </Pie>
+                  <ChartTooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="px-3 pb-2.5 flex flex-wrap gap-x-3 gap-y-1">
+              {statusData.map((d) => (
+                <span key={d.name} className="flex items-center gap-1 text-[9px] text-[#6B7280]">
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ background: STATUS_COLORS[d.name] ?? "#D8D5D0" }}
+                  />
+                  {d.name} ({d.value})
+                </span>
+              ))}
+            </div>
+          </Card>
+          <Card title="Questions by Department" className="col-span-2">
+            <div className="px-2 py-2 h-[240px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={deptData} margin={{ top: 8, right: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EEECE9" vertical={false} />
+                  <XAxis dataKey="dept" tick={{ fontSize: 10, fill: "#6B7280" }} axisLine={false} tickLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "#6B7280" }} axisLine={false} tickLine={false} width={24} />
+                  <ChartTooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+                  <Bar dataKey="Resolved" stackId="q" fill="#16A34A" isAnimationActive={false} />
+                  <Bar dataKey="With SME" stackId="q" fill="#EAB308" isAnimationActive={false} />
+                  <Bar dataKey="Open" stackId="q" fill="#F96702" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="px-3 pb-2.5 flex gap-3">
+              {[["Resolved", "#16A34A"], ["With SME", "#EAB308"], ["Open", "#F96702"]].map(([l, c]) => (
+                <span key={l} className="flex items-center gap-1 text-[9px] text-[#6B7280]">
+                  <span className="w-2 h-2 rounded-full" style={{ background: c }} /> {l}
+                </span>
+              ))}
+            </div>
+          </Card>
+        </div>
+
         <div className="flex items-center gap-2 flex-wrap">
           <FilterSelect label="Range" value={range === "This month" ? "This month" : range} options={RANGES} onChange={(v) => setRange(v === "All" ? "All time" : v)} />
           <FilterSelect
