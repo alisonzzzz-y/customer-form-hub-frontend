@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
   Bell,
   Brain,
   CheckCircle,
@@ -299,7 +300,11 @@ function GroupingPanel({
     actions.logActivity("Confirmed department grouping — generating AI suggestions", ticket.id);
     setTimeout(() => {
       actions.setQuestions((p) =>
-        p.map((q) => (q.ticketId === ticket.id ? attachSuggestions(q) : q)),
+        p.map((q) =>
+          q.ticketId === ticket.id && !q.finalAnswer && q.status !== "SME Queued"
+            ? attachSuggestions(q)
+            : q,
+        ),
       );
       actions.setTickets((p) =>
         p.map((t) => (t.id === ticket.id ? { ...t, stage: "review" } : t)),
@@ -399,7 +404,9 @@ function ReviewPanel({
   const [saveToKb, setSaveToKb] = useState(false);
 
   const q = qs.find((x) => x.id === selectedId) ?? qs[0];
-  const resolved = qs.filter((x) => ["Approved", "Ready", "SME Queued", "Rejected"].includes(x.status));
+  const resolved = qs.filter((x) =>
+    ["Approved", "Ready", "SME Queued", "Waiting SME", "SME Complete", "Rejected"].includes(x.status),
+  );
   const queued = qs.filter((x) => x.status === "SME Queued");
   const allResolved = qs.length > 0 && resolved.length === qs.length;
 
@@ -409,7 +416,11 @@ function ReviewPanel({
   };
 
   const advance = () => {
-    const next = qs.find((x) => x.id !== q?.id && !["Approved", "Ready", "SME Queued", "Rejected"].includes(x.status));
+    const next = qs.find(
+      (x) =>
+        x.id !== q?.id &&
+        !["Approved", "Ready", "SME Queued", "Waiting SME", "SME Complete", "Rejected"].includes(x.status),
+    );
     if (next) setSelectedId(next.id);
     setEditing(false);
   };
@@ -461,6 +472,15 @@ function ReviewPanel({
           <strong className="text-[#C05600]">{queued.length}</strong> queued for SME
         </p>
         <span className="flex-1" />
+        <BtnSecondary
+          onClick={() =>
+            actions.setTickets((p) =>
+              p.map((t) => (t.id === ticket.id ? { ...t, stage: "grouping" } : t)),
+            )
+          }
+        >
+          <ArrowLeft size={11} /> Back to Grouping
+        </BtnSecondary>
         {allResolved && (
           <BtnPrimary onClick={continueNext}>
             {queued.length > 0 ? (
@@ -562,7 +582,7 @@ function ReviewPanel({
                   <strong>Source:</strong>{" "}
                   {source ? (
                     <button
-                      onClick={() => actions.openKnowledge("all", source.id)}
+                      onClick={() => actions.openKnowledge("all", source.id, ticket.id)}
                       className="text-[#C05600] font-semibold hover:underline"
                     >
                       {source.title}
@@ -655,6 +675,27 @@ function ReviewPanel({
                 >
                   <Edit3 size={11} /> {q.suggested || q.finalAnswer ? "Edit" : "Manual Answer"}
                 </BtnSecondary>
+                {q.status === "Approved" && q.finalAnswer && (
+                  <BtnSecondary
+                    onClick={() => {
+                      update(
+                        q.id,
+                        {
+                          status: q.suggested
+                            ? (q.confidence ?? 0) >= 0.9
+                              ? "Suggested"
+                              : "Needs Review"
+                            : "New",
+                          finalAnswer: undefined,
+                        },
+                        `Reverted approval on question #${q.row}`,
+                      );
+                      actions.addToast("Approval undone — the question is back in review.", "info");
+                    }}
+                  >
+                    <RefreshCw size={11} /> Unapprove
+                  </BtnSecondary>
+                )}
                 {q.status !== "SME Queued" && !q.finalAnswer && (
                   <button
                     onClick={() => {
@@ -878,6 +919,17 @@ function SmePackagePanel({
           </div>
         </div>
       </div>
+      <div className="flex">
+        <BtnSecondary
+          onClick={() =>
+            actions.setTickets((p) =>
+              p.map((t) => (t.id === ticket.id ? { ...t, stage: "review" } : t)),
+            )
+          }
+        >
+          <ArrowLeft size={11} /> Back to Answer Review
+        </BtnSecondary>
+      </div>
       {allSent && (
         <div className="flex justify-end">
           <BtnPrimary
@@ -1018,8 +1070,31 @@ function EtaPanel({
                         </>
                       )}
                       {r.status === "Returned" && (
-                        <span className="text-[10px] text-green-700 font-medium flex items-center gap-1">
+                        <span className="text-[10px] text-green-700 font-medium flex items-center gap-1.5">
                           <CheckCircle size={11} /> {r.returnedAt ? fmtDateTime(r.returnedAt) : "Returned"}
+                          <button
+                            onClick={() => {
+                              actions.setSmeRequests((p) =>
+                                p.map((x) =>
+                                  x.id === r.id
+                                    ? { ...x, status: r.eta ? "ETA Set" : "Requested", returnedAt: undefined }
+                                    : x,
+                                ),
+                              );
+                              actions.setQuestions((p) =>
+                                p.map((qq) =>
+                                  r.questionIds.includes(qq.id) && qq.finalAnswer?.sourceType === "SME"
+                                    ? { ...qq, status: "Waiting SME", finalAnswer: undefined }
+                                    : qq,
+                                ),
+                              );
+                              actions.logActivity(`Undid returned status for ${r.department}`, ticket.id);
+                              actions.addToast(`${r.department} marked as still pending.`, "info");
+                            }}
+                            className="text-[9px] font-bold text-[#6B7280] border border-[rgba(0,0,0,0.15)] rounded-full px-2 py-0.5 hover:border-[#F96702]/50 hover:text-[#F96702] uppercase tracking-[0.06em]"
+                          >
+                            Undo
+                          </button>
                         </span>
                       )}
                     </div>

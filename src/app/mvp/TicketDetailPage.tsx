@@ -72,6 +72,23 @@ export function TicketDetailPage({
                   actions.setTickets((p) =>
                     p.map((t) =>
                       t.id === ticket.id
+                        ? { ...t, status: "Ready for Review", stage: "final" }
+                        : t,
+                    ),
+                  );
+                  actions.logActivity("Reopened ticket for further review", ticket.id);
+                  actions.addToast("Ticket reopened — back in final review.", "info");
+                }}
+              >
+                Reopen
+              </BtnSecondary>
+            )}
+            {ticket.status === "Approved" && (
+              <BtnSecondary
+                onClick={() => {
+                  actions.setTickets((p) =>
+                    p.map((t) =>
+                      t.id === ticket.id
                         ? { ...t, status: "Closed", closed: new Date().toISOString().slice(0, 10) }
                         : t,
                     ),

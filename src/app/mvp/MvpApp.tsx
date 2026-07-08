@@ -67,7 +67,7 @@ export type AppActions = {
   go: (m: ModuleId) => void;
   openTicket: (id: string) => void;
   openTicketsFiltered: (f: Partial<TicketFilters>) => void;
-  openKnowledge: (view: "all" | "pending", entryId?: number) => void;
+  openKnowledge: (view: "all" | "pending", entryId?: number, fromTicketId?: string) => void;
   setTickets: React.Dispatch<React.SetStateAction<MvpTicket[]>>;
   setQuestions: React.Dispatch<React.SetStateAction<MvpQuestion[]>>;
   setSmeRequests: React.Dispatch<React.SetStateAction<MvpSmeRequest[]>>;
@@ -87,6 +87,7 @@ export default function MvpApp() {
   const [newTicketOpen, setNewTicketOpen] = useState(false);
   const [kbView, setKbView] = useState<"all" | "pending">("all");
   const [kbFocusEntry, setKbFocusEntry] = useState<number | null>(null);
+  const [kbReturnTicket, setKbReturnTicket] = useState<string | null>(null);
   const [globalQuery, setGlobalQuery] = useState("");
 
   const [tickets, setTickets] = useState<MvpTicket[]>(SEED_TICKETS);
@@ -118,9 +119,10 @@ export default function MvpApp() {
         setTicketFilters({ ...EMPTY_FILTERS, ...f });
         setModule("tickets");
       },
-      openKnowledge: (view, entryId) => {
+      openKnowledge: (view, entryId, fromTicketId) => {
         setKbView(view);
         setKbFocusEntry(entryId ?? null);
+        setKbReturnTicket(fromTicketId ?? null);
         setModule("knowledge-base");
       },
       setTickets,
@@ -187,7 +189,11 @@ export default function MvpApp() {
             return (
               <button
                 key={id}
-                onClick={() => setModule(id)}
+                onClick={() => {
+                  setModule(id);
+                  setKbReturnTicket(null);
+                  setKbFocusEntry(null);
+                }}
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[11px] w-full text-left transition-all ${active ? "bg-[#F96702] text-white font-bold shadow-[0_2px_8px_rgba(249,103,2,0.3)]" : "text-[#6B7280] hover:text-[#111111] hover:bg-[#F5F3F0]"}`}
               >
                 <Icon size={13} />
@@ -307,6 +313,7 @@ export default function MvpApp() {
               view={kbView}
               setView={setKbView}
               focusEntry={kbFocusEntry}
+              returnTicket={kbReturnTicket}
             />
           )}
           {module === "reports" && <ReportsPage state={state} actions={actions} />}

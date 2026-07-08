@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Archive, BookOpen, CheckCircle, Edit3, Plus, Search, X } from "lucide-react";
+import { Archive, ArrowLeft, BookOpen, CheckCircle, Edit3, Plus, RotateCcw, Search, X } from "lucide-react";
 import { BtnPrimary, BtnSecondary } from "../components/shared";
 import { DEPARTMENTS, KnowledgeStatus, MvpKnowledgeEntry, SharingStatus } from "./data";
 import { AppActions, AppState } from "./MvpApp";
@@ -15,12 +15,14 @@ export function KnowledgeBasePage({
   view,
   setView,
   focusEntry,
+  returnTicket,
 }: {
   state: AppState;
   actions: AppActions;
   view: "all" | "pending";
   setView: (v: "all" | "pending") => void;
   focusEntry: number | null;
+  returnTicket: string | null;
 }) {
   const { knowledge, role } = state;
   const [dept, setDept] = useState("All");
@@ -112,6 +114,15 @@ export function KnowledgeBasePage({
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        {returnTicket && (
+          <button
+            onClick={() => actions.openTicket(returnTicket)}
+            className="flex items-center gap-2 px-7 py-2 bg-[#FFF4EC] border-b border-[#F96702]/25 text-[11px] font-semibold text-[#C05600] hover:bg-[#FFE8D0] transition-colors shrink-0"
+          >
+            <ArrowLeft size={12} /> Back to ticket {returnTicket} — you were reviewing an answer
+            source
+          </button>
+        )}
         <div className="px-7 pt-6 pb-4 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0" />
@@ -232,6 +243,14 @@ export function KnowledgeBasePage({
               </div>
             </div>
             <div className="px-5 py-3 border-t border-border flex gap-2 flex-wrap shrink-0 bg-[#FAFAFA]">
+              {returnTicket && (
+                <button
+                  onClick={() => actions.openTicket(returnTicket)}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 text-[10px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase shadow-[0_2px_8px_rgba(249,103,2,0.25)] transition-all"
+                >
+                  <ArrowLeft size={11} /> Back to Ticket {returnTicket}
+                </button>
+              )}
               {detail.status === "Pending Review" && canApprove ? (
                 <>
                   <BtnPrimary
@@ -269,6 +288,16 @@ export function KnowledgeBasePage({
                     </BtnSecondary>
                   )}
                 </>
+              )}
+              {["Deprecated", "Archived"].includes(detail.status) && (
+                <BtnSecondary
+                  onClick={() => {
+                    setStatus(detail.id, "Draft", `Restored knowledge entry “${detail.title}” to Draft`);
+                    actions.addToast("Entry restored as Draft — submit for review to reactivate.", "info");
+                  }}
+                >
+                  <RotateCcw size={11} /> Restore to Draft
+                </BtnSecondary>
               )}
               {detail.status !== "Archived" && (
                 <button

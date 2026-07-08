@@ -63,6 +63,8 @@ export function NewRequestFlow({
           : `Intake extracted — ${missing} field${missing === 1 ? "" : "s"} need attention.`,
         missing === 0 ? "success" : "warning",
       );
+      // Missing required info → auto-draft the clarification email to the AE
+      if (missing > 0) setClarifyOpen(true);
     }, 1100);
   };
 
