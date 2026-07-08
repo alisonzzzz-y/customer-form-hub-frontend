@@ -13,6 +13,7 @@ import {
 import { BtnPrimary, BtnSecondary } from "../components/shared";
 import { MvpTicket, NdaStatus, Urgency } from "./data";
 import { AppActions, AppState } from "./MvpApp";
+import { createBackendTicket, parseQuestionnaire, syncTicketStatus } from "./backend";
 import { IntakeExtraction, SAMPLE_AE_EMAIL, extractQuestionsFor, parseIntakeEmail } from "./simulation";
 
 // New Request flow: paste the AE email, AI extracts the intake fields, the
@@ -41,7 +42,7 @@ export function NewRequestFlow({
   const [fields, setFields] = useState<IntakeExtraction>(EMPTY);
   const [sorId, setSorId] = useState("");
   const [region, setRegion] = useState("EMEA");
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [attached, setAttached] = useState<File | null>(null);
   const [clarifyOpen, setClarifyOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -73,7 +74,7 @@ export function NewRequestFlow({
 
   const requiredReady = fields.customer.trim() && fields.due && fields.urgency && fields.nda;
 
-  const confirmIntake = () => {
+  const confirmIntake = async () => {
     if (!requiredReady) {
       actions.addToast("Customer, due date, urgency and NDA status are required.", "warning");
       return;
@@ -87,7 +88,7 @@ export function NewRequestFlow({
       customer: fields.customer.trim(),
       sorId: sorId.trim() || "—",
       owner: state.currentUser,
-      status: ndaUnknown ? "Intake Review" : "In Progress",
+      status: ndaUnknown ? "Intake Review" : "AI Processing",
       stage: ndaUnknown ? "intake" : "grouping",
       due: fields.due,
       created: new Date().toISOString().slice(0, 10),
@@ -99,9 +100,9 @@ export function NewRequestFlow({
       aeEmail: fields.aeEmail.trim() || undefined,
       businessImpact: fields.businessImpact.trim() || undefined,
       notes: fields.requestType ? `Request type: ${fields.requestType}` : undefined,
-      files: fileName
+      files: attached
         ? [{
-            name: fileName,
+            name: attached.name,
             size: "—",
             kind: "Customer form",
             uploaded: new Date().toISOString().slice(0, 10),
@@ -109,8 +110,14 @@ export function NewRequestFlow({
           }]
         : [],
     };
+    // Best-effort sync to Alison's backend (falls back to local-only demo)
+    const backendId = await createBackendTicket(ticket);
+    if (backendId) ticket.backendId = backendId;
     actions.setTickets((p) => [ticket, ...p]);
-    actions.logActivity(`Created request for ${ticket.customer} from pasted AE email`, id);
+    actions.logActivity(
+      `Created request for ${ticket.customer} from pasted AE email${backendId ? ` (synced to backend #${backendId})` : ""}`,
+      id,
+    );
 
     // NT-04: unknown NDA keeps the ticket in Intake Review; extraction waits.
     if (ndaUnknown) {
@@ -121,19 +128,51 @@ export function NewRequestFlow({
       }, 600);
       return;
     }
-    // Auto-run question extraction + department classification (no manual step)
+
+    // Auto-run question extraction + department classification. Real file →
+    // backend parse + LLM classification; otherwise the simulated template.
+    const base = Math.max(0, ...state.questions.map((q) => q.id));
+    let qs: ReturnType<typeof extractQuestionsFor> = [];
+    let live = false;
+    if (attached) {
+      const parsed = await parseQuestionnaire(attached, backendId);
+      if (parsed && parsed.length > 0) {
+        live = true;
+        qs = parsed.map((pq, i) => ({
+          id: base + i + 1,
+          backendId: pq.backendId,
+          ticketId: id,
+          row: i + 1,
+          original: pq.text,
+          normalised: pq.text,
+          department: pq.department,
+          risk: "Medium" as const,
+          status: "AI Analysed" as const,
+          confidence: null,
+        }));
+      }
+    }
+    if (qs.length === 0) qs = extractQuestionsFor(id, base);
+
     setTimeout(() => {
-      const base = Math.max(0, ...state.questions.map((q) => q.id));
-      const qs = extractQuestionsFor(id, base);
       actions.setQuestions((p) => [...p, ...qs]);
+      actions.setTickets((p) =>
+        p.map((t) => (t.id === id ? { ...t, status: "In Progress" } : t)),
+      );
+      syncTicketStatus(backendId ?? undefined, "In Progress");
       actions.logActivity(
-        `AI extracted ${qs.length} questions and classified departments (1 possible duplicate flagged)`,
+        live
+          ? `AI parsed ${attached!.name} and classified ${qs.length} questions by department (live backend)`
+          : `AI extracted ${qs.length} questions and classified departments (1 possible duplicate flagged)`,
         id,
       );
-      actions.addToast(`${qs.length} questions extracted — review the department grouping.`, "success");
+      actions.addToast(
+        `${qs.length} questions ${live ? "parsed from the uploaded form" : "extracted"} — review the department grouping.`,
+        "success",
+      );
       close();
       actions.openTicket(id);
-    }, 1600);
+    }, live ? 300 : 1400);
   };
 
   const field = "w-full border border-border rounded-md px-2.5 py-1.5 text-xs";
@@ -188,7 +227,7 @@ export function NewRequestFlow({
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) setFileName(f.name);
+                  if (f) setAttached(f);
                   e.target.value = "";
                 }}
               />
@@ -196,7 +235,7 @@ export function NewRequestFlow({
                 onClick={() => fileRef.current?.click()}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold border border-dashed border-border rounded-md text-[#6B7280] hover:border-[#F96702]/40 hover:text-[#F96702]"
               >
-                <Upload size={11} /> {fileName ?? "Attach customer form (optional)"}
+                <Upload size={11} /> {attached?.name ?? "Attach customer form (optional)"}
               </button>
             </div>
             <div className="flex justify-end gap-2 pt-1">

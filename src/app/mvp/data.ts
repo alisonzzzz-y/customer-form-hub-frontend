@@ -94,6 +94,7 @@ export type MvpFile = {
 
 export type MvpTicket = {
   id: string;
+  backendId?: number; // id in Alison's backend once synced
   customer: string;
   sorId: string;
   owner: string;
@@ -115,6 +116,7 @@ export type MvpTicket = {
 
 export type MvpQuestion = {
   id: number;
+  backendId?: number;
   ticketId: string;
   row: number;
   original: string;
@@ -136,6 +138,9 @@ export type MvpQuestion = {
 
 export type MvpSmeRequest = {
   id: number;
+  backendId?: number;
+  sentEmail?: { subject: string; body: string }; // backend-composed content
+  srqIds?: Record<number, number>; // local question id -> SmeRequestQuestion id
   ticketId: string;
   department: string;
   assignee: string;

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   LayoutDashboard,
   Ticket as TicketIcon,
@@ -31,6 +31,7 @@ import {
   SEED_NOTIFICATIONS,
   SEED_ACTIVITY,
 } from "./data";
+import { onBackendStatus, pingBackend } from "./backend";
 import { DashboardPage } from "./DashboardPage";
 import { TicketsPage, TicketFilters, EMPTY_FILTERS } from "./TicketsPage";
 import { TicketDetailPage } from "./TicketDetailPage";
@@ -89,6 +90,12 @@ export default function MvpApp() {
   const [kbFocusEntry, setKbFocusEntry] = useState<number | null>(null);
   const [kbReturnTicket, setKbReturnTicket] = useState<string | null>(null);
   const [globalQuery, setGlobalQuery] = useState("");
+  const [backendLive, setBackendLive] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    onBackendStatus(setBackendLive);
+    void pingBackend();
+  }, []);
 
   const [tickets, setTickets] = useState<MvpTicket[]>(SEED_TICKETS);
   const [questions, setQuestions] = useState<MvpQuestion[]>(SEED_QUESTIONS);
@@ -209,8 +216,15 @@ export default function MvpApp() {
             );
           })}
         </nav>
-        <div className="px-4 py-3 border-t border-[rgba(0,0,0,0.06)] shrink-0 text-[9px] text-[#B8B5B0] font-medium">
-          MVP demo build · seeded data
+        <div className="px-4 py-3 border-t border-[rgba(0,0,0,0.06)] shrink-0 flex items-center gap-1.5 text-[9px] font-medium">
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${backendLive ? "bg-green-500" : "bg-[#D8D5D0]"}`}
+          />
+          <span className={backendLive ? "text-green-700" : "text-[#B8B5B0]"}>
+            {backendLive
+              ? "Backend live — real AI parsing & retrieval"
+              : "Backend offline — simulated data"}
+          </span>
         </div>
       </aside>
 

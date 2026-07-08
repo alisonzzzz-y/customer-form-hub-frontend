@@ -33,8 +33,21 @@ import {
   fmtDateTime,
 } from "./data";
 import { AppActions, AppState } from "./MvpApp";
+import {
+  applyRagResult,
+  createBackendSmeRequest,
+  fetchSmeEmail,
+  packageBackendQuestions,
+  ragSearch,
+  syncFinalAnswer,
+  syncQuestionStatus,
+  syncSmeAnswer,
+  syncSmeRequest,
+  syncTicketStatus,
+} from "./backend";
 import { ClarificationEmailModal } from "./NewRequestFlow";
 import { attachSuggestions, extractQuestionsFor, smeAnswerFor } from "./simulation";
+import { exportTicketUrl } from "../api";
 import { Card, ConfidenceBadge, Pill, SharingBadge, Th } from "./ui";
 
 // Guided per-ticket workflow, ported from the original prototype:
@@ -295,27 +308,44 @@ function GroupingPanel({
   const [processing, setProcessing] = useState(false);
   const depts = DEPARTMENTS.filter((d) => qs.some((q) => q.department === d));
 
-  const confirm = () => {
+  const confirm = async () => {
     setProcessing(true);
     actions.logActivity("Confirmed department grouping — generating AI suggestions", ticket.id);
+    const pending = qs.filter((q) => !q.finalAnswer && q.status !== "SME Queued");
+
+    // Try live RAG retrieval first (POST /api/knowledge-base/search per question)
+    let updates: Map<number, MvpQuestion> | null = null;
+    const probe = pending.length > 0 ? await ragSearch(pending[0].normalised || pending[0].original) : null;
+    if (probe !== null) {
+      updates = new Map();
+      updates.set(pending[0].id, applyRagResult(pending[0], probe));
+      const rest = await Promise.all(
+        pending.slice(1).map(async (q) => {
+          const results = await ragSearch(q.normalised || q.original);
+          return [q.id, results ? applyRagResult(q, results) : attachSuggestions(q)] as const;
+        }),
+      );
+      for (const [qid, qq] of rest) updates!.set(qid, qq);
+    }
+
     setTimeout(() => {
       actions.setQuestions((p) =>
-        p.map((q) =>
-          q.ticketId === ticket.id && !q.finalAnswer && q.status !== "SME Queued"
-            ? attachSuggestions(q)
-            : q,
-        ),
+        p.map((q) => {
+          if (q.ticketId !== ticket.id || q.finalAnswer || q.status === "SME Queued") return q;
+          return updates ? (updates.get(q.id) ?? q) : attachSuggestions(q);
+        }),
       );
       actions.setTickets((p) =>
         p.map((t) => (t.id === ticket.id ? { ...t, stage: "review" } : t)),
       );
-      const withSuggestion = qs.filter((q) => q.confidence !== null && q.confidence >= 0.7).length;
       actions.logActivity(
-        `AI generated ${withSuggestion} suggested answers from approved knowledge`,
+        updates
+          ? `AI retrieved suggestions from the live Knowledge Base for ${updates.size} questions`
+          : "AI generated suggested answers from approved knowledge (simulated)",
         ticket.id,
       );
       actions.addToast("AI suggestions ready — review each answer.", "success");
-    }, 1400);
+    }, updates ? 200 : 1200);
   };
 
   if (processing)
@@ -636,6 +666,7 @@ function ReviewPanel({
                       },
                       `${q.suggested ? "Edited and approved" : "Manually answered"} question #${q.row}`,
                     );
+                    syncFinalAnswer(q, draft.trim(), true, state.currentUser);
                     maybeSaveKb(draft.trim(), q);
                     actions.addToast("Answer approved.", "success");
                     advance();
@@ -658,6 +689,7 @@ function ReviewPanel({
                         },
                         `Approved AI answer for question #${q.row}`,
                       );
+                      syncFinalAnswer(q, q.suggested!.text, false, state.currentUser);
                       actions.addToast("Answer approved.", "success");
                       advance();
                     }}
@@ -690,6 +722,7 @@ function ReviewPanel({
                         },
                         `Reverted approval on question #${q.row}`,
                       );
+                      syncQuestionStatus(q.backendId, "Needs Review");
                       actions.addToast("Approval undone — the question is back in review.", "info");
                     }}
                   >
@@ -700,6 +733,7 @@ function ReviewPanel({
                   <button
                     onClick={() => {
                       update(q.id, { status: "SME Queued" }, `Routed question #${q.row} to ${q.department} SME queue`);
+                      syncQuestionStatus(q.backendId, "SME Needed");
                       actions.addToast(`Added to the ${q.department} SME queue.`, "info");
                       advance();
                     }}
@@ -712,6 +746,7 @@ function ReviewPanel({
                   <BtnSecondary
                     onClick={() => {
                       update(q.id, { status: q.suggested ? "Needs Review" : "New" }, `Removed question #${q.row} from SME queue`);
+                      syncQuestionStatus(q.backendId, "Needs Review");
                       actions.addToast("Removed from SME queue.", "info");
                     }}
                   >
@@ -758,7 +793,7 @@ function SmePackagePanel({
   const tabSent = tab !== "" && tabQueued.length === 0 && waiting.some((q) => q.department === tab);
   const allSent = queued.length === 0;
 
-  const sendDept = () => {
+  const sendDept = async () => {
     const req: MvpSmeRequest = {
       id: Math.max(0, ...state.smeRequests.map((r) => r.id)) + 1,
       ticketId: ticket.id,
@@ -769,6 +804,25 @@ function SmePackagePanel({
       questionIds: tabQueued.map((q) => q.id),
       sentAt: new Date().toISOString(),
     };
+    // Live backend: create the request, link questions, use its composed email
+    if (ticket.backendId) {
+      const backendReqId = await createBackendSmeRequest(
+        ticket.backendId, tab, `${tab} Team`, tabQueued.length,
+      );
+      if (backendReqId) {
+        req.backendId = backendReqId;
+        const srqByBackendQ = await packageBackendQuestions(backendReqId, ticket.backendId, tab);
+        if (srqByBackendQ) {
+          req.srqIds = {};
+          for (const q of tabQueued) {
+            if (q.backendId && srqByBackendQ[q.backendId] !== undefined)
+              req.srqIds[q.id] = srqByBackendQ[q.backendId];
+          }
+        }
+        const email = await fetchSmeEmail(backendReqId);
+        if (email) req.sentEmail = email;
+      }
+    }
     actions.setSmeRequests((p) => [...p, req]);
     actions.setQuestions((p) =>
       p.map((q) =>
@@ -784,6 +838,7 @@ function SmePackagePanel({
       actions.setTickets((p) =>
         p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta", status: "Waiting SME" } : t)),
       );
+      syncTicketStatus(ticket.backendId, "Waiting SME");
       actions.addToast("All SME packages sent — track ETAs next.", "success");
     } else {
       actions.addToast(`${tab} SME email sent. ${remaining} question(s) left in other departments.`, "success");
@@ -883,6 +938,21 @@ function SmePackagePanel({
                 </div>
               ))}
             </div>
+            {(() => {
+              const sentReq = state.smeRequests.find(
+                (r) => r.ticketId === ticket.id && r.department === tab && r.sentEmail,
+              );
+              if (sentReq?.sentEmail)
+                return (
+                  <div className="px-3.5 py-3 text-[10px] text-[#374151] leading-relaxed flex-1 whitespace-pre-wrap">
+                    <p className="text-[9px] font-bold text-green-700 uppercase tracking-[0.1em] mb-1.5">
+                      Sent — composed by backend
+                    </p>
+                    {sentReq.sentEmail.body}
+                  </div>
+                );
+              return null;
+            })() ?? (
             <div className="px-3.5 py-3 text-[10px] text-[#374151] leading-relaxed space-y-2 flex-1">
               <p>Hi {tab} Team,</p>
               <p>
@@ -899,6 +969,7 @@ function SmePackagePanel({
                 Please complete your tab and reply with your <strong>ETA</strong>.
               </p>
             </div>
+            )}
             <div className="px-3.5 py-2.5 border-t border-border bg-[#F7F8FA]">
               <button
                 onClick={sendDept}
@@ -979,6 +1050,7 @@ function EtaPanel({
     actions.setSmeRequests((p) =>
       p.map((r) => (r.id === etaModal.id ? { ...r, eta: iso, status: "ETA Set" } : r)),
     );
+    syncSmeRequest(etaModal.backendId, { eta: iso, status: "ETA Set", confirmedBy: confirmedBy || null });
     actions.logActivity(
       `ETA recorded for ${etaModal.department}: ${fmtDateTime(iso)}${confirmedBy ? ` — ${confirmedBy}` : ""}`,
       ticket.id,
@@ -988,19 +1060,23 @@ function EtaPanel({
   };
 
   const markReturned = (r: MvpSmeRequest) => {
+    const returnedAt = new Date().toISOString();
     actions.setSmeRequests((p) =>
-      p.map((x) => (x.id === r.id ? { ...x, status: "Returned", returnedAt: new Date().toISOString() } : x)),
+      p.map((x) => (x.id === r.id ? { ...x, status: "Returned", returnedAt } : x)),
     );
+    syncSmeRequest(r.backendId, { status: "Returned", returnedAt });
     actions.setQuestions((p) =>
-      p.map((q) =>
-        r.questionIds.includes(q.id)
-          ? {
-              ...q,
-              status: "SME Complete",
-              finalAnswer: { text: smeAnswerFor(q, r.assignee), sourceType: "SME" },
-            }
-          : q,
-      ),
+      p.map((q) => {
+        if (!r.questionIds.includes(q.id)) return q;
+        const answer = smeAnswerFor(q, r.assignee);
+        syncSmeAnswer(r.srqIds?.[q.id], answer);
+        syncFinalAnswer(q, answer, false, r.assignee);
+        return {
+          ...q,
+          status: "SME Complete",
+          finalAnswer: { text: answer, sourceType: "SME" },
+        };
+      }),
     );
     actions.logActivity(`${r.department} SME tab returned (${r.questionIds.length} answers)`, ticket.id);
     actions.addToast(`${r.department} SME answers received.`, "success");
@@ -1088,6 +1164,10 @@ function EtaPanel({
                                     : qq,
                                 ),
                               );
+                              syncSmeRequest(r.backendId, {
+                                status: r.eta ? "ETA Set" : "Requested",
+                                returnedAt: null,
+                              });
                               actions.logActivity(`Undid returned status for ${r.department}`, ticket.id);
                               actions.addToast(`${r.department} marked as still pending.`, "info");
                             }}
@@ -1118,6 +1198,7 @@ function EtaPanel({
                   t.id === ticket.id ? { ...t, stage: "final", status: "Ready for Review" } : t,
                 ),
               );
+              syncTicketStatus(ticket.backendId, "Ready for Review");
               actions.logActivity("All SME tabs returned — final review unlocked", ticket.id);
             }}
           >
@@ -1269,9 +1350,19 @@ function FinalPanel({
     setTimeout(() => {
       setExporting(false);
       setExported(true);
-      actions.logActivity("Exported completed response package", ticket.id);
-      actions.addToast("Response exported successfully.", "success");
-    }, 1200);
+      if (ticket.backendId) {
+        // Real Excel generated by the backend (GET /api/export/ticket/{id})
+        const a = document.createElement("a");
+        a.href = exportTicketUrl(ticket.backendId);
+        a.download = "";
+        a.click();
+        actions.logActivity("Downloaded backend-generated Excel response package", ticket.id);
+        actions.addToast("Excel exported from the live backend.", "success");
+      } else {
+        actions.logActivity("Exported completed response package (simulated)", ticket.id);
+        actions.addToast("Response exported successfully.", "success");
+      }
+    }, ticket.backendId ? 300 : 1200);
   };
 
   return (
@@ -1373,6 +1464,7 @@ function FinalPanel({
             actions.setTickets((p) =>
               p.map((t) => (t.id === ticket.id ? { ...t, status: "Approved", stage: "done" } : t)),
             );
+            syncTicketStatus(ticket.backendId, "Approved");
             actions.logActivity("Approved final response — ticket ready to send", ticket.id);
             actions.addToast("Ticket approved. Use Mark Sent & Close in the header to finish.", "success");
           }}

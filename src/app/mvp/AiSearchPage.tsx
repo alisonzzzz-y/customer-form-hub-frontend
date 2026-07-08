@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Copy, ExternalLink, Loader2, Lock, Search, Sparkles } from "lucide-react";
 import { MvpKnowledgeEntry } from "./data";
 import { AppActions, AppState } from "./MvpApp";
+import { mapSharing, ragSearch } from "./backend";
 import { Card, ConfidenceBadge, EmptyState, SharingBadge } from "./ui";
 
 // PRD §12: standalone, citation-first lookup over APPROVED knowledge only.
@@ -24,11 +25,42 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
   const [searching, setSearching] = useState(false);
   const [result, setResult] = useState<SearchOutcome | null>(null);
 
-  const run = () => {
+  const run = async () => {
     if (!query.trim()) return;
     setSearching(true);
     setResult(null);
-    // Simulated retrieval over approved entries only (AIS-01, KB-05)
+
+    // Live semantic search first (POST /api/knowledge-base/search)
+    const live = await ragSearch(query.trim());
+    if (live !== null) {
+      const usable = live.filter((r) => (r.similarityScore ?? 0) >= 0.35);
+      if (usable.length === 0) {
+        setResult({ kind: "miss" });
+      } else {
+        const toEntry = (r: (typeof usable)[number]): MvpKnowledgeEntry => ({
+          id: r.id,
+          title: `${r.documentTitle} — ${r.sectionTitle}`,
+          content: r.content,
+          department: r.department,
+          source: r.source,
+          lastUpdated: r.lastUpdated?.slice(0, 10) ?? "—",
+          sharingStatus: mapSharing(r.sharingStatus),
+          status: "Approved",
+          tags: [],
+          owner: r.department,
+        });
+        setResult({
+          kind: "hit",
+          entry: toEntry(usable[0]),
+          confidence: usable[0].similarityScore ?? 0.5,
+          related: usable.slice(1, 4).map(toEntry),
+        });
+      }
+      setSearching(false);
+      return;
+    }
+
+    // Fallback: simulated retrieval over seeded approved entries (AIS-01, KB-05)
     setTimeout(() => {
       const approved = state.knowledge.filter((k) => k.status === "Approved");
       const ranked = approved
