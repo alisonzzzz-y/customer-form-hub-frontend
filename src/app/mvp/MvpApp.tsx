@@ -31,7 +31,7 @@ import {
   SEED_NOTIFICATIONS,
   SEED_ACTIVITY,
 } from "./data";
-import { onBackendStatus, pingBackend } from "./backend";
+import { loadBackendKnowledge, loadBackendWorld, onBackendStatus, pingBackend } from "./backend";
 import { DashboardPage } from "./DashboardPage";
 import { TicketsPage, TicketFilters, EMPTY_FILTERS } from "./TicketsPage";
 import { TicketDetailPage } from "./TicketDetailPage";
@@ -94,7 +94,35 @@ export default function MvpApp() {
 
   useEffect(() => {
     onBackendStatus(setBackendLive);
-    void pingBackend();
+    // Hydrate from the backend when it is reachable: existing tickets (with
+    // their questions, SME requests and answers) and the live knowledge base
+    // appear alongside the local demo seeds.
+    void (async () => {
+      if (!(await pingBackend())) return;
+      const world = await loadBackendWorld(
+        new Set(
+          SEED_TICKETS.map((t) => t.backendId).filter((x): x is number => x !== undefined),
+        ),
+      );
+      if (world && world.tickets.length > 0) {
+        setTickets((p) => [
+          ...world.tickets.filter((w) => !p.some((t) => t.backendId === w.backendId)),
+          ...p,
+        ]);
+        setQuestions((p) => [
+          ...p,
+          ...world.questions.filter((w) => !p.some((q) => q.backendId === w.backendId)),
+        ]);
+        setSmeRequests((p) => [
+          ...p,
+          ...world.smeRequests.filter((w) => !p.some((r) => r.backendId === w.backendId)),
+        ]);
+        addToast(`Loaded ${world.tickets.length} ticket(s) from the live backend.`, "info");
+      }
+      const kb = await loadBackendKnowledge();
+      if (kb) setKnowledge(kb);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [tickets, setTickets] = useState<MvpTicket[]>(SEED_TICKETS);

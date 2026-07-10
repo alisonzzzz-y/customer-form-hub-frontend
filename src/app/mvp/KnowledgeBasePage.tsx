@@ -3,6 +3,7 @@ import { Archive, ArrowLeft, BookOpen, CheckCircle, Edit3, Plus, RotateCcw, Sear
 import { BtnPrimary, BtnSecondary } from "../components/shared";
 import { DEPARTMENTS, KnowledgeStatus, MvpKnowledgeEntry, SharingStatus } from "./data";
 import { AppActions, AppState } from "./MvpApp";
+import { upsertBackendKnowledge } from "./backend";
 import { EmptyState, FilterSelect, Pill, SharingBadge, Th } from "./ui";
 
 // PRD §11: entries with metadata, department browsing (not "collections" in
@@ -51,6 +52,7 @@ export function KnowledgeBasePage({
   const detail = knowledge.find((k) => k.id === detailId) ?? null;
 
   const setStatus = (id: number, status: KnowledgeStatus, log: string) => {
+    const updated = knowledge.find((k) => k.id === id);
     actions.setKnowledge((p) =>
       p.map((k) =>
         k.id === id
@@ -58,6 +60,12 @@ export function KnowledgeBasePage({
           : k,
       ),
     );
+    // best-effort write-back so live backend data stays in sync
+    if (updated)
+      void upsertBackendKnowledge(
+        { ...updated, status, lastUpdated: new Date().toISOString().slice(0, 10) },
+        false,
+      );
     actions.logActivity(log);
   };
 
@@ -355,32 +363,32 @@ function EntryEditor({
     const today = new Date().toISOString().slice(0, 10);
     const tagList = tags.split(",").map((t) => t.trim()).filter(Boolean);
     if (existing) {
-      actions.setKnowledge((p) =>
-        p.map((k) =>
-          k.id === existing.id
-            ? { ...k, title: title.trim(), content: content.trim(), department: dept, sharingStatus: sharing, source: source.trim(), tags: tagList, lastUpdated: today }
-            : k,
-        ),
-      );
+      const next = { ...existing, title: title.trim(), content: content.trim(), department: dept, sharingStatus: sharing, source: source.trim(), tags: tagList, lastUpdated: today };
+      actions.setKnowledge((p) => p.map((k) => (k.id === existing.id ? next : k)));
+      void upsertBackendKnowledge(next, false);
       actions.logActivity(`Edited knowledge entry “${title.trim()}”`);
       actions.addToast("Entry updated.", "success");
     } else {
       // KB-06: new manual entries start as Pending Review
-      actions.setKnowledge((p) => [
-        {
-          id: Math.max(...p.map((k) => k.id)) + 1,
-          title: title.trim(),
-          content: content.trim(),
-          department: dept,
-          sharingStatus: sharing,
-          source: source.trim() || "Manual entry",
-          lastUpdated: today,
-          status: "Pending Review",
-          tags: tagList,
-          owner: state.currentUser,
-        },
-        ...p,
-      ]);
+      const entry = {
+        id: Math.max(...state.knowledge.map((k) => k.id)) + 1,
+        title: title.trim(),
+        content: content.trim(),
+        department: dept,
+        sharingStatus: sharing,
+        source: source.trim() || "Manual entry",
+        lastUpdated: today,
+        status: "Pending Review" as const,
+        tags: tagList,
+        owner: state.currentUser,
+      };
+      actions.setKnowledge((p) => [entry, ...p]);
+      void upsertBackendKnowledge(entry, true).then((backendId) => {
+        if (backendId)
+          actions.setKnowledge((p) =>
+            p.map((k) => (k.id === entry.id ? { ...k, id: backendId } : k)),
+          );
+      });
       actions.logActivity(`Submitted knowledge entry “${title.trim()}” for review`);
       actions.addToast("Entry submitted to Pending Review.", "success");
     }

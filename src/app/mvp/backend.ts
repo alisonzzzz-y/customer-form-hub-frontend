@@ -261,6 +261,228 @@ export function applyRagResult(q: MvpQuestion, results: SearchResult[]): MvpQues
   };
 }
 
+// ─── Startup load: hydrate the local model from the backend ─────────────────
+// Called once when the backend is reachable so existing tickets, questions,
+// SME requests, answers and knowledge appear in the app (the local demo seeds
+// stay alongside; everything loaded here is fully live-synced).
+
+type BackendTicketFull = {
+  id: number;
+  customerName: string;
+  createdBy: string | null;
+  assignedTo: string | null;
+  status: string;
+  urgency: string | null;
+  ndaStatus: string | null;
+  deadline: string | null;
+  businessImpact: string | null;
+  createdAt: string | null;
+};
+type BackendSmeRequestFull = {
+  id: number;
+  ticketId: number;
+  department: string;
+  teamName: string | null;
+  eta: string | null;
+  status: string;
+  sentAt: string | null;
+  returnedAt: string | null;
+};
+type QuestionWithAnswer = {
+  questionId: number;
+  answerText: string | null;
+  sourceType: string | null;
+  answered: boolean;
+};
+
+const NDA_FROM_BACKEND: Record<string, MvpTicket["nda"]> = {
+  Yes: "In Place",
+  No: "Missing",
+  Unknown: "Unknown",
+};
+
+export type BackendWorld = {
+  tickets: MvpTicket[];
+  questions: MvpQuestion[];
+  smeRequests: import("./data").MvpSmeRequest[];
+};
+
+export async function loadBackendWorld(knownBackendIds: Set<number>): Promise<BackendWorld | null> {
+  const raw = await get<BackendTicketFull[]>("/tickets");
+  if (raw === null) return null;
+  const world: BackendWorld = { tickets: [], questions: [], smeRequests: [] };
+
+  for (const bt of raw) {
+    if (knownBackendIds.has(bt.id)) continue; // already in local state this session
+    const localId = `TK-${9000 + bt.id}`;
+
+    const bqs = (await get<FormQuestion[]>(`/questions/ticket/${bt.id}`)) ?? [];
+    const answers = (await get<QuestionWithAnswer[]>(`/final-review/ticket/${bt.id}`)) ?? [];
+    const answerByQ = new Map(answers.filter((a) => a.answered).map((a) => [a.questionId, a]));
+    const breqs = (await get<BackendSmeRequestFull[]>(`/sme-requests/ticket/${bt.id}`)) ?? [];
+
+    // which backend questions are linked to an SME request (and their link ids)
+    const linkByQ = new Map<number, { reqId: number; srqId: number; returned: boolean }>();
+    for (const r of breqs) {
+      const links = (await get<SmeRequestQuestion[]>(`/sme-request-questions/request/${r.id}`)) ?? [];
+      for (const l of links)
+        linkByQ.set(l.questionId, { reqId: r.id, srqId: l.id, returned: l.status === "Returned" });
+    }
+
+    const localQs: MvpQuestion[] = bqs.map((q, i) => {
+      const fa = answerByQ.get(q.id);
+      const link = linkByQ.get(q.id);
+      const sourceType =
+        fa?.sourceType === "SME" ? "SME" : fa?.sourceType === "Manual" ? "Manual" : "AI";
+      let status: MvpQuestion["status"];
+      if (fa) status = link?.returned ? "SME Complete" : "Approved";
+      else if (q.status === "SME Needed") status = link ? "Waiting SME" : "SME Queued";
+      else status = "Needs Review";
+      return {
+        id: 100000 + q.id,
+        backendId: q.id,
+        ticketId: localId,
+        row: i + 1,
+        original: q.questionText,
+        normalised: q.questionText,
+        department: q.department ?? "General",
+        risk: (q.riskLevel as MvpQuestion["risk"]) ?? "Medium",
+        status,
+        confidence: null,
+        finalAnswer: fa ? { text: fa.answerText ?? "", sourceType } : undefined,
+        smeRequestId: link ? 100000 + link.reqId : undefined,
+      };
+    });
+
+    const localReqs = breqs.map((r) => {
+      const statusMap: Record<string, import("./data").MvpSmeRequest["status"]> = {
+        "Waiting for ETA": "Requested",
+        "ETA Confirmed": "ETA Set",
+        Overdue: "ETA Set", // our UI derives overdue from the clock
+        Returned: "Returned",
+      };
+      const srqIds: Record<number, number> = {};
+      const questionIds: number[] = [];
+      for (const [qid, link] of linkByQ) {
+        if (link.reqId !== r.id) continue;
+        questionIds.push(100000 + qid);
+        srqIds[100000 + qid] = link.srqId;
+      }
+      return {
+        id: 100000 + r.id,
+        backendId: r.id,
+        ticketId: localId,
+        department: r.department,
+        assignee: r.teamName ?? `${r.department} Team`,
+        eta: r.eta,
+        status: statusMap[r.status] ?? "Requested",
+        questionIds,
+        sentAt: r.sentAt ?? new Date().toISOString(),
+        returnedAt: r.returnedAt ?? undefined,
+        srqIds,
+      };
+    });
+
+    // derive the workflow stage from the loaded state
+    const allDone =
+      localQs.length > 0 &&
+      localQs.every((q) => ["Approved", "SME Complete"].includes(q.status));
+    const anyWaiting = localQs.some((q) => q.status === "Waiting SME");
+    const anyQueued = localQs.some((q) => q.status === "SME Queued");
+    const stage: MvpTicket["stage"] =
+      bt.status === "Completed" ? "done"
+      : localQs.length === 0 ? "intake"
+      : allDone ? "final"
+      : anyWaiting ? "eta"
+      : anyQueued ? "sme"
+      : "review";
+
+    const statusMap: Record<string, MvpTicket["status"]> = {
+      New: "New",
+      "Intake Missing": "Intake Review",
+      "In Review": "In Progress",
+      "Waiting SME": "Waiting SME",
+      Completed: "Closed",
+    };
+
+    world.tickets.push({
+      id: localId,
+      backendId: bt.id,
+      customer: bt.customerName,
+      sorId: "—",
+      owner: bt.assignedTo ?? "Sarah Chen",
+      status: statusMap[bt.status] ?? "In Progress",
+      stage,
+      due: bt.deadline?.slice(0, 10) ?? "",
+      created: bt.createdAt?.slice(0, 10) ?? "",
+      closed: bt.status === "Completed" ? (bt.createdAt?.slice(0, 10) ?? undefined) : undefined,
+      urgency: (bt.urgency as MvpTicket["urgency"]) ?? "Medium",
+      nda: NDA_FROM_BACKEND[bt.ndaStatus ?? "Unknown"] ?? "Unknown",
+      region: "—",
+      source: "Backend",
+      ae: bt.createdBy ?? undefined,
+      files: [],
+    });
+    world.questions.push(...localQs);
+    world.smeRequests.push(...localReqs);
+  }
+  return world;
+}
+
+// Live knowledge entries for the MVP Knowledge Base module (replaces the
+// seeded list when the backend is reachable, so suggestion source links
+// resolve to real entries).
+export async function loadBackendKnowledge(): Promise<
+  import("./data").MvpKnowledgeEntry[] | null
+> {
+  const raw = await get<SearchResult[]>("/knowledge-base");
+  if (raw === null || raw.length === 0) return null;
+  return raw.map((k) => ({
+    id: k.id,
+    title: `${k.documentTitle} — ${k.sectionTitle}`,
+    content: k.content,
+    department: k.department,
+    source: k.source,
+    lastUpdated: k.lastUpdated?.slice(0, 10) ?? "—",
+    sharingStatus: mapSharing(k.sharingStatus),
+    status: k.approved ? "Approved" : "Pending Review",
+    tags: [],
+    owner: k.department,
+  }));
+}
+
+// Write-back for the MVP Knowledge Base module (approve/edit/archive/create).
+// The backend models approval as a boolean; richer statuses (Draft/Deprecated/
+// Archived) map to approved=false until it gains a status field.
+const SHARING_TO_BACKEND: Record<string, string> = {
+  Public: "Public",
+  Internal: "Internal",
+  "NDA Required": "NDA-required",
+};
+
+export async function upsertBackendKnowledge(
+  entry: import("./data").MvpKnowledgeEntry,
+  isNew: boolean,
+): Promise<number | null> {
+  const [documentTitle, sectionTitle = ""] = entry.title.split(" — ");
+  const payload = {
+    documentTitle,
+    sectionTitle,
+    content: entry.content,
+    source: entry.source,
+    lastUpdated: entry.lastUpdated && entry.lastUpdated !== "—" ? `${entry.lastUpdated}T00:00:00` : null,
+    sharingStatus: SHARING_TO_BACKEND[entry.sharingStatus] ?? entry.sharingStatus,
+    department: entry.department,
+    approved: entry.status === "Approved",
+  };
+  if (isNew) {
+    const created = await post<{ id: number }>("/knowledge-base", payload);
+    return created?.id ?? null;
+  }
+  const updated = await put<{ id: number }>(`/knowledge-base/${entry.id}`, payload);
+  return updated?.id ?? null;
+}
+
 // ─── Answers ─────────────────────────────────────────────────────────────────
 
 export function syncFinalAnswer(q: MvpQuestion, answerText: string, edited: boolean, approvedBy: string) {
