@@ -33,7 +33,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
     // Live semantic search first (POST /api/knowledge-base/search)
     const live = await ragSearch(query.trim());
     if (live !== null) {
-      const usable = live.filter((r) => (r.similarityScore ?? 0) >= 0.35);
+      const usable = live; // backend applies its own similarity threshold
       if (usable.length === 0) {
         setResult({ kind: "miss" });
       } else {

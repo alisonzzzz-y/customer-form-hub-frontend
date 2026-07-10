@@ -117,7 +117,7 @@ export function IntakeUploadScreen({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".xlsx,.xls,.csv"
+                accept=".xlsx,.docx"
                 className="hidden"
                 onChange={(e) => {
                   const picked = e.target.files?.[0];

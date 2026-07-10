@@ -52,7 +52,9 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
     .filter((r) => !["Returned", "Closed"].includes(r.status))
     .map((r) => ({
       ...r,
-      over: r.status === "Overdue" || (r.eta !== null && new Date(r.eta) < MOCK_NOW),
+      over:
+        r.status === "Overdue" ||
+        (r.eta !== null && new Date(r.eta) < (r.backendId ? new Date() : MOCK_NOW)),
       ticket: tickets.find((t) => t.id === r.ticketId),
     }))
     .sort((a, b) => Number(b.over) - Number(a.over));

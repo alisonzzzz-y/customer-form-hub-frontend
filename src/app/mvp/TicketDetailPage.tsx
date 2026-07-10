@@ -247,7 +247,10 @@ function OverviewTab({
         ) : (
           <div className="divide-y divide-border">
             {smeReqs.map((r) => {
-              const over = r.status !== "Returned" && r.eta !== null && new Date(r.eta) < MOCK_NOW;
+              const over =
+                r.status !== "Returned" &&
+                r.eta !== null &&
+                new Date(r.eta) < (r.backendId ? new Date() : MOCK_NOW);
               return (
                 <div key={r.id} className={`px-4 py-3 ${over ? "bg-red-50/40" : ""}`}>
                   <div className="flex items-center gap-2">

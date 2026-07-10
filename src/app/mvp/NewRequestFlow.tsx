@@ -130,6 +130,7 @@ export function NewRequestFlow({
           <input
             ref={fileRef}
             type="file"
+            accept=".xlsx,.docx"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];

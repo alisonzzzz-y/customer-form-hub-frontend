@@ -1,3 +1,4 @@
+/// <reference path="./vite-env.d.ts" />
 // Backend integration layer for the MVP shell.
 //
 // Every call is best-effort: if Alison's Spring Boot backend (localhost:8080)
@@ -7,22 +8,24 @@
 // backend entities lives here so it can be deleted once the schemas converge
 // (see NOTES_FOR_ALISON.md §4.6).
 
-import {
+import type {
   ClassifiedQuestion,
+  FinalAnswerInput,
   FormQuestion,
   SearchResult,
-  classifyQuestionnaire,
-  importQuestionnaire,
-  packageSmeQuestions,
-  recordSmeAnswer,
-  saveFinalAnswer,
-  searchKnowledgeBase,
-  updateQuestionStatus,
-  updateTicketStatus,
+  SmeRequestQuestion,
 } from "../api";
 import { MvpQuestion, MvpTicket, SharingStatus } from "./data";
 
-const BASE = "http://localhost:8080/api";
+// Configurable for deployment (PR #3 review): VITE_API_BASE on Vercel,
+// localhost default for development. All requests in this module go through
+// BASE — api.ts is only used for its types here, since its axios instance is
+// hardcoded to localhost.
+const BASE = `${import.meta.env.VITE_API_BASE ?? "http://localhost:8080"}/api`;
+
+export function exportUrl(backendTicketId: number): string {
+  return `${BASE}/export/ticket/${backendTicketId}`;
+}
 
 // ─── Live/offline status ─────────────────────────────────────────────────────
 
@@ -77,6 +80,30 @@ async function put<T>(path: string, body: unknown): Promise<T | null> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then((r) => {
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json() as Promise<T>;
+    }),
+  );
+}
+
+async function patch<T>(path: string, body: unknown): Promise<T | null> {
+  return attempt(
+    fetch(`${BASE}${path}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => {
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json() as Promise<T>;
+    }),
+  );
+}
+
+async function postFile<T>(path: string, file: File): Promise<T | null> {
+  const form = new FormData();
+  form.append("file", file);
+  return attempt(
+    fetch(`${BASE}${path}`, { method: "POST", body: form }).then((r) => {
       if (!r.ok) throw new Error(String(r.status));
       return r.json() as Promise<T>;
     }),
@@ -140,7 +167,7 @@ export function syncTicketStatus(backendId: number | undefined, status: string) 
     Sent: "Completed",
     Closed: "Completed",
   };
-  void attempt(updateTicketStatus(backendId, map[status] ?? status));
+  void patch(`/tickets/${backendId}/status`, { status: map[status] ?? status });
 }
 
 // ─── Questionnaire parsing + classification (real files) ─────────────────────
@@ -157,7 +184,10 @@ export async function parseQuestionnaire(
   backendTicketId: number | null,
 ): Promise<ParsedBackendQuestion[] | null> {
   if (backendTicketId !== null) {
-    const imported = await attempt<FormQuestion[]>(importQuestionnaire(file, backendTicketId));
+    const imported = await postFile<FormQuestion[]>(
+      `/questionnaire/import?ticketId=${backendTicketId}`,
+      file,
+    );
     if (imported)
       return imported.map((fq) => ({
         backendId: fq.id,
@@ -166,7 +196,7 @@ export async function parseQuestionnaire(
         section: fq.rowReference ?? "",
       }));
   }
-  const classified = await attempt<ClassifiedQuestion[]>(classifyQuestionnaire(file));
+  const classified = await postFile<ClassifiedQuestion[]>("/questionnaire/classify", file);
   if (classified)
     return classified.map((c) => ({
       text: c.questionText,
@@ -179,18 +209,39 @@ export async function parseQuestionnaire(
 // ─── RAG retrieval for suggestions and AI Search ─────────────────────────────
 
 export async function ragSearch(question: string): Promise<SearchResult[] | null> {
-  return attempt(searchKnowledgeBase(question));
+  return post<SearchResult[]>("/knowledge-base/search", { question });
+}
+
+// Batched retrieval (PR #3 review, discussion 4): a 36-question form must not
+// fire 36 concurrent embedding calls at a free-tier backend. Runs in batches
+// of 5; a null result for the first probe means the backend is offline.
+export async function ragSearchAll(
+  questions: { id: number; text: string }[],
+): Promise<Map<number, SearchResult[]> | null> {
+  if (questions.length === 0) return new Map();
+  const first = await ragSearch(questions[0].text);
+  if (first === null) return null; // offline → caller falls back to simulation
+  const out = new Map<number, SearchResult[]>();
+  out.set(questions[0].id, first);
+  const rest = questions.slice(1);
+  for (let i = 0; i < rest.length; i += 5) {
+    const batch = rest.slice(i, i + 5);
+    const results = await Promise.all(batch.map((q) => ragSearch(q.text)));
+    batch.forEach((q, j) => out.set(q.id, results[j] ?? []));
+  }
+  return out;
 }
 
 // Apply the retrieval hits to a question. Mirrors RetrievalService: cosine
 // similarity >= 0.35, top 3 — first hit becomes the primary suggestion, the
 // rest are shown as alternative matches (AI-03/04/05).
 export function applyRagResult(q: MvpQuestion, results: SearchResult[]): MvpQuestion {
-  const hits = results.filter((r) => (r.similarityScore ?? 0) >= 0.35).slice(0, 3);
+  // the backend already applies its 0.35 similarity threshold and returns top 3
+  const hits = results.slice(0, 3);
   const describe = (r: SearchResult) =>
     `Matched "${r.documentTitle} — ${r.sectionTitle}" (${Math.round((r.similarityScore ?? 0) * 100)}% similarity, updated ${r.lastUpdated?.slice(0, 10) ?? "n/a"})`;
   const top = hits[0];
-  if (!top) return { ...q, status: "New", confidence: results[0]?.similarityScore ?? null };
+  if (!top) return { ...q, status: "New", confidence: null };
   const score = top.similarityScore ?? 0;
   return {
     ...q,
@@ -204,7 +255,9 @@ export function applyRagResult(q: MvpQuestion, results: SearchResult[]): MvpQues
       reasoning: describe(r),
       sharingStatus: mapSharing(r.sharingStatus),
     })),
-    status: score >= 0.9 ? "Suggested" : "Needs Review",
+    // with text-embedding-3-small a near-perfect match scores ~0.75–0.85,
+    // so 0.6 marks "confident" (calibrate against seed questions over time)
+    status: score >= 0.6 ? "Suggested" : "Needs Review",
   };
 }
 
@@ -212,23 +265,22 @@ export function applyRagResult(q: MvpQuestion, results: SearchResult[]): MvpQues
 
 export function syncFinalAnswer(q: MvpQuestion, answerText: string, edited: boolean, approvedBy: string) {
   if (!q.backendId) return;
-  void attempt(
-    saveFinalAnswer({
-      questionId: q.backendId,
-      sourceChunkId: q.suggested?.knowledgeId ?? null,
-      answerText,
-      isEdited: edited,
-      sourceType: q.suggested ? "Knowledge Base" : "Manual",
-      approvalStatus: "Confirmed",
-      approvedBy,
-    }),
-  );
-  void attempt(updateQuestionStatus(q.backendId, "Answered"));
+  const input: FinalAnswerInput = {
+    questionId: q.backendId,
+    sourceChunkId: q.suggested?.knowledgeId ?? null,
+    answerText,
+    isEdited: edited,
+    sourceType: q.suggested ? "Knowledge Base" : "Manual",
+    approvalStatus: "Confirmed",
+    approvedBy,
+  };
+  // the backend flips the question to "Answered" itself on Confirmed saves
+  void post("/final-answers", input);
 }
 
 export function syncQuestionStatus(backendId: number | undefined, status: string) {
   if (!backendId) return;
-  void attempt(updateQuestionStatus(backendId, status));
+  void patch(`/questions/${backendId}/status`, { status });
 }
 
 // ─── SME requests ────────────────────────────────────────────────────────────
@@ -260,9 +312,11 @@ export async function packageBackendQuestions(
   backendTicketId: number,
   department: string,
 ): Promise<Record<number, number> | null> {
-  const linked = await attempt(
-    packageSmeQuestions(backendRequestId, backendTicketId, department),
-  );
+  const linked = await post<SmeRequestQuestion[]>("/sme-request-questions/package", {
+    smeRequestId: backendRequestId,
+    ticketId: backendTicketId,
+    department,
+  });
   if (!linked) return null;
   const map: Record<number, number> = {};
   for (const srq of linked) map[srq.questionId] = srq.id;
@@ -298,5 +352,5 @@ export function syncSmeRequest(
 
 export function syncSmeAnswer(srqId: number | undefined, answer: string) {
   if (!srqId) return;
-  void attempt(recordSmeAnswer(srqId, answer));
+  void patch(`/sme-request-questions/${srqId}/answer`, { returnedAnswer: answer });
 }
