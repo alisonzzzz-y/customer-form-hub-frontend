@@ -103,6 +103,20 @@ http
         tickets.push(t);
         return json(res, 200, t);
       }
+      if ((m = path.match(/^\/api\/tickets\/(\d+)$/)) && req.method === "PUT") {
+        const t = tickets.find((x) => x.id === +m[1]);
+        if (!t) return json(res, 404, {});
+        const changes = parse();
+        for (const [k, v] of Object.entries(changes)) if (v !== null && v !== undefined) t[k] = v;
+        return json(res, 200, t);
+      }
+      if ((m = path.match(/^\/api\/questions\/(\d+)$/)) && req.method === "PUT") {
+        const q = questions.find((x) => x.id === +m[1]);
+        if (!q) return json(res, 404, {});
+        const changes = parse();
+        for (const [k, v] of Object.entries(changes)) if (v !== null && v !== undefined) q[k] = v;
+        return json(res, 200, q);
+      }
       if ((m = path.match(/^\/api\/tickets\/(\d+)\/status$/)) && req.method === "PATCH") {
         const t = tickets.find((x) => x.id === +m[1]);
         if (t) t.status = parse().status;

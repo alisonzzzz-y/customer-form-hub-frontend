@@ -141,6 +141,7 @@ const expectCalls = [
   "POST /api/knowledge-base/search",
   "POST /api/final-answers",
   "PATCH /api/questions/{id}/status",
+  "PUT /api/questions/{id}",
   "POST /api/sme-requests",
   "POST /api/sme-request-questions/package",
   "GET /api/sme-requests/{id}/email",

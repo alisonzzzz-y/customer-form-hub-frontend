@@ -154,6 +154,43 @@ export async function createBackendTicket(t: MvpTicket): Promise<number | null> 
   return created?.id ?? null;
 }
 
+// Sync edited intake fields for a backend-synced ticket. Both backend PUTs
+// are null-skip partial updates (verified in TicketService/FormQuestionService),
+// so sending only the changed fields is safe. Debounced per ticket because
+// text inputs fire per keystroke.
+const ticketSyncTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const ticketSyncPending = new Map<number, Record<string, unknown>>();
+
+export function syncTicketFields(backendId: number | undefined, t: Partial<MvpTicket>) {
+  if (!backendId) return;
+  const payload: Record<string, unknown> = {};
+  if (t.customer !== undefined) payload.customerName = t.customer;
+  if (t.ae !== undefined) payload.createdBy = t.ae ?? undefined;
+  if (t.due) payload.deadline = `${t.due}T00:00:00`;
+  if (t.urgency !== undefined) payload.urgency = t.urgency;
+  if (t.nda !== undefined) payload.ndaStatus = NDA_TO_BACKEND[t.nda] ?? "Unknown";
+  if (t.businessImpact !== undefined) payload.businessImpact = t.businessImpact ?? undefined;
+  if (Object.keys(payload).length === 0) return;
+
+  ticketSyncPending.set(backendId, { ...ticketSyncPending.get(backendId), ...payload });
+  clearTimeout(ticketSyncTimers.get(backendId));
+  ticketSyncTimers.set(
+    backendId,
+    setTimeout(() => {
+      const merged = ticketSyncPending.get(backendId);
+      ticketSyncPending.delete(backendId);
+      if (merged) void put(`/tickets/${backendId}`, merged);
+    }, 600),
+  );
+}
+
+// Grouping/review department changes must reach the backend: the SME package
+// endpoint filters ITS copy of the questions by department.
+export function syncQuestionDepartment(backendId: number | undefined, department: string) {
+  if (!backendId) return;
+  void put(`/questions/${backendId}`, { department });
+}
+
 export function syncTicketStatus(backendId: number | undefined, status: string) {
   if (!backendId) return;
   // frontend lifecycle statuses collapse onto the backend's smaller set

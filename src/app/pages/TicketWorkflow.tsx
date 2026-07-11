@@ -42,6 +42,8 @@ import {
   fetchSmeEmail,
   packageBackendQuestions,
   ragSearchAll,
+  syncQuestionDepartment,
+  syncTicketFields,
   syncFinalAnswer,
   syncQuestionStatus,
   syncSmeAnswer,
@@ -158,7 +160,8 @@ function IntakePanel({
   const [processing, setProcessing] = useState(false);
 
   const missing = ticket.intakeMissing ?? [];
-  const patch = (p: Partial<MvpTicket>, clearFlag?: string) =>
+  const patch = (p: Partial<MvpTicket>, clearFlag?: string) => {
+    syncTicketFields(ticket.backendId, p);
     actions.setTickets((prev) =>
       prev.map((t) =>
         t.id === ticket.id
@@ -172,6 +175,7 @@ function IntakePanel({
           : t,
       ),
     );
+  };
 
   const input = "border border-border rounded-md px-2 py-1 text-xs w-56";
   const rows: { key: string; label: string; edit: React.ReactNode }[] = [
@@ -463,6 +467,7 @@ function GroupingPanel({
     actions.setQuestions((p) =>
       p.map((x) => (x.id === q.id ? { ...x, department: dept } : x)),
     );
+    syncQuestionDepartment(q.backendId, dept);
     actions.logActivity(`Moved question #${q.row} to ${dept}`, ticket.id);
   };
 
