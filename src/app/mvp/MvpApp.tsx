@@ -12,9 +12,6 @@ import {
   User,
   ChevronDown,
 } from "lucide-react";
-import { Toast } from "../components/shared";
-import { ToastMsg } from "../types";
-import { SettingsScreen } from "../screens/SettingsScreen";
 import {
   ModuleId,
   Role,
@@ -24,21 +21,26 @@ import {
   MvpKnowledgeEntry,
   MvpNotification,
   MvpActivity,
-  SEED_TICKETS,
-  SEED_QUESTIONS,
-  SEED_SME_REQUESTS,
+  ToastMsg,
+} from "./data/model";
+import {
+  SEED_ACTIVITY,
   SEED_KNOWLEDGE,
   SEED_NOTIFICATIONS,
-  SEED_ACTIVITY,
-} from "./data";
-import { loadBackendKnowledge, loadBackendWorld, onBackendStatus, pingBackend } from "./backend";
-import { DashboardPage } from "./DashboardPage";
-import { TicketsPage, TicketFilters, EMPTY_FILTERS } from "./TicketsPage";
-import { TicketDetailPage } from "./TicketDetailPage";
-import { AiSearchPage } from "./AiSearchPage";
-import { KnowledgeBasePage } from "./KnowledgeBasePage";
-import { ReportsPage } from "./ReportsPage";
-import { NotificationsPage } from "./NotificationsPage";
+  SEED_QUESTIONS,
+  SEED_SME_REQUESTS,
+  SEED_TICKETS,
+} from "./data/seeds";
+import { Toast } from "./components/ui";
+import { loadBackendKnowledge, loadBackendWorld, onBackendStatus, pingBackend } from "./services/backend";
+import { DashboardPage } from "./pages/DashboardPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { TicketsPage, TicketFilters, EMPTY_FILTERS } from "./pages/TicketsPage";
+import { TicketDetailPage } from "./pages/TicketDetailPage";
+import { AiSearchPage } from "./pages/AiSearchPage";
+import { KnowledgeBasePage } from "./pages/KnowledgeBasePage";
+import { ReportsPage } from "./pages/ReportsPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 
 // PRD §4/§5: module navigation shell. Sidebar lists modules, never workflow
 // steps; ticket statuses are filters inside Tickets.
@@ -361,8 +363,8 @@ export default function MvpApp() {
           {module === "reports" && <ReportsPage state={state} actions={actions} />}
           {module === "notifications" && <NotificationsPage state={state} actions={actions} />}
           {module === "settings" && (
-            <SettingsScreen
-              setScreen={() => setModule("dashboard")}
+            <SettingsPage
+              onBack={() => setModule("dashboard")}
               addToast={addToast}
               addLog={(e) =>
                 setActivity((p) => [
