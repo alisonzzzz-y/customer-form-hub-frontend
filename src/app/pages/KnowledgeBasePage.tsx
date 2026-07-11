@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Archive, ArrowLeft, BookOpen, CheckCircle, Edit3, Plus, RotateCcw, Search, X } from "lucide-react";
 import { BtnPrimary, BtnSecondary } from "../components/ui";
 import { DEPARTMENTS, KnowledgeStatus, MvpKnowledgeEntry, SharingStatus } from "../data/model";
-import { AppActions, AppState } from "../MvpApp";
+import { AppActions, AppState } from "../AppShell";
 import { upsertBackendKnowledge } from "../services/backend";
 import { EmptyState, FilterSelect, Pill, SharingBadge, Th } from "../components/ui";
 

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Bell, BookOpen, Brain, CheckCheck, Clock, Inbox } from "lucide-react";
 import { MvpNotification, fmtDateTime } from "../data/model";
-import { AppActions, AppState } from "../MvpApp";
+import { AppActions, AppState } from "../AppShell";
 import { Card, EmptyState } from "../components/ui";
 
 // PRD §14: centralised attention items with read/unread filtering (NTF-05)

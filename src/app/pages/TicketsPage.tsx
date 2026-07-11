@@ -6,7 +6,7 @@ import {
   isDueToday,
   isOverdueTicket,
 } from "../data/model";
-import { AppActions, AppState } from "../MvpApp";
+import { AppActions, AppState } from "../AppShell";
 import { NewRequestFlow } from "./NewRequestFlow";
 import { EmptyState, FilterSelect, Pill, Th, UrgencyDot } from "../components/ui";
 

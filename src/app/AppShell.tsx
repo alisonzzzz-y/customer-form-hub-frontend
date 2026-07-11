@@ -42,7 +42,7 @@ import { KnowledgeBasePage } from "./pages/KnowledgeBasePage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 
-// PRD §4/§5: module navigation shell. Sidebar lists modules, never workflow
+// Application shell (PRD §4/§5): module navigation, top bar, global state. Sidebar lists modules, never workflow
 // steps; ticket statuses are filters inside Tickets.
 
 const NAV: { id: ModuleId; label: string; icon: React.ElementType }[] = [
@@ -81,7 +81,7 @@ export type AppActions = {
   openNewTicket: () => void;
 };
 
-export default function MvpApp() {
+export default function AppShell() {
   const [module, setModule] = useState<ModuleId>("dashboard");
   const [role, setRole] = useState<Role>("Analyst");
   const [roleMenu, setRoleMenu] = useState(false);

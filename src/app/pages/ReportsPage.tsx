@@ -14,7 +14,7 @@ import {
 } from "recharts";
 import { BtnPrimary, BtnSecondary } from "../components/ui";
 import { DEPARTMENTS, MOCK_NOW, MvpReport, fmtDate, isOverdueTicket } from "../data/model";
-import { AppActions, AppState } from "../MvpApp";
+import { AppActions, AppState } from "../AppShell";
 import { Card, EmptyState, FilterSelect, Pill, Th } from "../components/ui";
 
 // PRD §13: manager-oriented operational summaries. Metrics before AI

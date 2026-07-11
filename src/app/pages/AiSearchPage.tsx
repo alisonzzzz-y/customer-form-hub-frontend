@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Copy, ExternalLink, Loader2, Lock, Search, Sparkles } from "lucide-react";
 import { MvpKnowledgeEntry } from "../data/model";
-import { AppActions, AppState } from "../MvpApp";
+import { AppActions, AppState } from "../AppShell";
 import { mapSharing, ragSearch } from "../services/backend";
 import { Card, ConfidenceBadge, EmptyState, SharingBadge } from "../components/ui";
 

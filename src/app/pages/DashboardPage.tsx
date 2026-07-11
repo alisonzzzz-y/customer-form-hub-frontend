@@ -6,7 +6,7 @@ import {
   isDueToday,
   isOverdueTicket,
 } from "../data/model";
-import { AppActions, AppState } from "../MvpApp";
+import { AppActions, AppState } from "../AppShell";
 import { Card, EmptyState, Pill, Th, UrgencyDot } from "../components/ui";
 
 // PRD §6: what needs attention today, which tickets are blocked, which SME

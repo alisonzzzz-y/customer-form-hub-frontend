@@ -33,7 +33,7 @@ import {
   fmtDateTime,
   pendingForms,
 } from "../data/model";
-import { AppActions, AppState } from "../MvpApp";
+import { AppActions, AppState } from "../AppShell";
 import {
   applyRagResult,
   createBackendSmeRequest,

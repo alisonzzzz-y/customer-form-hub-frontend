@@ -15,8 +15,8 @@ import {
   fmtDate,
   fmtDateTime,
 } from "../data/model";
-import { AppActions, AppState } from "../MvpApp";
-import { WorkflowTab } from "./WorkflowTab";
+import { AppActions, AppState } from "../AppShell";
+import { WorkflowTab } from "./TicketWorkflow";
 import { Card, Pill, Th } from "../components/ui";
 
 // PRD §8: Ticket Detail is the core workspace. The Workflow tab carries the

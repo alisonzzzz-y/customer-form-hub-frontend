@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { BtnPrimary, BtnSecondary } from "../components/ui";
 import { MvpTicket, NdaStatus, Urgency, pendingForms } from "../data/model";
-import { AppActions, AppState } from "../MvpApp";
+import { AppActions, AppState } from "../AppShell";
 import { openMailDraft } from "../components/ui";
 import { SAMPLE_AE_EMAIL, parseIntakeEmail } from "../services/simulation";
 

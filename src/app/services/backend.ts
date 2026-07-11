@@ -14,7 +14,7 @@ import type {
   FormQuestion,
   SearchResult,
   SmeRequestQuestion,
-} from "../../api";
+} from "../api";
 import { MvpQuestion, MvpTicket, SharingStatus } from "../data/model";
 
 // Configurable for deployment (PR #3 review): VITE_API_BASE on Vercel,
