@@ -2,7 +2,7 @@
 // contracts as the real /ai/* endpoints, so they can be swapped later without
 // touching the UI (05_API_Specification §2).
 
-import { MvpQuestion, NdaStatus, Urgency } from "../data/model";
+import { MvpQuestion, NdaStatus, SUGGESTED_THRESHOLD, Urgency } from "../data/model";
 
 // ─── Intake extraction from a pasted AE email ────────────────────────────────
 
@@ -232,7 +232,7 @@ export function attachSuggestions(q: MvpQuestion): MvpQuestion {
       ...q,
       suggested: template.suggestion,
       alternatives,
-      status: q.confidence >= 0.9 ? "Suggested" : "Needs Review",
+      status: q.confidence >= SUGGESTED_THRESHOLD ? "Suggested" : "Needs Review",
     };
   }
   return { ...q, status: "New" }; // low/no confidence: research or SME required

@@ -29,6 +29,7 @@ import {
   MvpSmeRequest,
   MvpTicket,
   TicketStage,
+  SUGGESTED_THRESHOLD,
   fmtDate,
   fmtDateTime,
   pendingForms,
@@ -42,6 +43,7 @@ import {
   fetchSmeEmail,
   packageBackendQuestions,
   ragSearchAll,
+  revertFinalAnswer,
   syncQuestionDepartment,
   syncTicketFields,
   syncFinalAnswer,
@@ -1026,7 +1028,7 @@ function ReviewPanel({
                             q.id,
                             {
                               status: q.suggested
-                                ? (q.confidence ?? 0) >= 0.9
+                                ? (q.confidence ?? 0) >= SUGGESTED_THRESHOLD
                                   ? "Suggested"
                                   : "Needs Review"
                                 : "New",
@@ -1034,6 +1036,7 @@ function ReviewPanel({
                             },
                             `Reverted approval on question #${q.row}`,
                           );
+                          revertFinalAnswer(q); // backend answer -> Draft (export prints a placeholder)
                           syncQuestionStatus(q.backendId, "Needs Review");
                           actions.addToast("Approval undone — the question is back in review.", "info");
                         }}

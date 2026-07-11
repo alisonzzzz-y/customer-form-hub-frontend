@@ -14,7 +14,7 @@ import type {
   SearchResult,
   SmeRequestQuestion,
 } from "../api";
-import { MvpQuestion, MvpTicket, SharingStatus } from "../data/model";
+import { MvpQuestion, MvpTicket, SUGGESTED_THRESHOLD, SharingStatus } from "../data/model";
 
 // Configurable for deployment (PR #3 review): VITE_API_BASE on Vercel,
 // localhost default for development. All requests in this module go through
@@ -291,9 +291,7 @@ export function applyRagResult(q: MvpQuestion, results: SearchResult[]): MvpQues
       reasoning: describe(r),
       sharingStatus: mapSharing(r.sharingStatus),
     })),
-    // with text-embedding-3-small a near-perfect match scores ~0.75–0.85,
-    // so 0.6 marks "confident" (calibrate against seed questions over time)
-    status: score >= 0.6 ? "Suggested" : "Needs Review",
+    status: score >= SUGGESTED_THRESHOLD ? "Suggested" : "Needs Review",
   };
 }
 
@@ -534,6 +532,15 @@ export function syncFinalAnswer(q: MvpQuestion, answerText: string, edited: bool
   };
   // the backend flips the question to "Answered" itself on Confirmed saves
   void post("/final-answers", input);
+}
+
+// Unapprove: downgrade the backend final answer to Draft instead of deleting
+// it. The backend upserts by questionId with null-skip, and its Excel export
+// prints "(Draft – not confirmed)" for anything not Confirmed — so a reverted
+// answer can never reach the customer while the audit trail is preserved.
+export function revertFinalAnswer(q: MvpQuestion) {
+  if (!q.backendId) return;
+  void post("/final-answers", { questionId: q.backendId, approvalStatus: "Draft" });
 }
 
 export function syncQuestionStatus(backendId: number | undefined, status: string) {

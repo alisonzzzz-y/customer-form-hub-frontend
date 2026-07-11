@@ -211,8 +211,18 @@ http
 
       // ── final answers ──
       if (path === "/api/final-answers" && req.method === "POST") {
-        const fa = { id: faSeq++, ...parse(), createdAt: new Date().toISOString() };
-        finalAnswers.push(fa);
+        const changes = parse();
+        let fa = finalAnswers.find((f) => f.questionId === changes.questionId);
+        if (fa) {
+          for (const [k, v] of Object.entries(changes)) if (v !== null && v !== undefined) fa[k] = v;
+        } else {
+          fa = { id: faSeq++, ...changes, createdAt: new Date().toISOString() };
+          finalAnswers.push(fa);
+        }
+        if (fa.approvalStatus === "Confirmed") {
+          const q = questions.find((x) => x.id === fa.questionId);
+          if (q) q.status = "Answered";
+        }
         return json(res, 200, fa);
       }
 
@@ -289,7 +299,8 @@ http
           .filter((q) => q.ticketId === tid)
           .map((q) => {
             const fa = finalAnswers.filter((f) => f.questionId === q.id).pop();
-            return `${q.department}\t${q.questionText}\t${fa?.answerText ?? ""}`;
+            const text = !fa ? "" : fa.approvalStatus !== "Confirmed" ? "(Draft – not confirmed)" : fa.answerText;
+            return `${q.department}\t${q.questionText}\t${text}`;
           });
         const content = "Department\tQuestion\tFinal Answer\n" + rows.join("\n");
         res.writeHead(200, {

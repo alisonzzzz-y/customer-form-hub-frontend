@@ -59,6 +59,12 @@ await page.waitForSelector("text=of");
 await page.waitForSelector("text=AI Suggested Answer — best match");
 await page.getByRole("button", { name: "Approve", exact: true }).click();
 await page.waitForSelector("text=Answer approved.");
+// unapprove syncs a Draft downgrade to the backend, then re-approve
+await page.click("text=Do you hold ISO27001?");
+await page.click('button:has-text("Unapprove")');
+await page.waitForSelector("text=Approval undone");
+await page.getByRole("button", { name: "Approve", exact: true }).click();
+await page.waitForSelector("text=Answer approved.");
 // route turnover question (now in General) to SME
 await page.click("text=What is your employee turnover rate?");
 await page.getByRole("button", { name: "Route to SME", exact: true }).click();

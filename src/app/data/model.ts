@@ -249,6 +249,12 @@ export function isDueToday(t: MvpTicket): boolean {
   return t.due === MOCK_NOW.toISOString().slice(0, 10) && !["Closed", "Archived"].includes(t.status);
 }
 
+// Similarity score at/above which a suggestion is auto-marked "Suggested"
+// (below it: "Needs Review"). Calibrated for text-embedding-3-small, whose
+// near-perfect matches score ~0.75–0.85 (PR #3/#4 reviews). Display banding
+// in confidenceBand below is intentionally separate (PRD §9.1).
+export const SUGGESTED_THRESHOLD = 0.6;
+
 // PRD §9.1 confidence bands
 export function confidenceBand(c: number | null): "high" | "medium" | "low" | "none" {
   if (c === null) return "none";
