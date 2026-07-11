@@ -1,4 +1,3 @@
-/// <reference path="../vite-env.d.ts" />
 // Backend integration layer for the MVP shell.
 //
 // Every call is best-effort: if Alison's Spring Boot backend (localhost:8080)

@@ -1,6 +1,5 @@
-// Minimal Vite env typing (the repo has no tsconfig with "vite/client" types).
-interface ImportMeta {
-  readonly env: {
-    readonly VITE_API_BASE?: string;
-  };
+/// <reference types="vite/client" />
+
+interface ImportMetaEnv {
+  readonly VITE_API_BASE?: string;
 }
