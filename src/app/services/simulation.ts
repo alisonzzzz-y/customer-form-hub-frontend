@@ -128,7 +128,7 @@ const TEMPLATES: Template[] = [
   {
     original: "Do you hold ISO27001?",
     normalised: "Does Cloudera hold ISO 27001 certification?",
-    department: "Security", risk: "Medium", confidence: 0.96, sharingStatus: "Public",
+    department: "InfoSec", risk: "Medium", confidence: 0.96, sharingStatus: "Public",
     suggestion: {
       text: "Yes. Cloudera maintains an information security management system aligned with ISO 27001, with certification renewed annually.",
       knowledgeId: 88,
@@ -138,7 +138,7 @@ const TEMPLATES: Template[] = [
   {
     original: "Describe how data is encrypted in transit and at rest.",
     normalised: "How is customer data encrypted in transit and at rest?",
-    department: "Security", risk: "Medium", confidence: 0.93, sharingStatus: "Internal",
+    department: "InfoSec", risk: "Medium", confidence: 0.93, sharingStatus: "Internal",
     suggestion: {
       text: "All data in transit is encrypted using TLS 1.2 or higher; data at rest uses AES-256.",
       knowledgeId: 89,
@@ -188,7 +188,7 @@ const TEMPLATES: Template[] = [
   {
     original: "Is data encrypted during transmission?",
     normalised: "How is customer data encrypted in transit?",
-    department: "Security", risk: "Medium", confidence: 0.93, sharingStatus: "Internal",
+    department: "InfoSec", risk: "Medium", confidence: 0.93, sharingStatus: "Internal",
     duplicateOfIndex: 1,
   },
 ];
