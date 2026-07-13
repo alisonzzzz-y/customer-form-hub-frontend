@@ -56,7 +56,7 @@ if (!acceptDisabled) errors.push("Review: NDA block not enforcing disabled Appro
 await page.click('nav >> text=AI Search');
 await page.fill('input[placeholder*="Ask a question"]', "Do we hold ISO 27001 certification?");
 await page.press('input[placeholder*="Ask a question"]', "Enter");
-await page.waitForSelector("text=Direct answer draft");
+await page.waitForSelector("text=Best match — AI-generated answer draft");
 if (!(await page.isVisible("text=Last updated:"))) errors.push("AI Search: metadata missing");
 await page.fill('input[placeholder*="Ask a question"]', "quantum blockchain llama farming");
 await page.press('input[placeholder*="Ask a question"]', "Enter");
@@ -80,7 +80,7 @@ if (!(await page.isVisible("text=Saved Reports"))) errors.push("Reports: saved r
 
 // Notifications: unread count + mark all read
 await page.click('nav >> text=Notifications');
-await page.waitForSelector("text=SME request overdue — Security");
+await page.waitForSelector("text=SME request overdue — InfoSec");
 await page.click("text=Mark all read");
 await page.waitForSelector("text=All notifications marked as read.");
 

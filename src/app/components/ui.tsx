@@ -50,7 +50,7 @@ const STATUS_STYLES: Record<string, string> = {
 export function Pill({ value }: { value: string }) {
   return (
     <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-bold tracking-[0.08em] uppercase border whitespace-nowrap ${STATUS_STYLES[value] ?? "bg-[#F5F5F5] text-[#6B7280] border-[rgba(0,0,0,0.1)]"}`}
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-[0.08em] uppercase border whitespace-nowrap ${STATUS_STYLES[value] ?? "bg-[#F5F5F5] text-[#6B7280] border-[rgba(0,0,0,0.1)]"}`}
     >
       {value}
     </span>
@@ -61,7 +61,7 @@ export function UrgencyDot({ urgency }: { urgency: string }) {
   const color =
     urgency === "High" ? "bg-red-500" : urgency === "Medium" ? "bg-[#F96702]" : "bg-gray-300";
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-[#374151] whitespace-nowrap">
+    <span className="inline-flex items-center gap-1.5 text-[13px] text-[#374151] whitespace-nowrap">
       <span className={`w-1.5 h-1.5 rounded-full ${color}`} /> {urgency}
     </span>
   );
@@ -85,7 +85,7 @@ export function SharingBadge({ status }: { status: SharingStatus }) {
   const m = map[status];
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold tracking-[0.08em] uppercase border whitespace-nowrap ${m.cls}`}
+      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-[0.08em] uppercase border whitespace-nowrap ${m.cls}`}
     >
       {m.icon} {status}
     </span>
@@ -97,7 +97,7 @@ export function ConfidenceBadge({ confidence }: { confidence: number | null }) {
   const band = confidenceBand(confidence);
   if (band === "none")
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#9CA3AF] whitespace-nowrap">
+      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#9CA3AF] whitespace-nowrap">
         <AlertTriangle size={10} /> Research required
       </span>
     );
@@ -110,7 +110,7 @@ export function ConfidenceBadge({ confidence }: { confidence: number | null }) {
         : "text-[#991B1B] bg-[#FEF2F2] border-[#FCA5A5]/50";
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${cls}`}
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border whitespace-nowrap ${cls}`}
     >
       {pct}%
     </span>
@@ -133,8 +133,8 @@ export function EmptyState({
       <div className="w-10 h-10 rounded-lg bg-[#FFF4EC] flex items-center justify-center">
         <Icon size={18} className="text-[#F96702]" />
       </div>
-      <p className="text-xs font-semibold text-[#1F2937]">{title}</p>
-      {hint && <p className="text-xs text-[#9CA3AF] max-w-xs">{hint}</p>}
+      <p className="text-[13px] font-semibold text-[#1F2937]">{title}</p>
+      {hint && <p className="text-[13px] text-[#9CA3AF] max-w-xs">{hint}</p>}
       {action}
     </div>
   );
@@ -154,8 +154,8 @@ export function Card({
   return (
     <div className={`bg-white rounded-xl border border-[rgba(0,0,0,0.06)] shadow-sm ${className}`}>
       {title !== undefined && (
-        <div className="px-4 py-2.5 bg-[#F96702] rounded-t-xl flex items-center gap-2 shadow-[0_1px_4px_rgba(249,103,2,0.25)]">
-          <p className="text-[10px] font-bold text-white uppercase tracking-[0.08em] flex-1">
+        <div className="px-5 py-3 bg-[#F96702] rounded-t-xl flex items-center gap-2 shadow-[0_1px_4px_rgba(249,103,2,0.25)]">
+          <p className="text-[11px] font-bold text-white uppercase tracking-[0.08em] flex-1">
             {title}
           </p>
           {right}
@@ -168,7 +168,7 @@ export function Card({
 
 export function Th({ children }: { children: React.ReactNode }) {
   return (
-    <th className="text-left px-4 py-2.5 text-[10px] font-bold text-[#6B7280] uppercase tracking-wide whitespace-nowrap bg-[#F7F8FA] border-b border-border">
+    <th className="text-left px-4 py-3 text-[11px] font-bold text-[#6B7280] uppercase tracking-wide whitespace-nowrap bg-[#F7F8FA] border-b border-border">
       {children}
     </th>
   );
@@ -189,7 +189,7 @@ export function FilterSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={`border rounded-full px-3 py-1.5 text-[10px] font-semibold bg-white transition-all ${value === "All" ? "border-[rgba(0,0,0,0.15)] text-[#6B7280]" : "border-[#F96702]/50 text-[#C05600]"}`}
+      className={`border rounded-full px-3 py-1.5 text-[11px] font-semibold bg-white transition-all ${value === "All" ? "border-[rgba(0,0,0,0.15)] text-[#6B7280]" : "border-[#F96702]/50 text-[#C05600]"}`}
     >
       <option value="All">{label}: All</option>
       {options.map((o) => (
@@ -219,7 +219,7 @@ export function BtnPrimary({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-2 px-5 py-2 text-[10px] font-bold tracking-[0.07em] rounded-full transition-all ${disabled ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.3)] hover:shadow-[0_4px_16px_rgba(249,103,2,0.45)]"} ${className}`}
+      className={`flex items-center gap-2 px-5 py-2 text-[11px] font-bold tracking-[0.07em] rounded-full transition-all ${disabled ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.3)] hover:shadow-[0_4px_16px_rgba(249,103,2,0.45)]"} ${className}`}
     >
       {children}
     </button>
@@ -238,7 +238,7 @@ export function BtnSecondary({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-5 py-2 text-[10px] font-semibold tracking-[0.04em] border border-[rgba(0,0,0,0.18)] rounded-full text-[#374151] hover:border-[#F96702]/60 hover:text-[#F96702] transition-all ${className}`}
+      className={`flex items-center gap-2 px-5 py-2 text-[11px] font-semibold tracking-[0.04em] border border-[rgba(0,0,0,0.18)] rounded-full text-[#374151] hover:border-[#F96702]/60 hover:text-[#F96702] transition-all ${className}`}
     >
       {children}
     </button>
@@ -257,7 +257,7 @@ export function Toast({
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] border text-[11px] font-medium min-w-[280px] max-w-xs bg-white ${t.type === "success" ? "border-green-200" : t.type === "warning" ? "border-[#F96702]/30" : "border-[rgba(0,0,0,0.08)]"}`}
+          className={`pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] border text-[12px] font-medium min-w-[280px] max-w-xs bg-white ${t.type === "success" ? "border-green-200" : t.type === "warning" ? "border-[#F96702]/30" : "border-[rgba(0,0,0,0.08)]"}`}
         >
           {t.type === "success" && <ToastOk size={13} className="text-green-500 shrink-0" />}
           {t.type === "warning" && <ToastWarn size={13} className="text-[#F96702] shrink-0" />}

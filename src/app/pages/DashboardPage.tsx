@@ -64,7 +64,7 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="px-7 pt-6 pb-4 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center justify-between">
+      <div className="px-4 sm:px-8 pt-7 pb-5 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0" />
           <div>
@@ -76,14 +76,14 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
             </p>
           </div>
         </div>
-        <span className="text-[10px] font-semibold text-[#9CA3AF]">
+        <span className="text-[11px] font-semibold text-[#9CA3AF]">
           Demo date: {fmtDate(MOCK_NOW.toISOString())} · This week
         </span>
       </div>
 
-      <div className="flex-1 overflow-auto px-8 py-6 flex flex-col gap-5">
+      <div className="flex-1 overflow-auto px-4 sm:px-8 py-7 flex flex-col gap-5">
         {/* DB-01 metric cards */}
-        <div className="grid grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {metrics.map((m) => (
             <button
               key={m.label}
@@ -95,16 +95,16 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
               >
                 {m.value}
               </p>
-              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[#B8B5B0] mt-1.5 group-hover:text-[#C05600] transition-colors">
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#B8B5B0] mt-1.5 group-hover:text-[#C05600] transition-colors">
                 {m.label}
               </p>
             </button>
           ))}
         </div>
 
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* DB-02 priority list */}
-          <Card title="My Priority Tickets" className="col-span-3 overflow-hidden">
+          <Card title="My Priority Tickets" className="lg:col-span-3 overflow-hidden">
             {priority.length === 0 ? (
               <EmptyState
                 icon={Inbox}
@@ -112,7 +112,7 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
                 hint="Create a ticket to begin."
               />
             ) : (
-              <table className="w-full">
+              <div className="overflow-x-auto"><table className="w-full">
                 <thead>
                   <tr>
                     <Th>Ticket</Th>
@@ -129,35 +129,35 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
                       onClick={() => actions.openTicket(t.id)}
                       className={`border-b border-border last:border-0 cursor-pointer transition-colors ${isOverdueTicket(t) ? "bg-red-50/40 hover:bg-red-50/70" : "hover:bg-gray-50/60"}`}
                     >
-                      <td className="px-4 py-2.5 text-xs font-mono font-bold text-[#1F2937]">
+                      <td className="px-4 py-2.5 text-[13px] font-mono font-bold text-[#1F2937]">
                         {t.id}
                       </td>
-                      <td className="px-4 py-2.5 text-xs font-semibold text-[#1F2937]">
+                      <td className="px-4 py-2.5 text-[13px] font-semibold text-[#1F2937]">
                         {t.customer}
                       </td>
                       <td className="px-4 py-2.5">
                         <Pill value={t.status} />
                       </td>
                       <td
-                        className={`px-4 py-2.5 text-xs whitespace-nowrap ${isOverdueTicket(t) ? "text-red-600 font-semibold" : "text-[#374151]"}`}
+                        className={`px-4 py-2.5 text-[13px] whitespace-nowrap ${isOverdueTicket(t) ? "text-red-600 font-semibold" : "text-[#374151]"}`}
                       >
                         {fmtDate(t.due)}
                         {isDueToday(t) && (
-                          <span className="ml-1.5 text-[9px] font-bold text-[#C05600]">TODAY</span>
+                          <span className="ml-1.5 text-[10px] font-bold text-[#C05600]">TODAY</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-[#6B7280] whitespace-nowrap">
+                      <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">
                         {t.owner}
                       </td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </Card>
 
           {/* DB-03 SME ETA Tracker — rows link to their ticket */}
-          <Card title="SME ETA Tracker" className="col-span-2 overflow-hidden">
+          <Card title="SME ETA Tracker" className="lg:col-span-2 overflow-hidden">
             {activeSme.length === 0 ? (
               <EmptyState icon={Clock} title="No pending SME requests." />
             ) : (
@@ -169,20 +169,20 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
                     className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors ${r.over ? "bg-red-50/40 hover:bg-red-50/70" : "hover:bg-gray-50/60"}`}
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-[#1F2937]">
+                      <p className="text-[13px] font-semibold text-[#1F2937]">
                         {r.department} · {r.assignee}
                       </p>
-                      <p className="text-[10px] text-[#9CA3AF] mt-0.5">
+                      <p className="text-[11px] text-[#9CA3AF] mt-0.5">
                         <span className="font-mono font-bold text-[#C05600]">{r.ticketId}</span>
                         {r.ticket ? ` ${r.ticket.customer}` : ""} · ETA{" "}
                         {r.eta ? fmtDateTime(r.eta) : "not set"}
                       </p>
                     </div>
-                    <span className="text-[10px] text-[#6B7280] whitespace-nowrap">
+                    <span className="text-[11px] text-[#6B7280] whitespace-nowrap">
                       {r.questionIds.length} question{r.questionIds.length === 1 ? "" : "s"}
                     </span>
                     {r.over ? (
-                      <span className="text-[9px] font-bold text-[#991B1B] bg-[#FEF2F2] border border-[#FCA5A5]/50 rounded-full px-2 py-0.5 whitespace-nowrap">
+                      <span className="text-[10px] font-bold text-[#991B1B] bg-[#FEF2F2] border border-[#FCA5A5]/50 rounded-full px-2 py-0.5 whitespace-nowrap">
                         Overdue
                       </span>
                     ) : (
@@ -195,9 +195,9 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
           </Card>
         </div>
 
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* DB-05 recent activity */}
-          <Card title="Recent Activity" className="col-span-3 overflow-hidden">
+          <Card title="Recent Activity" className="lg:col-span-3 overflow-hidden">
             {activity.length === 0 ? (
               <EmptyState icon={Activity} title="No activity yet." />
             ) : (
@@ -208,10 +208,10 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
                       className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${a.actor === "AI" ? "bg-[#4338CA]" : "bg-[#F96702]/60"}`}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs text-[#374151]">
+                      <p className="text-[13px] text-[#374151]">
                         <span className="font-semibold">{a.actor}</span> {a.action}
                       </p>
-                      <p className="text-[10px] text-[#9CA3AF] mt-0.5">
+                      <p className="text-[11px] text-[#9CA3AF] mt-0.5">
                         {a.ticketId && (
                           <button
                             onClick={() => actions.openTicket(a.ticketId!)}
@@ -232,11 +232,11 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
           {/* Knowledge pending review */}
           <Card
             title="Knowledge Pending Review"
-            className="col-span-2 overflow-hidden"
+            className="lg:col-span-2 overflow-hidden"
             right={
               <button
                 onClick={() => actions.openKnowledge("pending")}
-                className="text-[10px] font-bold text-white hover:underline flex items-center gap-0.5"
+                className="text-[11px] font-bold text-white hover:underline flex items-center gap-0.5"
               >
                 Review all <ChevronRight size={10} />
               </button>
@@ -252,8 +252,8 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
                     onClick={() => actions.openKnowledge("pending", k.id)}
                     className="w-full text-left px-4 py-2.5 hover:bg-gray-50/60 transition-colors"
                   >
-                    <p className="text-xs font-semibold text-[#1F2937]">{k.title}</p>
-                    <p className="text-[10px] text-[#9CA3AF] mt-0.5">
+                    <p className="text-[13px] font-semibold text-[#1F2937]">{k.title}</p>
+                    <p className="text-[11px] text-[#9CA3AF] mt-0.5">
                       {k.department} · submitted by {k.owner} · {fmtDate(k.lastUpdated)}
                     </p>
                   </button>

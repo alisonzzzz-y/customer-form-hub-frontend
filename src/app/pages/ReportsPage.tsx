@@ -238,7 +238,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="px-7 pt-6 pb-4 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center gap-3">
+      <div className="px-4 sm:px-8 pt-7 pb-5 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center gap-3">
         <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0" />
         <div>
           <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight">Reports</h1>
@@ -247,10 +247,10 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
           </p>
         </div>
       </div>
-      <div className="flex-1 overflow-auto px-8 py-6 flex flex-col gap-4">
+      <div className="flex-1 overflow-auto px-4 sm:px-8 py-7 flex flex-col gap-5">
         {/* Visual overview — live charts over the current workload */}
-        <div className="grid grid-cols-5 gap-4">
-          <Card title="Ticket Progress — open tickets" className="col-span-2">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+          <Card title="Ticket Progress — open tickets" className="lg:col-span-2">
             <div className="px-2 py-2" style={{ height: Math.max(180, progressData.length * 34 + 40) }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={progressData} layout="vertical" margin={{ left: 8, right: 28, top: 4 }}>
@@ -273,7 +273,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
               </ResponsiveContainer>
             </div>
           </Card>
-          <Card title="Status Mix" className="col-span-1">
+          <Card title="Status Mix" className="lg:col-span-1">
             <div className="px-2 py-2 h-[220px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -296,7 +296,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
             </div>
             <div className="px-3 pb-2.5 flex flex-wrap gap-x-3 gap-y-1">
               {statusData.map((d) => (
-                <span key={d.name} className="flex items-center gap-1 text-[9px] text-[#6B7280]">
+                <span key={d.name} className="flex items-center gap-1 text-[10px] text-[#6B7280]">
                   <span
                     className="w-2 h-2 rounded-full"
                     style={{ background: STATUS_COLORS[d.name] ?? "#D8D5D0" }}
@@ -306,7 +306,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
               ))}
             </div>
           </Card>
-          <Card title="Questions by Department" className="col-span-2">
+          <Card title="Questions by Department" className="lg:col-span-2">
             <div className="px-2 py-2 h-[240px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={deptData} margin={{ top: 8, right: 8 }}>
@@ -322,7 +322,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
             </div>
             <div className="px-3 pb-2.5 flex gap-3">
               {[["Resolved", "#16A34A"], ["With SME", "#EAB308"], ["Open", "#F96702"]].map(([l, c]) => (
-                <span key={l} className="flex items-center gap-1 text-[9px] text-[#6B7280]">
+                <span key={l} className="flex items-center gap-1 text-[10px] text-[#6B7280]">
                   <span className="w-2 h-2 rounded-full" style={{ background: c }} /> {l}
                 </span>
               ))}
@@ -363,13 +363,13 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
 
         {metrics && (
           <>
-            <div className="grid grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {metricCards.map((m) => (
                 <div key={m.label} className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] shadow-sm px-4 py-3.5">
                   <p className={`text-[22px] font-black tracking-tight leading-none ${m.accent ? "text-red-600" : "text-[#0A0A0A]"}`}>
                     {m.value}
                   </p>
-                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[#B8B5B0] mt-1.5">{m.label}</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#B8B5B0] mt-1.5">{m.label}</p>
                 </div>
               ))}
             </div>
@@ -380,14 +380,14 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
                 </span>
               }
             >
-              <p className="px-4 py-3 text-xs text-[#374151] leading-relaxed">{summary}</p>
+              <p className="px-4 py-3 text-[13px] text-[#374151] leading-relaxed">{summary}</p>
             </Card>
           </>
         )}
 
         {reports.length > 0 && (
           <Card title="Saved Reports">
-            <table className="w-full">
+            <div className="overflow-x-auto"><table className="w-full">
               <thead>
                 <tr>
                   <Th>Title</Th>
@@ -406,10 +406,10 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
                     title="Open the report in the app"
                     className="border-b border-border last:border-0 cursor-pointer hover:bg-gray-50/60 transition-colors"
                   >
-                    <td className="px-4 py-2.5 text-xs font-semibold text-[#1F2937]">{r.title}</td>
-                    <td className="px-4 py-2.5 text-xs text-[#6B7280]">{r.type}</td>
-                    <td className="px-4 py-2.5 text-xs text-[#6B7280] whitespace-nowrap">{r.createdBy}</td>
-                    <td className="px-4 py-2.5 text-xs text-[#6B7280] whitespace-nowrap">{fmtDate(r.createdAt)}</td>
+                    <td className="px-4 py-2.5 text-[13px] font-semibold text-[#1F2937]">{r.title}</td>
+                    <td className="px-4 py-2.5 text-[13px] text-[#6B7280]">{r.type}</td>
+                    <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">{r.createdBy}</td>
+                    <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">{fmtDate(r.createdAt)}</td>
                     <td className="px-4 py-2.5"><Pill value={r.status} /></td>
                     <td className="px-4 py-2.5">
                       <button
@@ -417,7 +417,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
                           e.stopPropagation();
                           setOpenReport(r);
                         }}
-                        className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.06em] uppercase transition-all"
+                        className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.06em] uppercase transition-all"
                       >
                         <FileText size={9} /> Open
                       </button>
@@ -425,16 +425,16 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </Card>
         )}
       </div>
 
       {openReport && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-[640px] max-h-[85vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-[640px] max-h-[85vh] overflow-hidden flex flex-col">
             <div className="px-4 py-2.5 bg-[#F96702] flex items-center gap-2 shrink-0">
-              <p className="text-[10px] font-bold text-white uppercase tracking-[0.08em] flex-1">
+              <p className="text-[11px] font-bold text-white uppercase tracking-[0.08em] flex-1">
                 {openReport.title}
               </p>
               <button onClick={() => setOpenReport(null)} className="text-white/80 hover:text-white">
@@ -442,27 +442,27 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
               </button>
             </div>
             <div className="flex-1 overflow-auto p-5 flex flex-col gap-4">
-              <p className="text-[11px] text-[#6B7280]">
+              <p className="text-[12px] text-[#6B7280]">
                 {openReport.type} report · generated by {openReport.createdBy} ·{" "}
                 {fmtDate(openReport.createdAt)}
               </p>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {openReport.metrics.map((m) => (
                   <div key={m.label} className="bg-[#FAFAF9] rounded-lg border border-[rgba(0,0,0,0.05)] px-3.5 py-3">
                     <p className="text-[20px] font-black tracking-tight leading-none text-[#0A0A0A]">
                       {m.value}
                     </p>
-                    <p className="text-[9px] font-black uppercase tracking-[0.1em] text-[#B8B5B0] mt-1.5">
+                    <p className="text-[10px] font-black uppercase tracking-[0.1em] text-[#B8B5B0] mt-1.5">
                       {m.label}
                     </p>
                   </div>
                 ))}
               </div>
               <div className="bg-[#FFF7F0] border border-[#F96702]/20 rounded-lg p-4">
-                <p className="text-[10px] font-bold text-[#C05600] uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                <p className="text-[11px] font-bold text-[#C05600] uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
                   <Sparkles size={11} /> AI Executive Summary
                 </p>
-                <p className="text-xs text-[#374151] leading-relaxed">{openReport.summary}</p>
+                <p className="text-[13px] text-[#374151] leading-relaxed">{openReport.summary}</p>
               </div>
             </div>
             <div className="px-4 py-3 border-t border-border flex items-center gap-2 bg-[#FAFAFA] shrink-0">

@@ -24,6 +24,8 @@ import {
 import { BtnPrimary, BtnSecondary } from "../components/ui";
 import {
   DEPARTMENTS,
+  QUESTION_DEPARTMENTS,
+  TBD_DEPARTMENT,
   MOCK_NOW,
   MvpQuestion,
   MvpSmeRequest,
@@ -109,7 +111,7 @@ function StageStepper({ stage }: { stage: TicketStage }) {
         return (
           <div key={s.id} className="flex items-center shrink-0">
             <div
-              className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold tracking-[0.04em] uppercase ${active ? "text-[#F96702]" : done ? "text-[#C05600]" : "text-[#C0BEBA]"}`}
+              className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold tracking-[0.04em] uppercase ${active ? "text-[#F96702]" : done ? "text-[#C05600]" : "text-[#C0BEBA]"}`}
             >
               {done ? (
                 <div className="w-3.5 h-3.5 rounded-full bg-[#F96702] flex items-center justify-center">
@@ -131,7 +133,7 @@ function StageStepper({ stage }: { stage: TicketStage }) {
         );
       })}
       {stage === "done" && (
-        <span className="ml-auto text-[10px] font-bold text-green-700 flex items-center gap-1 shrink-0">
+        <span className="ml-auto text-[11px] font-bold text-green-700 flex items-center gap-1 shrink-0">
           <CheckCircle size={11} /> Workflow complete
         </span>
       )}
@@ -160,6 +162,7 @@ function IntakePanel({
 }) {
   const [clarifyOpen, setClarifyOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const intakeFileRef = useRef<HTMLInputElement>(null);
 
   const missing = ticket.intakeMissing ?? [];
   const patch = (p: Partial<MvpTicket>, clearFlag?: string) => {
@@ -179,7 +182,7 @@ function IntakePanel({
     );
   };
 
-  const input = "border border-border rounded-md px-2 py-1 text-xs w-56";
+  const input = "border border-border rounded-md px-2 py-1 text-[13px] w-56";
   const rows: { key: string; label: string; edit: React.ReactNode }[] = [
     {
       key: "customer",
@@ -287,10 +290,22 @@ function IntakePanel({
     let live = false;
     if (file) {
       const parsed = await parseQuestionnaire(file, backendId);
-      if (parsed && parsed.length > 0) {
+      if (parsed.kind === "rejected") {
+        // The backend is alive and refused the file — never mask this with
+        // demo questions. Stay on intake so the user can fix/replace the file.
+        setProcessing(false);
+        patch({ status: "Intake Review" });
+        actions.addToast(
+          `The backend could not parse ${file.name}: ${parsed.message} Replace the file and try again.`,
+          "warning",
+        );
+        actions.logActivity(`Backend rejected ${file.name}: ${parsed.message}`, ticket.id);
+        return;
+      }
+      if (parsed.kind === "ok" && parsed.questions.length > 0) {
         live = true;
         pendingForms.delete(ticket.id);
-        newQs = parsed.map((pq, i) => ({
+        newQs = parsed.questions.map((pq, i) => ({
           id: base + i + 1,
           backendId: pq.backendId,
           ticketId: ticket.id,
@@ -304,7 +319,16 @@ function IntakePanel({
         }));
       }
     }
-    if (newQs.length === 0) newQs = extractQuestionsFor(ticket.id, base);
+    if (newQs.length === 0) {
+      newQs = extractQuestionsFor(ticket.id, base);
+      // Make the fallback impossible to mistake for real parsing
+      actions.addToast(
+        file
+          ? "Backend unreachable — showing simulated demo questions, NOT the contents of your file."
+          : "No form attached — using simulated demo questions.",
+        file ? "warning" : "info",
+      );
+    }
 
     setTimeout(() => {
       actions.setQuestions((p) => [...p, ...newQs]);
@@ -345,7 +369,7 @@ function IntakePanel({
         {!ready ? (
           <div className="bg-orange-50 border border-orange-200 rounded-lg px-3.5 py-2.5 flex items-start gap-2.5 mb-3">
             <AlertTriangle size={13} className="text-orange-500 shrink-0 mt-0.5" />
-            <div className="text-xs text-orange-700">
+            <div className="text-[13px] text-orange-700">
               <p className="font-semibold mb-0.5">Intake incomplete</p>
               <p>
                 Fill the missing fields directly in the table below, or{" "}
@@ -363,27 +387,27 @@ function IntakePanel({
         ) : (
           <div className="bg-[#FFF4EC] border border-[#F96702]/25 rounded-lg px-3.5 py-2.5 flex items-center gap-2.5 mb-3">
             <CheckCircle size={13} className="text-[#F96702] shrink-0" />
-            <p className="text-xs font-semibold text-[#C05600]">
+            <p className="text-[13px] font-semibold text-[#C05600]">
               All required intake fields resolved — review and continue to AI analysis.
             </p>
           </div>
         )}
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full">
           <tbody>
             {rows.map((r) => (
               <tr
                 key={r.key}
                 className={`border-b border-border last:border-0 ${isMissing(r.key) ? "bg-orange-50/40" : ""}`}
               >
-                <td className="px-3 py-2.5 text-xs font-medium text-[#1F2937] w-44">{r.label}</td>
+                <td className="px-3 py-2.5 text-[13px] font-medium text-[#1F2937] w-44">{r.label}</td>
                 <td className="px-3 py-2.5">{r.edit}</td>
                 <td className="px-3 py-2.5 w-28">
                   {isMissing(r.key) ? (
-                    <span className="inline-flex items-center gap-1 text-xs text-orange-600 font-medium">
+                    <span className="inline-flex items-center gap-1 text-[13px] text-orange-600 font-medium">
                       <AlertTriangle size={11} /> Missing
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
+                    <span className="inline-flex items-center gap-1 text-[13px] text-green-600 font-medium">
                       <CheckCircle size={11} /> Found
                     </span>
                   )}
@@ -391,13 +415,41 @@ function IntakePanel({
               </tr>
             ))}
           </tbody>
-        </table>
-        {pendingForms.has(ticket.id) && (
-          <p className="text-[10px] text-[#6B7280] mt-2 flex items-center gap-1">
-            <FileSpreadsheet size={10} className="text-green-600" />
-            {pendingForms.get(ticket.id)!.name} attached — it will be parsed right after this step.
-          </p>
-        )}
+        </table></div>
+        <div className="mt-2 flex items-center gap-2">
+          {pendingForms.has(ticket.id) ? (
+            <p className="text-[11px] text-[#6B7280] flex items-center gap-1">
+              <FileSpreadsheet size={10} className="text-green-600" />
+              {pendingForms.get(ticket.id)!.name} attached — parsed right after this step.
+            </p>
+          ) : (
+            <p className="text-[11px] text-[#9CA3AF]">
+              No customer form attached — analysis will use simulated demo questions.
+            </p>
+          )}
+          <input
+            ref={intakeFileRef}
+            type="file"
+            accept=".xlsx,.docx"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) {
+                pendingForms.set(ticket.id, f);
+                patch({}); // re-render
+                actions.addToast(`Attached ${f.name}.`, "info");
+              }
+              e.target.value = "";
+            }}
+          />
+          <button
+            onClick={() => intakeFileRef.current?.click()}
+            title="Attach or replace the customer form (.xlsx/.docx) parsed by the backend"
+            className="text-[11px] font-semibold text-[#C05600] underline hover:text-[#8B4500]"
+          >
+            {pendingForms.has(ticket.id) ? "Replace file" : "Attach file"}
+          </button>
+        </div>
         <div className="flex items-center gap-2 mt-4 flex-wrap">
           <span title="Confirm the intake fields — AI then extracts and classifies the questions automatically">
             <BtnPrimary onClick={confirm} disabled={!ready}>
@@ -407,7 +459,7 @@ function IntakePanel({
           <button
             onClick={() => setClarifyOpen(true)}
             title="Auto-drafts an editable email to the AE asking only for the missing intake fields"
-            className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-semibold border border-[#F96702]/30 text-[#C05600] bg-[#FFF4EC] rounded-full hover:bg-[#FFE8D0] transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold border border-[#F96702]/30 text-[#C05600] bg-[#FFF4EC] rounded-full hover:bg-[#FFE8D0] transition-colors"
           >
             <Mail size={11} /> Draft Clarification Email
           </button>
@@ -435,7 +487,7 @@ function ProcessingCard({ text }: { text: string }) {
   return (
     <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] p-10 flex flex-col items-center gap-3">
       <Loader2 size={24} className="animate-spin text-[#F96702]" />
-      <p className="text-xs text-[#6B7280]">{text}</p>
+      <p className="text-[13px] text-[#6B7280]">{text}</p>
     </div>
   );
 }
@@ -456,11 +508,11 @@ function GroupingPanel({
   const [customFor, setCustomFor] = useState<number | null>(null);
   const [customName, setCustomName] = useState("");
 
-  // standard departments first, then any custom ones already assigned
+  // standard question departments first, then any custom ones already assigned
   const customs = [...new Set(qs.map((q) => q.department))].filter(
-    (d) => !DEPARTMENTS.includes(d),
+    (d) => !QUESTION_DEPARTMENTS.includes(d),
   );
-  const knownDepts = [...DEPARTMENTS, ...customs];
+  const knownDepts = [...QUESTION_DEPARTMENTS, ...customs];
   const depts = knownDepts.filter((d) => qs.some((q) => q.department === d));
   const active = depts.includes(tab) ? tab : (depts[0] ?? "");
   const dq = qs.filter((q) => q.department === active);
@@ -519,22 +571,34 @@ function GroupingPanel({
     <Card
       title={`Department Grouping — ${qs.length} questions`}
       right={
-        <span className="text-[10px] text-white/85">
+        <span className="text-[11px] text-white/85">
           AI classified each question — adjust below, then confirm
         </span>
       }
     >
+      {/* AI parks questions it cannot route as TBD — make the required action
+          unmissable before the analyst confirms the grouping */}
+      {qs.some((q) => q.department === TBD_DEPARTMENT) && (
+        <div className="bg-[#FEF3C7] border-b border-[#F59E0B]/30 px-4 py-2.5 flex items-center gap-2">
+          <AlertTriangle size={13} className="text-[#92400E] shrink-0" />
+          <p className="text-[12px] text-[#92400E] font-medium">
+            The AI could not route the <strong>TBD</strong> questions to a department — pick the
+            owning team for each one. TBD questions cannot be sent to an SME.
+          </p>
+        </div>
+      )}
       {/* department tabs: jump between groups instead of scrolling one long list */}
       <div className="flex border-b border-border overflow-x-auto">
         {depts.map((d) => (
           <button
             key={d}
             onClick={() => setTab(d)}
-            title={`Show the ${d} questions`}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 shrink-0 transition-colors ${active === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
+            title={d === TBD_DEPARTMENT ? "The AI could not classify these questions — assign each one to its owning department" : `Show the ${d} questions`}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 shrink-0 transition-colors ${active === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
           >
+            {d === TBD_DEPARTMENT && <AlertTriangle size={11} className="text-[#D97706]" />}
             {d}
-            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${active === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
+            <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${active === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
               {qs.filter((q) => q.department === d).length}
             </span>
           </button>
@@ -543,11 +607,11 @@ function GroupingPanel({
       <div className="divide-y divide-border/60">
         {dq.map((q) => (
           <div key={q.id} className="px-4 py-2.5 flex items-center gap-3">
-            <span className="text-[10px] font-mono text-[#9CA3AF] w-5 shrink-0">{q.row}</span>
+            <span className="text-[11px] font-mono text-[#9CA3AF] w-5 shrink-0">{q.row}</span>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-[#1F2937]">{q.original}</p>
+              <p className="text-[13px] text-[#1F2937]">{q.original}</p>
               {q.duplicateOf && (
-                <span className="text-[9px] font-bold text-[#4338CA] bg-[#EEF2FF] border border-[#C7D2FE] rounded-full px-2 py-0.5 mt-1 inline-block">
+                <span className="text-[10px] font-bold text-[#4338CA] bg-[#EEF2FF] border border-[#C7D2FE] rounded-full px-2 py-0.5 mt-1 inline-block">
                   Possible duplicate — confirm before answering
                 </span>
               )}
@@ -564,7 +628,7 @@ function GroupingPanel({
                 }
                 moveDept(q, e.target.value);
               }}
-              className="border border-[rgba(0,0,0,0.15)] rounded-full px-2.5 py-1 text-[10px] font-semibold bg-white shrink-0"
+              className="border border-[rgba(0,0,0,0.15)] rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white shrink-0"
             >
               {knownDepts.map((dep) => (
                 <option key={dep}>{dep}</option>
@@ -583,10 +647,10 @@ function GroupingPanel({
       </div>
 
       {customFor !== null && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-5 w-80">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-xs">
             <h3 className="text-sm font-semibold text-[#1F2937] mb-0.5">Custom Department</h3>
-            <p className="text-xs text-[#6B7280] mb-3">
+            <p className="text-[13px] text-[#6B7280] mb-3">
               Name a department that is not in the standard list — it becomes a tab and gets its
               own SME package later.
             </p>
@@ -602,7 +666,7 @@ function GroupingPanel({
                 }
               }}
               placeholder="e.g. Procurement"
-              className="w-full border border-border rounded-md px-2.5 py-1.5 text-xs"
+              className="w-full border border-border rounded-md px-2.5 py-1.5 text-[13px]"
             />
             <div className="flex justify-end gap-2 mt-4">
               <BtnSecondary onClick={() => setCustomFor(null)}>Cancel</BtnSecondary>
@@ -642,10 +706,12 @@ function ReviewPanel({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saveToKb, setSaveToKb] = useState(false);
-  const [showAlternatives, setShowAlternatives] = useState(false);
+  // open by default — hiding the other top-3 matches behind a collapsed bar
+  // made users think only one match existed
+  const [showAlternatives, setShowAlternatives] = useState(true);
 
-  const customs = [...new Set(qs.map((x) => x.department))].filter((d) => !DEPARTMENTS.includes(d));
-  const depts = [...DEPARTMENTS, ...customs].filter((d) => qs.some((x) => x.department === d));
+  const customs = [...new Set(qs.map((x) => x.department))].filter((d) => !QUESTION_DEPARTMENTS.includes(d));
+  const depts = [...QUESTION_DEPARTMENTS, ...customs].filter((d) => qs.some((x) => x.department === d));
   const visible = deptTab === "All" ? qs : qs.filter((x) => x.department === deptTab);
 
   const q = visible.find((x) => x.id === selectedId) ?? visible[0] ?? qs[0];
@@ -664,7 +730,9 @@ function ReviewPanel({
   const select = (id: number) => {
     setSelectedId(id);
     setEditing(false);
-    setShowAlternatives(false);
+    // every card starts with its top-3 matches expanded — collapsing is a
+    // per-card choice, not the default (users missed the other matches)
+    setShowAlternatives(true);
   };
 
   // after an action: next unresolved question, preferring the current tab
@@ -751,7 +819,7 @@ function ReviewPanel({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3 flex-wrap">
-        <p className="text-xs text-[#6B7280]">
+        <p className="text-[13px] text-[#6B7280]">
           <strong className="text-[#1F2937]">{resolved.length}</strong> of{" "}
           <strong className="text-[#1F2937]">{qs.length}</strong> resolved ·{" "}
           <strong className="text-[#C05600]">{queued.length}</strong> queued for SME
@@ -784,30 +852,39 @@ function ReviewPanel({
                   if (first) select(first.id);
                 }}
                 title={d === "All" ? "Review every question in one list" : `Review only the ${d} questions`}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 shrink-0 transition-colors ${deptTab === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 shrink-0 transition-colors ${deptTab === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
               >
                 {d}
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${deptTab === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
+                <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${deptTab === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
                   {count}
                 </span>
-                {done && <CheckCircle size={11} className="text-green-500" />}
+                {/* neutral "nothing left here" marker — a green check reads as
+                    "all approved", but routed-to-SME questions land here too */}
+                {done && (
+                  <span
+                    title="No questions left to review in this department — each one is approved or routed to an SME"
+                    className="text-[10px] font-bold text-[#9CA3AF] bg-gray-100 rounded-full px-1.5 py-0.5 whitespace-nowrap"
+                  >
+                    0 left
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
-        <div className="flex flex-1 min-h-0">
-          {/* Question list */}
-          <div className="w-72 border-r border-[rgba(0,0,0,0.06)] overflow-y-auto shrink-0 bg-[#FAFAF9]">
+        <div className="flex flex-col md:flex-row flex-1 min-h-0">
+          {/* Question list: sidebar on desktop, compact strip above the card on mobile */}
+          <div className="w-full md:w-72 max-h-40 md:max-h-none border-b md:border-b-0 md:border-r border-[rgba(0,0,0,0.06)] overflow-y-auto shrink-0 bg-[#FAFAF9]">
             {visible.map((item) => (
               <button
                 key={item.id}
                 onClick={() => select(item.id)}
                 className={`w-full text-left px-4 py-3 border-b border-[rgba(0,0,0,0.04)] flex flex-col gap-1.5 transition-all border-l-[3px] ${item.id === q.id ? "bg-[#FFF7F0] border-l-[#F96702]" : "hover:bg-white border-l-transparent"}`}
               >
-                <p className="text-[11px] text-[#0A0A0A] leading-snug font-medium">{item.original}</p>
+                <p className="text-[12px] text-[#0A0A0A] leading-snug font-medium">{item.original}</p>
                 <div className="flex items-center gap-1.5">
                   <Pill value={item.status} />
-                  <span className="text-[9px] text-[#9CA3AF]">{item.department}</span>
+                  <span className="text-[10px] text-[#9CA3AF]">{item.department}</span>
                 </div>
               </button>
             ))}
@@ -820,7 +897,7 @@ function ReviewPanel({
                 <h3 className="text-base font-bold text-[#0A0A0A] leading-snug tracking-tight">
                   {q.normalised}
                 </h3>
-                <p className="text-[11px] text-[#9CA3AF] mt-1 italic">Customer wording: “{q.original}”</p>
+                <p className="text-[12px] text-[#9CA3AF] mt-1 italic">Customer wording: “{q.original}”</p>
               </div>
               <Pill value={q.status} />
             </div>
@@ -828,7 +905,7 @@ function ReviewPanel({
             {ndaBlocked && (
               <div className="bg-[#FFF7F0] border border-[#F96702]/25 rounded-lg px-3.5 py-2.5 flex items-start gap-2.5">
                 <Lock size={13} className="text-[#C05600] shrink-0 mt-0.5" />
-                <p className="text-[11px] text-[#8B4500]">
+                <p className="text-[12px] text-[#8B4500]">
                   <strong>NDA conflict</strong> — this answer is NDA-restricted but the ticket NDA
                   status is <strong>{ticket.nda}</strong>. Route to SME or confirm the NDA with the AE
                   before approving.
@@ -838,7 +915,7 @@ function ReviewPanel({
 
             {editing ? (
               <div className="bg-[#F5F4F1] rounded-xl p-4 flex flex-col gap-2">
-                <p className="text-[9px] font-black text-[#ABABAB] uppercase tracking-[0.14em]">
+                <p className="text-[10px] font-black text-[#ABABAB] uppercase tracking-[0.14em]">
                   {q.suggested ? "Edit answer" : "Manual answer"}
                 </p>
                 <textarea
@@ -846,9 +923,9 @@ function ReviewPanel({
                   autoFocus
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  className="w-full text-xs text-[#1F2937] bg-white border border-[rgba(0,0,0,0.1)] rounded-lg p-3 resize-y focus:outline-none focus:ring-2 focus:ring-[#F96702]/30 leading-relaxed"
+                  className="w-full text-[13px] text-[#1F2937] bg-white border border-[rgba(0,0,0,0.1)] rounded-lg p-3 resize-y focus:outline-none focus:ring-2 focus:ring-[#F96702]/30 leading-relaxed"
                 />
-                <label className="flex items-center gap-2 text-[11px] text-[#374151] cursor-pointer">
+                <label className="flex items-center gap-2 text-[12px] text-[#374151] cursor-pointer">
                   <input
                     type="checkbox"
                     className="accent-[#F96702]"
@@ -860,23 +937,23 @@ function ReviewPanel({
               </div>
             ) : q.finalAnswer ? (
               <div className="bg-green-50 border border-green-100 rounded-xl p-4">
-                <p className="text-[9px] font-black text-green-700 uppercase tracking-[0.14em] mb-2">
+                <p className="text-[10px] font-black text-green-700 uppercase tracking-[0.14em] mb-2">
                   Final answer · {q.finalAnswer.sourceType}
                 </p>
-                <p className="text-xs text-[#1F2937] leading-relaxed">{q.finalAnswer.text}</p>
+                <p className="text-[13px] text-[#1F2937] leading-relaxed">{q.finalAnswer.text}</p>
               </div>
             ) : q.suggested ? (
               <>
                 <div className="border border-[#F96702]/25 rounded-xl overflow-hidden">
                   <div className="px-3.5 py-2 bg-[#FFF4EC] flex items-center gap-2">
                     <Brain size={11} className="text-[#C05600]" />
-                    <p className="text-[10px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
+                    <p className="text-[11px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
                       AI Suggested Answer — best match
                     </p>
                     <ConfidenceBadge confidence={q.confidence} />
                   </div>
-                  <p className="px-3.5 py-3 text-xs text-[#1F2937] leading-relaxed">{q.suggested.text}</p>
-                  <div className="px-3.5 py-2 bg-[#FAFAFA] border-t border-border grid grid-cols-2 gap-2 text-[10px] text-[#6B7280]">
+                  <p className="px-3.5 py-3 text-[13px] text-[#1F2937] leading-relaxed">{q.suggested.text}</p>
+                  <div className="px-3.5 py-2 bg-[#FAFAFA] border-t border-border grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] text-[#6B7280]">
                     <p>
                       <strong>Source:</strong>{" "}
                       {source ? (
@@ -911,7 +988,7 @@ function ReviewPanel({
                       title="The Knowledge Base returned more than one relevant entry — compare and pick the best fit"
                       className="w-full px-3.5 py-2 bg-[#F7F8FA] flex items-center gap-2 hover:bg-[#F0F1F3] transition-colors"
                     >
-                      <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide flex-1 text-left">
+                      <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide flex-1 text-left">
                         {q.alternatives!.length} other possible match
                         {q.alternatives!.length === 1 ? "" : "es"} from the Knowledge Base
                       </p>
@@ -924,31 +1001,34 @@ function ReviewPanel({
                       q.alternatives!.map((alt, i) => (
                         <div key={i} className="px-3.5 py-3 border-t border-border flex flex-col gap-1.5">
                           <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-[#9CA3AF] uppercase tracking-[0.08em] whitespace-nowrap">
+                              Match {i + 2}
+                            </span>
                             <ConfidenceBadge confidence={alt.confidence} />
-                            <span className="text-[10px] text-[#9CA3AF] flex-1">{alt.reasoning}</span>
+                            <span className="text-[11px] text-[#9CA3AF] flex-1">{alt.reasoning}</span>
                             <button
                               onClick={() => useAlternative(i)}
                               title="Replace the suggestion above with this match"
-                              className="px-3 py-1 text-[9px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                              className="px-3 py-1 text-[10px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                             >
                               Use this answer
                             </button>
                           </div>
-                          <p className="text-[11px] text-[#374151] leading-relaxed">{alt.text}</p>
+                          <p className="text-[12px] text-[#374151] leading-relaxed">{alt.text}</p>
                         </div>
                       ))}
                   </div>
                 )}
               </>
             ) : (
-              <div className="bg-[#F7F8FA] border border-border rounded-xl px-4 py-3.5 text-[11px] text-[#6B7280]">
+              <div className="bg-[#F7F8FA] border border-border rounded-xl px-4 py-3.5 text-[12px] text-[#6B7280]">
                 No approved knowledge match — <strong>Research Required</strong>. Enter a manual
                 answer or route this question to the {q.department} SME team.
               </div>
             )}
 
             {q.status === "SME Queued" && (
-              <p className="text-[11px] text-[#C05600] flex items-center gap-1.5">
+              <p className="text-[12px] text-[#C05600] flex items-center gap-1.5">
                 <Clock size={11} /> Queued for the {q.department} SME package — it will be sent with
                 the other unresolved {q.department} questions.
               </p>
@@ -1005,7 +1085,7 @@ function ReviewPanel({
                       }}
                       disabled={ndaBlocked}
                       title={ndaBlocked ? "Blocked: this answer needs an NDA that the ticket does not have" : "Accept this AI answer as the final answer for this question"}
-                      className={`flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${ndaBlocked ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-green-600 text-white hover:bg-green-700"}`}
+                      className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${ndaBlocked ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-green-600 text-white hover:bg-green-700"}`}
                     >
                       <CheckCircle size={11} /> Approve
                     </button>
@@ -1053,8 +1133,13 @@ function ReviewPanel({
                         actions.addToast(`Added to the ${q.department} SME queue.`, "info");
                         advance();
                       }}
-                      title={`Queue this question for the ${q.department} SME team — nothing is sent yet; all queued questions go out together as one package per department`}
-                      className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)] tracking-[0.06em] uppercase transition-all"
+                      disabled={q.department === TBD_DEPARTMENT}
+                      title={
+                        q.department === TBD_DEPARTMENT
+                          ? "This question has no department yet (TBD) — assign one in the Grouping stage before routing it to an SME"
+                          : `Queue this question for the ${q.department} SME team — nothing is sent yet; all queued questions go out together as one package per department`
+                      }
+                      className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${q.department === TBD_DEPARTMENT ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)]"}`}
                     >
                       <Send size={11} /> Route to SME
                     </button>
@@ -1078,7 +1163,7 @@ function ReviewPanel({
                       actions.addToast(`Clarification request sent to ${ticket.ae ?? "the AE"}.`, "info");
                     }}
                     title="Email the account executive for missing context about this question"
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-semibold border border-[rgba(0,0,0,0.18)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold border border-[rgba(0,0,0,0.18)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
                   >
                     <Mail size={11} /> Ask AE
                   </button>
@@ -1086,7 +1171,7 @@ function ReviewPanel({
                   <button
                     onClick={nextQuestion}
                     title="Move on to the next question in this tab (wraps around)"
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase transition-all"
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase transition-all"
                   >
                     Next Question <ChevronRight size={11} />
                   </button>
@@ -1125,7 +1210,11 @@ function SmePackagePanel({
 }) {
   const queued = qs.filter((q) => q.status === "SME Queued");
   const waiting = qs.filter((q) => q.status === "Waiting SME");
-  const depts = DEPARTMENTS.filter((d) => queued.some((q) => q.department === d) || waiting.some((q) => q.department === d));
+  const involved = [...queued, ...waiting].map((q) => q.department);
+  const depts = [
+    ...QUESTION_DEPARTMENTS.filter((d) => involved.includes(d)),
+    ...[...new Set(involved)].filter((d) => !QUESTION_DEPARTMENTS.includes(d)),
+  ];
   const [tab, setTab] = useState(depts[0] ?? "");
 
   const tabQueued = queued.filter((q) => q.department === tab);
@@ -1133,12 +1222,68 @@ function SmePackagePanel({
   const allSent = queued.length === 0;
   const unsentDepts = depts.filter((d) => queued.some((q) => q.department === d));
   const [selected, setSelected] = useState<string[]>([]);
+  // Sending needs several slow backend round-trips; buttons must lock while in
+  // flight or double-clicks create real duplicate requests in the shared DB.
+  const [busy, setBusy] = useState(false);
+  // After a batch send: one mail draft per department, opened one click at a
+  // time (browsers allow a single mailto per user gesture).
+  const [batchDrafts, setBatchDrafts] = useState<
+    { dept: string; to: string; subject: string; body: string; opened: boolean }[] | null
+  >(null);
+
+  const draftFor = (dept: string, req: MvpSmeRequest) => ({
+    dept,
+    to: `${dept.toLowerCase()}-team@cloudera.com`,
+    subject: req.sentEmail?.subject ?? `ETA request — ${ticket.customer} customer form, ${dept} tab`,
+    body:
+      req.sentEmail?.body ??
+      [
+        `Hi ${dept} Team,`,
+        "",
+        `We need your input on the ${dept} tab of the attached Excel for ${ticket.customer}.`,
+        `NDA status: ${ticket.nda}. Deadline: ${fmtDate(ticket.due)}.`,
+        "",
+        "Please complete your tab and reply with your ETA.",
+        "",
+        "Thanks,",
+        "Sarah Chen, GOM Analyst",
+      ].join("\n"),
+  });
+
+  const downloadPackage = () => {
+    const rows = tabQueued.length > 0 ? tabQueued : waiting.filter((q) => q.department === tab);
+    const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
+    const csv = [
+      "#,Question,SME Answer",
+      ...rows.map((q, i) => `${i + 1},${esc(q.original)},`),
+    ].join("\r\n");
+    // BOM so Excel detects UTF-8
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${ticket.customer.replace(/\s+/g, "_")}_SME_Request_${tab}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    actions.addToast("SME package downloaded as CSV — Excel opens it directly.", "success");
+  };
 
   const sendOne = async (dept: string) => {
     const deptQueued = state.questions.filter(
       (q) => q.ticketId === ticket.id && q.status === "SME Queued" && q.department === dept,
     );
     if (deptQueued.length === 0) return;
+    // Idempotency: never open a second request for a department that already
+    // has one un-returned — duplicates persist in the shared backend DB.
+    const open = state.smeRequests.find(
+      (r) => r.ticketId === ticket.id && r.department === dept && r.status !== "Returned",
+    );
+    if (open) {
+      actions.addToast(
+        `${dept} already has an open SME request for this ticket — duplicate send skipped.`,
+        "warning",
+      );
+      return;
+    }
     const req: MvpSmeRequest = {
       id: Math.max(0, ...state.smeRequests.map((r) => r.id)) + 1 + Math.floor(Math.random() * 1000),
       ticketId: ticket.id,
@@ -1178,56 +1323,59 @@ function SmePackagePanel({
   };
 
   const sendMany = async (deptList: string[]) => {
-    for (const d of deptList) await sendOne(d);
-    setSelected([]);
-    const remaining = unsentDepts.filter((d) => !deptList.includes(d));
-    if (remaining.length === 0) {
-      actions.setTickets((p) =>
-        p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta", status: "Waiting SME" } : t)),
-      );
-      syncTicketStatus(ticket.backendId, "Waiting SME");
-      actions.addToast("All SME packages sent — track ETAs next.", "success");
-    } else {
-      actions.addToast(
-        `${deptList.length} SME package${deptList.length === 1 ? "" : "s"} sent. ${remaining.join(", ")} still queued.`,
-        "success",
-      );
+    if (busy) return;
+    setBusy(true);
+    try {
+      const drafts: NonNullable<typeof batchDrafts> = [];
+      for (const d of deptList) {
+        const req = await sendOne(d);
+        if (req) drafts.push({ ...draftFor(d, req), opened: false });
+      }
+      setSelected([]);
+      const remaining = unsentDepts.filter((d) => !deptList.includes(d));
+      if (remaining.length === 0) {
+        actions.setTickets((p) =>
+          p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta", status: "Waiting SME" } : t)),
+        );
+        syncTicketStatus(ticket.backendId, "Waiting SME");
+        actions.addToast("All SME packages sent — track ETAs next.", "success");
+      } else {
+        actions.addToast(
+          `${deptList.length} SME package${deptList.length === 1 ? "" : "s"} sent. ${remaining.join(", ")} still queued.`,
+          "success",
+        );
+      }
+      // browsers allow one mailto per click — hand the drafts over one by one
+      if (drafts.length > 0) setBatchDrafts(drafts);
+    } finally {
+      setBusy(false);
     }
   };
 
   const sendDept = async () => {
-    const req = await sendOne(tab);
-    if (req) {
-      // The system never sends email itself — open the draft in the mail app.
-      const to = `${tab.toLowerCase()}-team@cloudera.com`;
-      const subject =
-        req.sentEmail?.subject ?? `ETA request — ${ticket.customer} customer form, ${tab} tab`;
-      const bodyText =
-        req.sentEmail?.body ??
-        [
-          `Hi ${tab} Team,`,
-          "",
-          `We need your input on the ${tab} tab of the attached Excel for ${ticket.customer}.`,
-          `NDA status: ${ticket.nda}. Deadline: ${fmtDate(ticket.due)}.`,
-          "",
-          "Please complete your tab and reply with your ETA.",
-          "",
-          "Thanks,",
-          "Sarah Chen, GOM Analyst",
-        ].join("\n");
-      openMailDraft(to, subject, bodyText);
-      actions.addToast(
-        "Draft opened in your mail app — attach the downloaded Excel before sending.",
-        "info",
-      );
-    }
-    const remaining = unsentDepts.filter((d) => d !== tab);
-    if (remaining.length === 0) {
-      actions.setTickets((p) =>
-        p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta", status: "Waiting SME" } : t)),
-      );
-      syncTicketStatus(ticket.backendId, "Waiting SME");
-      actions.addToast("All SME packages sent — track ETAs next.", "success");
+    if (busy) return;
+    setBusy(true);
+    try {
+      const req = await sendOne(tab);
+      if (req) {
+        // The system never sends email itself — open the draft in the mail app.
+        const d = draftFor(tab, req);
+        openMailDraft(d.to, d.subject, d.body);
+        actions.addToast(
+          "Draft opened in your mail app — attach the downloaded Excel before sending.",
+          "info",
+        );
+      }
+      const remaining = unsentDepts.filter((d) => d !== tab);
+      if (remaining.length === 0) {
+        actions.setTickets((p) =>
+          p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta", status: "Waiting SME" } : t)),
+        );
+        syncTicketStatus(ticket.backendId, "Waiting SME");
+        actions.addToast("All SME packages sent — track ETAs next.", "success");
+      }
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -1235,23 +1383,24 @@ function SmePackagePanel({
     <div className="flex flex-col gap-3">
       <div className="bg-[#FAFAFA] border border-[rgba(0,0,0,0.08)] rounded-xl px-4 py-3 flex items-start gap-2.5">
         <Info size={13} className="text-[#9CA3AF] shrink-0 mt-0.5" />
-        <p className="text-xs text-[#6B7280]">
+        <p className="text-[13px] text-[#6B7280]">
           SMEs do not log into this system. Every question routed during review is packaged here by
           department into an Excel tab plus an email. Sending opens a pre-filled draft in your mail
-          app (Outlook/Gmail) — <strong>attach the downloaded Excel manually</strong>, browsers
-          cannot pre-attach files. Batch send marks packages as sent without opening drafts.
+          app (Outlook/Gmail) — <strong>attach the downloaded package manually</strong>, browsers
+          cannot pre-attach files. Batch send registers every package first, then offers each
+          department's draft to open one by one.
         </p>
       </div>
       {unsentDepts.length > 0 && (
         <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] px-4 py-2.5 flex items-center gap-3 flex-wrap">
-          <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide">
+          <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide">
             Send packages
           </p>
           {unsentDepts.map((d) => (
             <label
               key={d}
               title={`Include the ${d} package in the batch send`}
-              className="flex items-center gap-1.5 text-xs text-[#374151] cursor-pointer border border-border rounded-full px-3 py-1 hover:border-[#F96702]/40"
+              className="flex items-center gap-1.5 text-[13px] text-[#374151] cursor-pointer border border-border rounded-full px-3 py-1 hover:border-[#F96702]/40"
             >
               <input
                 type="checkbox"
@@ -1262,7 +1411,7 @@ function SmePackagePanel({
                 }
               />
               {d}
-              <span className="text-[9px] font-bold text-[#C05600]">
+              <span className="text-[10px] font-bold text-[#C05600]">
                 {queued.filter((q) => q.department === d).length}
               </span>
             </label>
@@ -1270,18 +1419,21 @@ function SmePackagePanel({
           <span className="flex-1" />
           <button
             onClick={() => sendMany(selected)}
-            disabled={selected.length === 0}
-            title="Marks the ticked departments as sent in one go (per-department send opens the mail draft)"
-            className={`flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${selected.length === 0 ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400]"}`}
+            disabled={selected.length === 0 || busy}
+            title="Registers the ticked packages, then offers each mail draft to open one by one"
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${selected.length === 0 || busy ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400]"}`}
           >
-            <Send size={10} /> Send Selected ({selected.length})
+            {busy ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />} Send
+            Selected ({selected.length})
           </button>
           <button
             onClick={() => sendMany(unsentDepts)}
-            title="Marks every remaining package as sent at once (per-department send opens the mail draft)"
-            className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase transition-all"
+            disabled={busy}
+            title="Registers every remaining package, then offers each mail draft to open one by one"
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold border rounded-full tracking-[0.06em] uppercase transition-all ${busy ? "border-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "border-[#F96702]/40 text-[#C05600] hover:bg-[#FFF4EC]"}`}
           >
-            <Send size={10} /> Send All ({unsentDepts.length})
+            {busy ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />} Send All (
+            {unsentDepts.length})
           </button>
         </div>
       )}
@@ -1296,10 +1448,10 @@ function SmePackagePanel({
               <button
                 key={d}
                 onClick={() => setTab(d)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 shrink-0 transition-colors ${tab === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 shrink-0 transition-colors ${tab === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
               >
                 {d}
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${tab === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
+                <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${tab === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
                   {count}
                 </span>
                 {sent && <CheckCircle size={11} className="text-green-500" />}
@@ -1307,21 +1459,21 @@ function SmePackagePanel({
             );
           })}
         </div>
-        <div className="grid grid-cols-2 divide-x divide-border">
+        <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
           {/* Excel preview */}
           <div className="flex flex-col">
             <div className="px-3.5 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center gap-1.5">
               <FileSpreadsheet size={12} className="text-green-600" />
-              <p className="text-[10px] font-bold text-[#1F2937]">SME Excel Package Preview</p>
-              <span className="ml-auto text-[10px] text-[#9CA3AF]">
-                {ticket.customer.replace(/\s+/g, "_")}_SME_Request.xlsx
+              <p className="text-[11px] font-bold text-[#1F2937]">SME Excel Package Preview</p>
+              <span className="ml-auto text-[11px] text-[#9CA3AF]">
+                {ticket.customer.replace(/\s+/g, "_")}_SME_Request_{tab}.csv
               </span>
             </div>
-            <table className="w-full">
+            <div className="overflow-x-auto"><table className="w-full">
               <thead>
                 <tr className="bg-[#FFF7F0] border-b border-border">
                   {["#", "Question", "SME Answer"].map((h) => (
-                    <th key={h} className="text-left px-3 py-1.5 text-[10px] font-bold text-[#C05600]">
+                    <th key={h} className="text-left px-3 py-1.5 text-[11px] font-bold text-[#C05600]">
                       {h}
                     </th>
                   ))}
@@ -1330,19 +1482,20 @@ function SmePackagePanel({
               <tbody>
                 {(tabQueued.length > 0 ? tabQueued : waiting.filter((q) => q.department === tab)).map((q, i) => (
                   <tr key={q.id} className="border-b border-border last:border-0">
-                    <td className="px-3 py-2 text-[10px] text-[#9CA3AF] font-mono">{i + 1}</td>
-                    <td className="px-3 py-2 text-[10px] text-[#1F2937]">{q.original}</td>
-                    <td className="px-3 py-2 text-[10px] text-[#9CA3AF] italic">— to be completed —</td>
+                    <td className="px-3 py-2 text-[11px] text-[#9CA3AF] font-mono">{i + 1}</td>
+                    <td className="px-3 py-2 text-[11px] text-[#1F2937]">{q.original}</td>
+                    <td className="px-3 py-2 text-[11px] text-[#9CA3AF] italic">— to be completed —</td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
             <div className="px-3.5 py-2.5 border-t border-border bg-[#F7F8FA] mt-auto">
               <button
-                onClick={() => actions.addToast("SME Excel downloaded.", "success")}
-                className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-semibold rounded w-full justify-center bg-white border border-border text-[#374151] hover:border-[#F96702]/50 hover:text-[#F96702] transition-colors"
+                onClick={downloadPackage}
+                title="Downloads this department's questions as a CSV file — Excel opens it directly (a real .xlsx export is planned on the backend)"
+                className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold rounded w-full justify-center bg-white border border-border text-[#374151] hover:border-[#F96702]/50 hover:text-[#F96702] transition-colors"
               >
-                <Download size={11} /> Download Excel
+                <Download size={11} /> Download Package (CSV)
               </button>
             </div>
           </div>
@@ -1350,14 +1503,14 @@ function SmePackagePanel({
           <div className="flex flex-col">
             <div className="px-3.5 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center gap-1.5">
               <Mail size={12} className="text-[#F96702]" />
-              <p className="text-[10px] font-bold text-[#1F2937]">SME Email Draft — {tab} Team</p>
+              <p className="text-[11px] font-bold text-[#1F2937]">SME Email Draft — {tab} Team</p>
               {tabSent && (
-                <span className="ml-auto flex items-center gap-1 text-[10px] text-green-600 font-medium">
+                <span className="ml-auto flex items-center gap-1 text-[11px] text-green-600 font-medium">
                   <CheckCircle size={10} /> Sent
                 </span>
               )}
             </div>
-            <div className="px-3.5 py-2.5 space-y-1 border-b border-border text-[10px]">
+            <div className="px-3.5 py-2.5 space-y-1 border-b border-border text-[11px]">
               {[
                 ["To", `${tab.toLowerCase()}-team@cloudera.com`],
                 ["Subject", `ETA request — ${ticket.customer} customer form, ${tab} tab`],
@@ -1374,8 +1527,8 @@ function SmePackagePanel({
               );
               if (sentReq?.sentEmail)
                 return (
-                  <div className="px-3.5 py-3 text-[10px] text-[#374151] leading-relaxed flex-1 whitespace-pre-wrap">
-                    <p className="text-[9px] font-bold text-green-700 uppercase tracking-[0.1em] mb-1.5">
+                  <div className="px-3.5 py-3 text-[11px] text-[#374151] leading-relaxed flex-1 whitespace-pre-wrap">
+                    <p className="text-[10px] font-bold text-green-700 uppercase tracking-[0.1em] mb-1.5">
                       Sent — composed by backend
                     </p>
                     {sentReq.sentEmail.body}
@@ -1383,7 +1536,7 @@ function SmePackagePanel({
                 );
               return null;
             })() ?? (
-            <div className="px-3.5 py-3 text-[10px] text-[#374151] leading-relaxed space-y-2 flex-1">
+            <div className="px-3.5 py-3 text-[11px] text-[#374151] leading-relaxed space-y-2 flex-1">
               <p>Hi {tab} Team,</p>
               <p>
                 We need your input on the <strong>{tab} tab</strong> of the attached Excel for{" "}
@@ -1403,10 +1556,14 @@ function SmePackagePanel({
             <div className="px-3.5 py-2.5 border-t border-border bg-[#F7F8FA]">
               <button
                 onClick={sendDept}
-                disabled={tabSent}
-                className={`flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full w-full justify-center tracking-[0.06em] uppercase transition-all ${tabSent ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)]"}`}
+                disabled={tabSent || busy}
+                className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full w-full justify-center tracking-[0.06em] uppercase transition-all ${tabSent || busy ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)]"}`}
               >
-                {tabSent ? (
+                {busy && !tabSent ? (
+                  <>
+                    <Loader2 size={10} className="animate-spin" /> Sending…
+                  </>
+                ) : tabSent ? (
                   <>
                     <CheckCircle size={10} /> Sent to {tab} Team
                   </>
@@ -1434,7 +1591,7 @@ function SmePackagePanel({
         </span>
         <span className="flex-1" />
         {!allSent && (
-          <p className="text-[10px] text-[#9CA3AF]">
+          <p className="text-[11px] text-[#9CA3AF]">
             {queued.length} question(s) not sent yet — you can still jump ahead and come back.
           </p>
         )}
@@ -1454,6 +1611,61 @@ function SmePackagePanel({
           </BtnPrimary>
         </span>
       </div>
+
+      {/* Batch send hands over one mail draft per department — a browser can
+          only open a single mailto per user click */}
+      {batchDrafts && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-[560px] max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="px-5 py-3.5 border-b border-border flex items-center gap-2.5 shrink-0">
+              <Mail size={15} className="text-[#F96702]" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-[#1F2937]">
+                  Packages registered — open each email draft
+                </p>
+                <p className="text-[11px] text-[#9CA3AF] mt-0.5">
+                  Browsers open one mail draft per click. Open each department's draft below and
+                  attach its downloaded package before sending.
+                </p>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto divide-y divide-border">
+              {batchDrafts.map((d) => (
+                <div key={d.dept} className="px-5 py-3 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold text-[#1F2937]">{d.dept} Team</p>
+                    <p className="text-[11px] text-[#9CA3AF] truncate">{d.subject}</p>
+                  </div>
+                  {d.opened ? (
+                    <span className="flex items-center gap-1 text-[11px] text-[#9CA3AF] font-medium whitespace-nowrap">
+                      Draft opened
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        openMailDraft(d.to, d.subject, d.body);
+                        setBatchDrafts((p) =>
+                          p ? p.map((x) => (x.dept === d.dept ? { ...x, opened: true } : x)) : p,
+                        );
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 text-[11px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                    >
+                      <Mail size={10} /> Open draft
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-3 border-t border-border bg-[#FAFAFA] flex items-center gap-2 shrink-0">
+              <p className="text-[11px] text-[#6B7280] flex-1">
+                {batchDrafts.filter((d) => d.opened).length}/{batchDrafts.length} drafts opened —
+                packages stay registered either way.
+              </p>
+              <BtnSecondary onClick={() => setBatchDrafts(null)}>Done</BtnSecondary>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1505,7 +1717,7 @@ function EtaPanel({
   return (
     <div className="flex flex-col gap-3">
       <Card title="SME ETA Tracking — this ticket">
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full">
           <thead>
             <tr>
               <Th>Department</Th>
@@ -1524,12 +1736,12 @@ function EtaPanel({
                   key={r.id}
                   className={`border-b border-border last:border-0 transition-colors ${over ? "bg-red-50/40" : "hover:bg-gray-50/50"}`}
                 >
-                  <td className="px-4 py-2.5 text-xs font-semibold text-[#1F2937]">{r.department}</td>
-                  <td className="px-4 py-2.5 text-xs text-[#6B7280]">{r.assignee}</td>
-                  <td className="px-4 py-2.5 text-xs font-mono font-bold text-[#1F2937]">
+                  <td className="px-4 py-2.5 text-[13px] font-semibold text-[#1F2937]">{r.department}</td>
+                  <td className="px-4 py-2.5 text-[13px] text-[#6B7280]">{r.assignee}</td>
+                  <td className="px-4 py-2.5 text-[13px] font-mono font-bold text-[#1F2937]">
                     {r.questionIds.length}
                   </td>
-                  <td className={`px-4 py-2.5 text-xs font-medium whitespace-nowrap ${!r.eta ? "text-orange-500" : over ? "text-red-600" : "text-[#1F2937]"}`}>
+                  <td className={`px-4 py-2.5 text-[13px] font-medium whitespace-nowrap ${!r.eta ? "text-orange-500" : over ? "text-red-600" : "text-[#1F2937]"}`}>
                     {r.eta ? fmtDateTime(r.eta) : "No ETA"}
                   </td>
                   <td className="px-4 py-2.5">
@@ -1545,7 +1757,7 @@ function EtaPanel({
                               setEtaValue(r.eta ? r.eta.slice(0, 16) : "");
                               setConfirmedBy("");
                             }}
-                            className="px-3 py-1 text-[9px] font-bold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                            className="px-3 py-1 text-[10px] font-bold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                           >
                             {r.eta ? "Update ETA" : "Record ETA"}
                           </button>
@@ -1558,21 +1770,21 @@ function EtaPanel({
                                   ? "No ETA yet — drafts an ETA-confirmation chaser in your mail app"
                                   : "Drafts a context-aware check-in email in your mail app"
                             }
-                            className={`px-3 py-1 text-[9px] font-bold rounded-full tracking-[0.06em] uppercase whitespace-nowrap transition-all ${over ? "border border-[#FCA5A5]/50 bg-[#FEF2F2] text-[#991B1B] hover:bg-[#FEE2E2]" : "border border-[#F96702]/40 text-[#C05600] hover:bg-[#FFF4EC]"}`}
+                            className={`px-3 py-1 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase whitespace-nowrap transition-all ${over ? "border border-[#FCA5A5]/50 bg-[#FEF2F2] text-[#991B1B] hover:bg-[#FEE2E2]" : "border border-[#F96702]/40 text-[#C05600] hover:bg-[#FFF4EC]"}`}
                           >
                             <Bell size={9} className="inline mr-0.5" /> Nudge
                           </button>
                           <button
                             onClick={() => setRecordFor(r)}
                             title="The SME replied? Upload their returned Excel or paste the answers per question"
-                            className="px-3 py-1 text-[9px] font-bold border border-green-600/40 bg-green-50 rounded-full text-green-700 hover:bg-green-100 tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                            className="px-3 py-1 text-[10px] font-bold border border-green-600/40 bg-green-50 rounded-full text-green-700 hover:bg-green-100 tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                           >
                             <Download size={9} className="inline mr-0.5" /> Record Answers
                           </button>
                         </>
                       )}
                       {r.status === "Returned" && (
-                        <span className="text-[10px] text-green-700 font-medium flex items-center gap-1.5">
+                        <span className="text-[11px] text-green-700 font-medium flex items-center gap-1.5">
                           <CheckCircle size={11} /> {r.returnedAt ? fmtDateTime(r.returnedAt) : "Returned"}
                           <button
                             onClick={() => {
@@ -1597,7 +1809,7 @@ function EtaPanel({
                               actions.logActivity(`Undid returned status for ${r.department}`, ticket.id);
                               actions.addToast(`${r.department} marked as still pending.`, "info");
                             }}
-                            className="text-[9px] font-bold text-[#6B7280] border border-[rgba(0,0,0,0.15)] rounded-full px-2 py-0.5 hover:border-[#F96702]/50 hover:text-[#F96702] uppercase tracking-[0.06em]"
+                            className="text-[10px] font-bold text-[#6B7280] border border-[rgba(0,0,0,0.15)] rounded-full px-2 py-0.5 hover:border-[#F96702]/50 hover:text-[#F96702] uppercase tracking-[0.06em]"
                           >
                             Undo
                           </button>
@@ -1609,7 +1821,7 @@ function EtaPanel({
               );
             })}
           </tbody>
-        </table>
+        </table></div>
       </Card>
       <div className="flex gap-2 items-center flex-wrap">
         <span title="Go back to the per-department SME packages (e.g. to send a remaining one)">
@@ -1644,30 +1856,30 @@ function EtaPanel({
       </div>
 
       {etaModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-5 w-80">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-xs">
             <h3 className="text-sm font-semibold text-[#1F2937] mb-0.5">Record ETA</h3>
-            <p className="text-xs text-[#6B7280] mb-3">
+            <p className="text-[13px] text-[#6B7280] mb-3">
               Expected return for <strong>{etaModal.department}</strong>
             </p>
             <div className="flex flex-col gap-2.5">
               <div>
-                <label className="text-[10px] font-medium text-[#6B7280] mb-1 block">
+                <label className="text-[11px] font-medium text-[#6B7280] mb-1 block">
                   ETA Date &amp; Time (UTC)
                 </label>
                 <input
                   type="datetime-local"
-                  className="w-full border border-border rounded-md px-2.5 py-1.5 text-xs"
+                  className="w-full border border-border rounded-md px-2.5 py-1.5 text-[13px]"
                   value={etaValue}
                   onChange={(e) => setEtaValue(e.target.value)}
                 />
               </div>
               <div>
-                <label className="text-[10px] font-medium text-[#6B7280] mb-1 block">
+                <label className="text-[11px] font-medium text-[#6B7280] mb-1 block">
                   Confirmed by (optional)
                 </label>
                 <input
-                  className="w-full border border-border rounded-md px-2.5 py-1.5 text-xs"
+                  className="w-full border border-border rounded-md px-2.5 py-1.5 text-[13px]"
                   placeholder="e.g. Confirmed via email by Alex"
                   value={confirmedBy}
                   onChange={(e) => setConfirmedBy(e.target.value)}
@@ -1763,7 +1975,9 @@ function RecordAnswersModal({
       actions.setSmeRequests((p) =>
         p.map((x) => (x.id === req.id ? { ...x, status: "In Progress" } : x)),
       );
-      syncSmeRequest(req.backendId, { status: "In Progress" });
+      // "In Progress" is a frontend-only state — the backend vocabulary is
+      // Waiting for ETA / ETA Confirmed / Overdue / Returned, so its status
+      // stays untouched on partial returns (per-question answers sync above).
       actions.logActivity(
         `Recorded ${filled.length}/${openQs.length} returned ${req.department} SME answer(s) — partial return`,
         ticket.id,
@@ -1777,10 +1991,10 @@ function RecordAnswersModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl w-[640px] max-h-[88vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-[640px] max-h-[88vh] overflow-hidden flex flex-col">
         <div className="px-4 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center justify-between shrink-0">
-          <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide">
+          <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide">
             Record returned answers — {req.department} · {req.assignee}
           </p>
           <button onClick={close} className="text-gray-400 hover:text-gray-600">
@@ -1816,8 +2030,8 @@ function RecordAnswersModal({
               <FileSpreadsheet size={16} className="text-green-600" />
             </div>
             <div className="flex-1">
-              <p className="text-xs font-semibold text-[#1F2937]">Upload the returned Excel</p>
-              <p className="text-[10px] text-[#6B7280] mt-0.5">
+              <p className="text-[13px] font-semibold text-[#1F2937]">Upload the returned Excel</p>
+              <p className="text-[11px] text-[#6B7280] mt-0.5">
                 Answers are read into the fields below for review — or{" "}
                 <button
                   onClick={(e) => {
@@ -1835,8 +2049,8 @@ function RecordAnswersModal({
 
           {openQs.map((q) => (
             <div key={q.id} className="border border-border rounded-lg p-3 flex flex-col gap-1.5">
-              <p className="text-xs font-medium text-[#1F2937]">
-                <span className="text-[10px] font-mono text-[#9CA3AF] mr-1.5">#{q.row}</span>
+              <p className="text-[13px] font-medium text-[#1F2937]">
+                <span className="text-[11px] font-mono text-[#9CA3AF] mr-1.5">#{q.row}</span>
                 {q.original}
               </p>
               <textarea
@@ -1844,17 +2058,49 @@ function RecordAnswersModal({
                 value={answers[q.id] ?? ""}
                 onChange={(e) => setAnswers((p) => ({ ...p, [q.id]: e.target.value }))}
                 placeholder="Paste the SME's answer for this question… (leave blank if not answered yet)"
-                className="w-full border border-border rounded-md px-2.5 py-1.5 text-xs resize-y focus:outline-none focus:border-green-400"
+                className="w-full border border-border rounded-md px-2.5 py-1.5 text-[13px] resize-y focus:outline-none focus:border-green-400"
               />
             </div>
           ))}
           {openQs.length === 0 && (
-            <p className="text-xs text-[#9CA3AF] italic">All questions in this request already have answers.</p>
+            <div className="flex flex-col gap-3">
+              <p className="text-[13px] text-[#9CA3AF] italic">
+                All questions in this request already have answers.
+              </p>
+              {/* escape hatch: a request whose questions were all answered
+                  elsewhere (e.g. via a duplicate request) can never collect a
+                  new answer, so it could never reach Returned — allow closing
+                  it directly instead of deadlocking the workflow */}
+              <div className="bg-[#FFF8F1] border border-[#F96702]/20 rounded-lg px-3.5 py-3 flex items-center gap-3">
+                <p className="text-[12px] text-[#6B7280] flex-1">
+                  Nothing left to record here — mark the request as returned so the ticket can move
+                  on to final review.
+                </p>
+                <button
+                  onClick={() => {
+                    const returnedAt = new Date().toISOString();
+                    actions.setSmeRequests((p) =>
+                      p.map((x) => (x.id === req.id ? { ...x, status: "Returned", returnedAt } : x)),
+                    );
+                    syncSmeRequest(req.backendId, { status: "Returned", returnedAt });
+                    actions.logActivity(
+                      `Marked ${req.department} SME request returned — no open questions remained`,
+                      ticket.id,
+                    );
+                    actions.addToast("Request marked Returned — it had no open questions left.", "success");
+                    close();
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-[11px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                >
+                  <CheckCircle size={10} /> Mark Returned
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
         <div className="px-4 py-3 border-t border-border flex items-center gap-2 bg-[#FAFAFA] shrink-0">
-          <p className="text-[10px] text-[#6B7280] flex-1">
+          <p className="text-[11px] text-[#6B7280] flex-1">
             {filled.length}/{openQs.length} answered — unanswered questions stay Waiting SME
             (partial returns are fine).
           </p>
@@ -1944,19 +2190,19 @@ function NudgeModal({
   );
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl w-[520px] max-h-[85vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-[520px] max-h-[85vh] overflow-hidden flex flex-col">
         <div className="px-4 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center justify-between shrink-0">
-          <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide">
+          <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide">
             {t.label} — auto-drafted, editable
           </p>
           {variant === "overdue" && (
-            <span className="flex items-center gap-1 text-[10px] text-red-600 font-medium">
+            <span className="flex items-center gap-1 text-[11px] text-red-600 font-medium">
               <AlertTriangle size={10} /> {req.department} tab overdue
             </span>
           )}
         </div>
-        <div className="px-4 py-2.5 space-y-2 border-b border-border text-xs shrink-0">
+        <div className="px-4 py-2.5 space-y-2 border-b border-border text-[13px] shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-[#9CA3AF] w-14 shrink-0">To:</span>
             <span className="text-[#1F2937]">{to}</span>
@@ -1966,7 +2212,7 @@ function NudgeModal({
             <input
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              className="flex-1 border border-border rounded-md px-2 py-1 text-xs"
+              className="flex-1 border border-border rounded-md px-2 py-1 text-[13px]"
             />
           </div>
         </div>
@@ -1974,7 +2220,7 @@ function NudgeModal({
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={10}
-          className="flex-1 px-4 py-3 text-xs text-[#374151] leading-relaxed resize-none focus:outline-none"
+          className="flex-1 px-4 py-3 text-[13px] text-[#374151] leading-relaxed resize-none focus:outline-none"
         />
         <div className="px-4 py-3 border-t border-border flex items-center gap-2 bg-[#FAFAFA] shrink-0">
           <span title="Opens the draft in your mail app (Outlook/Gmail) — the system never sends email itself">
@@ -2014,7 +2260,11 @@ function FinalPanel({
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState(false);
 
-  const depts = DEPARTMENTS.filter((d) => qs.some((q) => q.department === d));
+  const qDepts = qs.map((q) => q.department);
+  const depts = [
+    ...QUESTION_DEPARTMENTS.filter((d) => qDepts.includes(d)),
+    ...[...new Set(qDepts)].filter((d) => !QUESTION_DEPARTMENTS.includes(d)),
+  ];
   const deptComplete = (d: string) =>
     qs.filter((q) => q.department === d).every((q) =>
       ["Approved", "Ready", "SME Complete"].includes(q.status),
@@ -2063,15 +2313,15 @@ function FinalPanel({
                 ) : (
                   <div className="w-3 h-3 rounded-full border-2 border-gray-300 shrink-0" />
                 )}
-                <span className={`text-xs font-medium flex-1 ${ok ? "text-green-800" : "text-[#9CA3AF]"}`}>
+                <span className={`text-[13px] font-medium flex-1 ${ok ? "text-green-800" : "text-[#9CA3AF]"}`}>
                   {d} — {ok ? "Complete" : "Awaiting answers"}
                 </span>
-                <span className="text-[10px] text-[#9CA3AF]">{total} question{total === 1 ? "" : "s"}</span>
+                <span className="text-[11px] text-[#9CA3AF]">{total} question{total === 1 ? "" : "s"}</span>
               </div>
             );
           })}
           {reqs.length === 0 && (
-            <p className="text-[10px] text-[#9CA3AF] pt-1">
+            <p className="text-[11px] text-[#9CA3AF] pt-1">
               All answers were resolved from approved knowledge — no SME input was needed.
             </p>
           )}
@@ -2082,7 +2332,7 @@ function FinalPanel({
           {ndaWarnings.length > 0 ? (
             <div className="flex items-start gap-2 p-2.5 rounded-md bg-[#FFF7F0] border border-[#F96702]/25">
               <Shield size={12} className="text-[#C05600] shrink-0 mt-0.5" />
-              <span className="text-xs text-[#8B4500]">
+              <span className="text-[13px] text-[#8B4500]">
                 {ndaWarnings.length} answer(s) are NDA-restricted but the ticket NDA status is{" "}
                 <strong>{ticket.nda}</strong> — confirm before the response is sent.
               </span>
@@ -2090,17 +2340,17 @@ function FinalPanel({
           ) : allComplete ? (
             <div className="flex items-center gap-2 p-2.5 rounded-md bg-green-50 border border-green-100">
               <CheckCircle size={12} className="text-green-500" />
-              <span className="text-xs text-green-700 font-medium">None — all checks passed.</span>
+              <span className="text-[13px] text-green-700 font-medium">None — all checks passed.</span>
             </div>
           ) : (
             <div className="flex items-center gap-2 p-2.5 rounded-md bg-yellow-50 border border-yellow-100">
               <AlertTriangle size={12} className="text-yellow-500" />
-              <span className="text-xs text-yellow-700">Some departments are still incomplete.</span>
+              <span className="text-[13px] text-yellow-700">Some departments are still incomplete.</span>
             </div>
           )}
         </div>
       </Card>
-      <div className="bg-[#FAFAFA] border border-[rgba(0,0,0,0.06)] rounded-lg px-4 py-2.5 flex items-center gap-2 text-[10px] font-semibold">
+      <div className="bg-[#FAFAFA] border border-[rgba(0,0,0,0.06)] rounded-lg px-4 py-2.5 flex items-center gap-2 text-[11px] font-semibold">
         <span className="text-[#6B7280] uppercase tracking-[0.08em]">Three steps:</span>
         <span className={reviewed ? "text-green-700" : "text-[#C05600]"}>
           1 · Confirm review {reviewed && "✓"}
@@ -2144,7 +2394,7 @@ function FinalPanel({
               ? "Blocked: some departments still have unanswered questions (see checklist above)"
               : "Step 1 — confirm you have reviewed every answer; this unlocks the export"
           }
-          className={`flex items-center gap-1.5 px-5 py-2 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!allComplete ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : reviewed ? "bg-green-600 text-white" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.3)]"}`}
+          className={`flex items-center gap-1.5 px-5 py-2 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!allComplete ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : reviewed ? "bg-green-600 text-white" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.3)]"}`}
         >
           {reviewed ? (
             <>
@@ -2164,7 +2414,7 @@ function FinalPanel({
               : "Step 2 — downloads the completed answer package for the customer"
           }
           onClick={() => setExportModal(true)}
-          className={`flex items-center gap-1.5 px-5 py-2 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!reviewed || exporting ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : exported ? "bg-green-600 text-white" : "border border-[rgba(0,0,0,0.18)] text-[#374151] hover:border-[#F96702]/60 hover:text-[#F96702]"}`}
+          className={`flex items-center gap-1.5 px-5 py-2 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!reviewed || exporting ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : exported ? "bg-green-600 text-white" : "border border-[rgba(0,0,0,0.18)] text-[#374151] hover:border-[#F96702]/60 hover:text-[#F96702]"}`}
         >
           {exporting ? (
             <>
@@ -2195,20 +2445,20 @@ function FinalPanel({
             actions.logActivity("Approved final response — ticket ready to send", ticket.id);
             actions.addToast("Ticket approved. Use Mark Sent & Close in the header to finish.", "success");
           }}
-          className={`flex items-center gap-1.5 px-5 py-2 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!exported ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#0A0A0A] text-white hover:bg-[#222]"}`}
+          className={`flex items-center gap-1.5 px-5 py-2 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!exported ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#0A0A0A] text-white hover:bg-[#222]"}`}
         >
           <RefreshCw size={11} /> 3 · Approve Ticket
         </button>
       </div>
 
       {exportModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl p-5 w-80">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-xs">
             <h3 className="text-sm font-semibold text-[#1F2937] mb-1">Confirm Export</h3>
-            <p className="text-xs text-[#6B7280] mb-4">
+            <p className="text-[13px] text-[#6B7280] mb-4">
               Export the completed response package for {ticket.customer} ({ticket.id})?
             </p>
-            <div className="bg-[#F7F8FA] rounded-md p-3 border border-border mb-4 space-y-1 text-xs">
+            <div className="bg-[#F7F8FA] rounded-md p-3 border border-border mb-4 space-y-1 text-[13px]">
               <p><strong>Customer:</strong> {ticket.customer}</p>
               <p><strong>NDA status:</strong> {ticket.nda}</p>
               <p><strong>File:</strong> {ticket.customer.replace(/\s+/g, "_")}_Response_{ticket.id.replace("TK-", "T")}.zip</p>
@@ -2235,9 +2485,9 @@ function DonePanel({ qs, actions }: { qs: MvpQuestion[]; actions: AppActions }) 
   return (
     <Card title={`Questions — ${qs.length} answered`}>
       {qs.length === 0 ? (
-        <p className="px-4 py-5 text-xs text-[#9CA3AF] italic">No question records for this ticket.</p>
+        <p className="px-4 py-5 text-[13px] text-[#9CA3AF] italic">No question records for this ticket.</p>
       ) : (
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full">
           <thead>
             <tr>
               <Th>#</Th>
@@ -2254,26 +2504,26 @@ function DonePanel({ qs, actions }: { qs: MvpQuestion[]; actions: AppActions }) 
                 onClick={() => setOpenId(q.id)}
                 className="border-b border-border last:border-0 cursor-pointer hover:bg-gray-50/60"
               >
-                <td className="px-4 py-2.5 text-[10px] font-mono text-[#9CA3AF]">{q.row}</td>
-                <td className="px-4 py-2.5 text-xs text-[#1F2937] max-w-[320px]">
+                <td className="px-4 py-2.5 text-[11px] font-mono text-[#9CA3AF]">{q.row}</td>
+                <td className="px-4 py-2.5 text-[13px] text-[#1F2937] max-w-[320px]">
                   <p className="line-clamp-1">{q.original}</p>
                 </td>
-                <td className="px-4 py-2.5 text-xs text-[#374151]">{q.department}</td>
+                <td className="px-4 py-2.5 text-[13px] text-[#374151]">{q.department}</td>
                 <td className="px-4 py-2.5"><Pill value={q.status} /></td>
-                <td className="px-4 py-2.5 text-[11px] text-[#6B7280] max-w-[240px]">
+                <td className="px-4 py-2.5 text-[12px] text-[#6B7280] max-w-[240px]">
                   <p className="line-clamp-1">{q.finalAnswer?.text ?? "—"}</p>
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
       {open && (
         <div className="fixed inset-0 z-50 flex">
           <div className="flex-1 bg-black/30" onClick={() => setOpenId(null)} />
-          <div className="w-[400px] bg-white h-full shadow-[-8px_0_32px_rgba(0,0,0,0.12)] flex flex-col">
+          <div className="w-full max-w-[400px] bg-white h-full shadow-[-8px_0_32px_rgba(0,0,0,0.12)] flex flex-col">
             <div className="px-5 py-3.5 border-b border-border flex items-center gap-2">
-              <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide flex-1">
+              <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide flex-1">
                 Question #{open.row}
               </p>
               <Pill value={open.status} />
@@ -2284,11 +2534,11 @@ function DonePanel({ qs, actions }: { qs: MvpQuestion[]; actions: AppActions }) 
             <div className="flex-1 overflow-auto px-5 py-4 flex flex-col gap-3">
               <p className="text-sm font-bold text-[#0A0A0A]">{open.normalised}</p>
               {open.sharingStatus && <div><SharingBadge status={open.sharingStatus} /></div>}
-              <div className="text-xs text-[#374151] leading-relaxed bg-[#F7F8FA] border border-border rounded-md px-3 py-2.5">
+              <div className="text-[13px] text-[#374151] leading-relaxed bg-[#F7F8FA] border border-border rounded-md px-3 py-2.5">
                 {open.finalAnswer?.text ?? "No final answer recorded."}
               </div>
               {open.finalAnswer && (
-                <p className="text-[10px] text-[#9CA3AF]">Source: {open.finalAnswer.sourceType}</p>
+                <p className="text-[11px] text-[#9CA3AF]">Source: {open.finalAnswer.sourceType}</p>
               )}
             </div>
             {open.finalAnswer && (

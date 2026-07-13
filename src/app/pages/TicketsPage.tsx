@@ -113,7 +113,7 @@ export function TicketsPage({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="px-7 pt-6 pb-4 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center justify-between">
+      <div className="px-4 sm:px-8 pt-7 pb-5 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0" />
           <div>
@@ -152,13 +152,13 @@ export function TicketsPage({
                 actions.logActivity("Imported ticket from mock Salesforce SOR", id);
                 actions.addToast(`Imported ${id} from mock SOR.`, "success");
               }}
-              className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
+              className="flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
             >
               Import Mock SOR
             </button>
             <button
               onClick={() => setNewTicketOpen(true)}
-              className="flex items-center gap-1.5 px-5 py-2 text-[10px] bg-[#F96702] text-white rounded-full hover:bg-[#D95400] font-bold tracking-[0.06em] shadow-[0_2px_8px_rgba(249,103,2,0.3)] transition-all"
+              className="flex items-center gap-1.5 px-5 py-2 text-[11px] bg-[#F96702] text-white rounded-full hover:bg-[#D95400] font-bold tracking-[0.06em] shadow-[0_2px_8px_rgba(249,103,2,0.3)] transition-all"
             >
               <Plus size={12} /> New Request
             </button>
@@ -166,7 +166,7 @@ export function TicketsPage({
         )}
       </div>
 
-      <div className="flex-1 overflow-auto px-8 py-6 flex flex-col gap-4">
+      <div className="flex-1 overflow-auto px-4 sm:px-8 py-7 flex flex-col gap-5">
         {/* TK-01 search + filters */}
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
@@ -175,7 +175,7 @@ export function TicketsPage({
               value={filters.query}
               onChange={(e) => set({ query: e.target.value })}
               placeholder="Search company, SOR ID, ticket ID, question…"
-              className="pl-8 pr-4 py-1.5 text-[11px] border border-[rgba(0,0,0,0.15)] rounded-full bg-white placeholder-[#B0B0B0] focus:outline-none focus:ring-2 focus:ring-[#F96702]/30 focus:border-[#F96702]/50 w-72 transition-all"
+              className="pl-8 pr-4 py-1.5 text-[12px] border border-[rgba(0,0,0,0.15)] rounded-full bg-white placeholder-[#B0B0B0] focus:outline-none focus:ring-2 focus:ring-[#F96702]/30 focus:border-[#F96702]/50 w-72 transition-all"
             />
           </div>
           <FilterSelect label="Status" value={filters.status} options={TICKET_STATUSES} onChange={(v) => set({ status: v })} />
@@ -183,7 +183,7 @@ export function TicketsPage({
           <FilterSelect label="NDA" value={filters.nda} options={["In Place", "Missing", "Unknown"]} onChange={(v) => set({ nda: v })} />
           <FilterSelect label="Urgency" value={filters.urgency} options={["High", "Medium", "Low"]} onChange={(v) => set({ urgency: v })} />
           <FilterSelect label="Due" value={filters.due} options={["Overdue", "Due today"]} onChange={(v) => set({ due: v })} />
-          <label className="flex items-center gap-1.5 text-[10px] font-semibold text-[#6B7280] cursor-pointer ml-1">
+          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-[#6B7280] cursor-pointer ml-1">
             <input
               type="checkbox"
               className="accent-[#F96702]"
@@ -195,7 +195,7 @@ export function TicketsPage({
           {JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS) && (
             <button
               onClick={() => setFilters(EMPTY_FILTERS)}
-              className="flex items-center gap-1 text-[10px] font-semibold text-[#9CA3AF] hover:text-[#F96702]"
+              className="flex items-center gap-1 text-[11px] font-semibold text-[#9CA3AF] hover:text-[#F96702]"
             >
               <X size={10} /> Clear
             </button>
@@ -210,7 +210,7 @@ export function TicketsPage({
               hint="Adjust filters or create a new ticket."
             />
           ) : (
-            <table className="w-full">
+            <div className="overflow-x-auto"><table className="w-full">
               <thead>
                 <tr>
                   <Th>Ticket ID</Th>
@@ -231,31 +231,31 @@ export function TicketsPage({
                     onClick={() => actions.openTicket(t.id)}
                     className={`border-b border-border last:border-0 cursor-pointer transition-colors ${isOverdueTicket(t) ? "bg-red-50/40 hover:bg-red-50/70" : "hover:bg-gray-50/60"}`}
                   >
-                    <td className="px-4 py-2.5 text-xs font-mono font-bold text-[#1F2937]">{t.id}</td>
-                    <td className="px-4 py-2.5 text-xs font-semibold text-[#1F2937]">{t.customer}</td>
-                    <td className="px-4 py-2.5 text-xs text-[#6B7280] whitespace-nowrap">{t.owner}</td>
+                    <td className="px-4 py-2.5 text-[13px] font-mono font-bold text-[#1F2937]">{t.id}</td>
+                    <td className="px-4 py-2.5 text-[13px] font-semibold text-[#1F2937]">{t.customer}</td>
+                    <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">{t.owner}</td>
                     <td className="px-4 py-2.5"><Pill value={t.status} /></td>
                     <td className="px-4 py-2.5"><UrgencyDot urgency={t.urgency} /></td>
-                    <td className={`px-4 py-2.5 text-xs whitespace-nowrap ${isOverdueTicket(t) ? "text-red-600 font-semibold" : "text-[#374151]"}`}>
+                    <td className={`px-4 py-2.5 text-[13px] whitespace-nowrap ${isOverdueTicket(t) ? "text-red-600 font-semibold" : "text-[#374151]"}`}>
                       {fmtDate(t.due)}
                     </td>
                     <td className="px-4 py-2.5">
                       <span
-                        className={`text-[10px] font-bold ${t.nda === "In Place" ? "text-green-700" : t.nda === "Missing" ? "text-red-600" : "text-[#C05600]"}`}
+                        className={`text-[11px] font-bold ${t.nda === "In Place" ? "text-green-700" : t.nda === "Missing" ? "text-red-600" : "text-[#C05600]"}`}
                       >
                         {t.nda}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-xs font-mono font-bold text-[#1F2937]">
+                    <td className="px-4 py-2.5 text-[13px] font-mono font-bold text-[#1F2937]">
                       {smePending(t.id) || "—"}
                     </td>
-                    <td className="px-4 py-2.5 text-[10px] text-[#9CA3AF] whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-[11px] text-[#9CA3AF] whitespace-nowrap">
                       {lastActivity(t.id)}
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       </div>
