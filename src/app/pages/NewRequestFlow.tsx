@@ -95,21 +95,23 @@ export function NewRequestFlow({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl w-[640px] max-h-[88vh] overflow-hidden flex flex-col">
-        <div className="px-5 py-3.5 border-b border-border flex items-center gap-2 shrink-0">
-          <Mail size={14} className="text-[#F96702]" />
-          <p className="text-sm font-semibold text-[#1F2937] flex-1">New Request</p>
-          <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-[#C0BEBA]">
-            Paste email → Intake Check → AI Analysis
-          </span>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-[720px] max-h-[88vh] overflow-hidden flex flex-col">
+        <div className="px-6 py-4 border-b border-border flex items-center gap-2.5 shrink-0">
+          <Mail size={15} className="text-[#F96702]" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-[#1F2937]">New Request</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#C0BEBA] mt-0.5">
+              Paste email → Intake Check → AI Analysis
+            </p>
+          </div>
           <button onClick={close} className="text-gray-400 hover:text-gray-600 ml-2">
-            <X size={14} />
+            <X size={15} />
           </button>
         </div>
 
-        <div className="p-5 flex flex-col gap-3 overflow-auto">
-          <p className="text-xs text-[#6B7280]">
+        <div className="p-6 flex flex-col gap-4 overflow-auto">
+          <p className="text-[13px] text-[#6B7280]">
             Paste the email you received from the AE. AI extracts the customer, urgency, NDA
             status, deadline and deal value — you review everything on the intake check next.
           </p>
@@ -119,11 +121,11 @@ export function NewRequestFlow({
             placeholder="Paste the incoming AE email here…"
             rows={10}
             autoFocus
-            className="w-full border border-border rounded-lg px-3 py-2.5 text-xs leading-relaxed resize-y focus:outline-none focus:border-[#F96702]/50 focus:ring-2 focus:ring-[#F96702]/20 font-mono"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-[13px] leading-relaxed resize-y focus:outline-none focus:border-[#F96702]/50 focus:ring-2 focus:ring-[#F96702]/20 font-mono"
           />
           <button
             onClick={() => setEmailText(SAMPLE_AE_EMAIL)}
-            className="flex items-center gap-1.5 text-[10px] font-semibold text-[#C05600] hover:underline self-start"
+            className="flex items-center gap-1.5 text-[11px] font-semibold text-[#C05600] hover:underline self-start"
           >
             <ClipboardPaste size={11} /> Use sample email (demo)
           </button>
@@ -160,18 +162,18 @@ export function NewRequestFlow({
             <div className="flex-1 min-w-0">
               {attached ? (
                 <>
-                  <p className="text-xs font-semibold text-[#1F2937] truncate">{attached.name}</p>
-                  <p className="text-[10px] text-[#6B7280] mt-0.5">
+                  <p className="text-[13px] font-semibold text-[#1F2937] truncate">{attached.name}</p>
+                  <p className="text-[11px] text-[#6B7280] mt-0.5">
                     {Math.max(1, Math.round(attached.size / 1024))} KB · will be parsed and
                     classified by AI after intake is confirmed
                   </p>
                 </>
               ) : (
                 <>
-                  <p className="text-xs font-semibold text-[#1F2937]">
+                  <p className="text-[13px] font-semibold text-[#1F2937]">
                     Attach the customer form (optional)
                   </p>
-                  <p className="text-[10px] text-[#6B7280] mt-0.5">
+                  <p className="text-[11px] text-[#6B7280] mt-0.5">
                     Click to browse or drag the .xlsx / .docx here — questions are extracted
                     automatically after intake
                   </p>
@@ -185,7 +187,7 @@ export function NewRequestFlow({
                   setAttached(null);
                 }}
                 title="Remove the attached file"
-                className="text-[10px] font-semibold text-[#9CA3AF] hover:text-[#F96702] shrink-0"
+                className="text-[11px] font-semibold text-[#9CA3AF] hover:text-[#F96702] shrink-0"
               >
                 Remove
               </button>
@@ -249,13 +251,13 @@ export function ClarificationEmailModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]">
-      <div className="bg-white rounded-xl shadow-xl w-[560px] max-h-[85vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-[560px] max-h-[85vh] overflow-hidden flex flex-col">
         <div className="px-4 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center justify-between shrink-0">
-          <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide">
+          <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide">
             Clarification email to AE — auto-drafted, editable
           </p>
           {sent ? (
-            <span className="text-[10px] text-green-600 font-medium flex items-center gap-1">
+            <span className="text-[11px] text-green-600 font-medium flex items-center gap-1">
               <CheckCircle size={10} /> Sent
             </span>
           ) : (
@@ -265,22 +267,22 @@ export function ClarificationEmailModal({
           )}
         </div>
         <div className="px-4 py-3 space-y-2 border-b border-border shrink-0">
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 text-[13px]">
             <span className="text-[#9CA3AF] w-14 shrink-0">To:</span>
             <input
               value={to}
               onChange={(e) => setTo(e.target.value)}
               disabled={sent}
-              className="flex-1 border border-border rounded-md px-2 py-1 text-xs disabled:bg-[#F7F8FA]"
+              className="flex-1 border border-border rounded-md px-2 py-1 text-[13px] disabled:bg-[#F7F8FA]"
             />
           </div>
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 text-[13px]">
             <span className="text-[#9CA3AF] w-14 shrink-0">Subject:</span>
             <input
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               disabled={sent}
-              className="flex-1 border border-border rounded-md px-2 py-1 text-xs disabled:bg-[#F7F8FA]"
+              className="flex-1 border border-border rounded-md px-2 py-1 text-[13px] disabled:bg-[#F7F8FA]"
             />
           </div>
         </div>
@@ -289,7 +291,7 @@ export function ClarificationEmailModal({
           onChange={(e) => setBody(e.target.value)}
           disabled={sent}
           rows={12}
-          className="flex-1 px-4 py-3 text-xs text-[#374151] leading-relaxed resize-none focus:outline-none disabled:bg-white"
+          className="flex-1 px-4 py-3 text-[13px] text-[#374151] leading-relaxed resize-none focus:outline-none disabled:bg-white"
         />
         <div className="px-4 py-3 border-t border-border flex items-center gap-2 bg-[#FAFAFA] shrink-0">
           {!sent ? (
@@ -310,7 +312,7 @@ export function ClarificationEmailModal({
             </>
           ) : (
             <>
-              <p className="text-[11px] text-[#6B7280] flex items-center gap-1.5 flex-1">
+              <p className="text-[12px] text-[#6B7280] flex items-center gap-1.5 flex-1">
                 <AlertTriangle size={11} className="text-[#C05600]" />
                 When the AE replies, fill the confirmed values into the intake table by hand.
               </p>

@@ -72,8 +72,8 @@ export function KnowledgeBasePage({
   return (
     <div className="flex-1 flex overflow-hidden">
       {/* Department browser (KB-02) */}
-      <aside className="w-48 bg-white border-r border-[rgba(0,0,0,0.06)] shrink-0 overflow-y-auto py-4 px-3">
-        <p className="text-[9px] font-black text-[#ABABAB] uppercase tracking-[0.14em] px-3 pb-2">
+      <aside className="w-48 bg-white border-r border-[rgba(0,0,0,0.06)] shrink-0 overflow-y-auto py-4 px-3 hidden md:block">
+        <p className="text-[10px] font-black text-[#ABABAB] uppercase tracking-[0.14em] px-3 pb-2">
           Browse
         </p>
         <button
@@ -81,39 +81,46 @@ export function KnowledgeBasePage({
             setView("all");
             setDept("All");
           }}
-          className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] transition-all ${view === "all" && dept === "All" ? "bg-[#F96702] text-white font-bold" : "text-[#6B7280] hover:bg-[#F5F3F0]"}`}
+          className={`w-full text-left px-3 py-1.5 rounded-lg text-[12px] transition-all ${view === "all" && dept === "All" ? "bg-[#F96702] text-white font-bold" : "text-[#6B7280] hover:bg-[#F5F3F0]"}`}
         >
           All Entries
         </button>
-        <p className="text-[9px] font-black text-[#ABABAB] uppercase tracking-[0.14em] px-3 pt-4 pb-2">
+        <p className="text-[10px] font-black text-[#ABABAB] uppercase tracking-[0.14em] px-3 pt-4 pb-2">
           Departments
         </p>
-        {DEPARTMENTS.map((d) => (
+        {/* derive from the entries themselves — live data uses labels (e.g.
+            InfoSec, Compliance) outside the PRD list */}
+        {[
+          ...DEPARTMENTS.filter((d) => knowledge.some((k) => k.department === d)),
+          ...[...new Set(knowledge.map((k) => k.department))].filter(
+            (d) => !DEPARTMENTS.includes(d),
+          ),
+        ].map((d) => (
           <button
             key={d}
             onClick={() => {
               setView("all");
               setDept(d);
             }}
-            className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] transition-all flex items-center ${view === "all" && dept === d ? "bg-[#F96702] text-white font-bold" : "text-[#6B7280] hover:bg-[#F5F3F0]"}`}
+            className={`w-full text-left px-3 py-1.5 rounded-lg text-[12px] transition-all flex items-center ${view === "all" && dept === d ? "bg-[#F96702] text-white font-bold" : "text-[#6B7280] hover:bg-[#F5F3F0]"}`}
           >
             <span className="flex-1">{d}</span>
-            <span className={`text-[9px] ${view === "all" && dept === d ? "text-white/80" : "text-[#C0BEBA]"}`}>
+            <span className={`text-[10px] ${view === "all" && dept === d ? "text-white/80" : "text-[#C0BEBA]"}`}>
               {knowledge.filter((k) => k.department === d && k.status !== "Archived").length}
             </span>
           </button>
         ))}
-        <p className="text-[9px] font-black text-[#ABABAB] uppercase tracking-[0.14em] px-3 pt-4 pb-2">
+        <p className="text-[10px] font-black text-[#ABABAB] uppercase tracking-[0.14em] px-3 pt-4 pb-2">
           Review
         </p>
         <button
           onClick={() => setView("pending")}
-          className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] transition-all flex items-center ${view === "pending" ? "bg-[#F96702] text-white font-bold" : "text-[#6B7280] hover:bg-[#F5F3F0]"}`}
+          className={`w-full text-left px-3 py-1.5 rounded-lg text-[12px] transition-all flex items-center ${view === "pending" ? "bg-[#F96702] text-white font-bold" : "text-[#6B7280] hover:bg-[#F5F3F0]"}`}
         >
           <span className="flex-1">Pending Review</span>
           {pendingCount > 0 && (
             <span
-              className={`text-[9px] font-bold rounded-full px-1.5 py-px ${view === "pending" ? "bg-white text-[#F96702]" : "bg-[#FEFCE8] text-[#854D0E] border border-[#FDE68A]"}`}
+              className={`text-[10px] font-bold rounded-full px-1.5 py-px ${view === "pending" ? "bg-white text-[#F96702]" : "bg-[#FEFCE8] text-[#854D0E] border border-[#FDE68A]"}`}
             >
               {pendingCount}
             </span>
@@ -125,13 +132,13 @@ export function KnowledgeBasePage({
         {returnTicket && (
           <button
             onClick={() => actions.openTicket(returnTicket)}
-            className="flex items-center gap-2 px-7 py-2 bg-[#FFF4EC] border-b border-[#F96702]/25 text-[11px] font-semibold text-[#C05600] hover:bg-[#FFE8D0] transition-colors shrink-0"
+            className="flex items-center gap-2 px-7 py-2 bg-[#FFF4EC] border-b border-[#F96702]/25 text-[12px] font-semibold text-[#C05600] hover:bg-[#FFE8D0] transition-colors shrink-0"
           >
             <ArrowLeft size={12} /> Back to ticket {returnTicket} — you were reviewing an answer
             source
           </button>
         )}
-        <div className="px-7 pt-6 pb-4 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center justify-between">
+        <div className="px-4 sm:px-8 pt-7 pb-5 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0" />
             <div>
@@ -147,13 +154,13 @@ export function KnowledgeBasePage({
           </div>
           <button
             onClick={() => setEditorFor("new")}
-            className="flex items-center gap-1.5 px-5 py-2 text-[10px] bg-[#F96702] text-white rounded-full hover:bg-[#D95400] font-bold tracking-[0.06em] shadow-[0_2px_8px_rgba(249,103,2,0.3)] transition-all"
+            className="flex items-center gap-1.5 px-5 py-2 text-[11px] bg-[#F96702] text-white rounded-full hover:bg-[#D95400] font-bold tracking-[0.06em] shadow-[0_2px_8px_rgba(249,103,2,0.3)] transition-all"
           >
             <Plus size={12} /> Add Entry
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto px-8 py-6 flex flex-col gap-4">
+        <div className="flex-1 overflow-auto px-4 sm:px-8 py-7 flex flex-col gap-5">
           {view === "all" && (
             <div className="relative w-72">
               <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
@@ -161,7 +168,7 @@ export function KnowledgeBasePage({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search titles, content, tags…"
-                className="w-full pl-8 pr-4 py-1.5 text-[11px] border border-[rgba(0,0,0,0.15)] rounded-full bg-white placeholder-[#B0B0B0] focus:outline-none focus:ring-2 focus:ring-[#F96702]/30"
+                className="w-full pl-8 pr-4 py-1.5 text-[12px] border border-[rgba(0,0,0,0.15)] rounded-full bg-white placeholder-[#B0B0B0] focus:outline-none focus:ring-2 focus:ring-[#F96702]/30"
               />
             </div>
           )}
@@ -182,7 +189,7 @@ export function KnowledgeBasePage({
                 }
               />
             ) : (
-              <table className="w-full">
+              <div className="overflow-x-auto"><table className="w-full">
                 <thead>
                   <tr>
                     <Th>Department</Th>
@@ -200,21 +207,21 @@ export function KnowledgeBasePage({
                       onClick={() => setDetailId(k.id)}
                       className="border-b border-border last:border-0 cursor-pointer hover:bg-gray-50/60 transition-colors"
                     >
-                      <td className="px-4 py-2.5 text-xs text-[#374151] whitespace-nowrap">{k.department}</td>
+                      <td className="px-4 py-2.5 text-[13px] text-[#374151] whitespace-nowrap">{k.department}</td>
                       <td className="px-4 py-2.5">
-                        <p className="text-xs font-semibold text-[#1F2937]">{k.title}</p>
-                        <p className="text-[10px] text-[#9CA3AF] line-clamp-1 mt-0.5">{k.content}</p>
+                        <p className="text-[13px] font-semibold text-[#1F2937]">{k.title}</p>
+                        <p className="text-[11px] text-[#9CA3AF] line-clamp-1 mt-0.5">{k.content}</p>
                       </td>
                       <td className="px-4 py-2.5"><SharingBadge status={k.sharingStatus} /></td>
-                      <td className="px-4 py-2.5 text-xs text-[#6B7280] whitespace-nowrap">
+                      <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">
                         {k.lastUpdated} (UTC)
                       </td>
                       <td className="px-4 py-2.5"><Pill value={k.status} /></td>
-                      <td className="px-4 py-2.5 text-xs text-[#6B7280] whitespace-nowrap">{k.owner}</td>
+                      <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">{k.owner}</td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         </div>
@@ -224,9 +231,9 @@ export function KnowledgeBasePage({
       {detail && (
         <div className="fixed inset-0 z-50 flex">
           <div className="flex-1 bg-black/30" onClick={() => setDetailId(null)} />
-          <div className="w-[400px] bg-white h-full shadow-[-8px_0_32px_rgba(0,0,0,0.12)] flex flex-col overflow-hidden">
+          <div className="w-full max-w-[400px] bg-white h-full shadow-[-8px_0_32px_rgba(0,0,0,0.12)] flex flex-col overflow-hidden">
             <div className="px-5 py-3.5 border-b border-border flex items-center gap-2 shrink-0">
-              <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wide flex-1">
+              <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide flex-1">
                 Knowledge Entry #{detail.id}
               </p>
               <Pill value={detail.status} />
@@ -238,12 +245,12 @@ export function KnowledgeBasePage({
               <h3 className="text-sm font-bold text-[#0A0A0A]">{detail.title}</h3>
               <div className="flex items-center gap-2 flex-wrap">
                 <SharingBadge status={detail.sharingStatus} />
-                <span className="text-[10px] text-[#6B7280]">{detail.department}</span>
+                <span className="text-[11px] text-[#6B7280]">{detail.department}</span>
               </div>
-              <div className="text-xs text-[#374151] leading-relaxed bg-[#F7F8FA] border border-border rounded-md px-3 py-2.5">
+              <div className="text-[13px] text-[#374151] leading-relaxed bg-[#F7F8FA] border border-border rounded-md px-3 py-2.5">
                 {detail.content}
               </div>
-              <div className="space-y-1.5 text-[11px] text-[#6B7280]">
+              <div className="space-y-1.5 text-[12px] text-[#6B7280]">
                 <p><strong>Source:</strong> {detail.source}</p>
                 <p><strong>Last updated:</strong> {detail.lastUpdated} (UTC)</p>
                 <p><strong>Owner:</strong> {detail.owner}</p>
@@ -254,7 +261,7 @@ export function KnowledgeBasePage({
               {returnTicket && (
                 <button
                   onClick={() => actions.openTicket(returnTicket)}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 text-[10px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase shadow-[0_2px_8px_rgba(249,103,2,0.25)] transition-all"
+                  className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase shadow-[0_2px_8px_rgba(249,103,2,0.25)] transition-all"
                 >
                   <ArrowLeft size={11} /> Back to Ticket {returnTicket}
                 </button>
@@ -314,7 +321,7 @@ export function KnowledgeBasePage({
                     actions.addToast("Entry archived (preserved, never deleted).", "info");
                     setDetailId(null);
                   }}
-                  className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-semibold border border-[#FCA5A5]/60 rounded-full text-[#991B1B] hover:bg-[#FEF2F2] transition-all ml-auto"
+                  className="flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold border border-[#FCA5A5]/60 rounded-full text-[#991B1B] hover:bg-[#FEF2F2] transition-all ml-auto"
                 >
                   <Archive size={11} /> Archive
                 </button>
@@ -395,12 +402,12 @@ function EntryEditor({
     close();
   };
 
-  const field = "w-full border border-border rounded-md px-2.5 py-1.5 text-xs";
-  const label = "text-[10px] font-medium text-[#6B7280] mb-1 block";
+  const field = "w-full border border-border rounded-md px-2.5 py-1.5 text-[13px]";
+  const label = "text-[11px] font-medium text-[#6B7280] mb-1 block";
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl p-5 w-[480px] max-h-[85vh] overflow-auto">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-[480px] max-h-[85vh] overflow-auto">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-[#1F2937]">
             {existing ? "Edit Knowledge Entry" : "New Knowledge Entry"}
@@ -418,7 +425,7 @@ function EntryEditor({
             <label className={label}>Content *</label>
             <textarea rows={5} className={`${field} resize-y`} value={content} onChange={(e) => setContent(e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
             <div>
               <label className={label}>Department</label>
               <select className={`${field} bg-white`} value={dept} onChange={(e) => setDept(e.target.value)}>
@@ -446,7 +453,7 @@ function EntryEditor({
           </div>
         </div>
         {!existing && (
-          <p className="text-[10px] text-[#854D0E] bg-[#FEFCE8] border border-[#FDE68A] rounded-md px-2.5 py-1.5 mt-2.5">
+          <p className="text-[11px] text-[#854D0E] bg-[#FEFCE8] border border-[#FDE68A] rounded-md px-2.5 py-1.5 mt-2.5">
             New entries start in Pending Review — they only feed AI retrieval after approval
             (KB-05, §11.2).
           </p>

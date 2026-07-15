@@ -14,7 +14,23 @@ import type {
   SearchResult,
   SmeRequestQuestion,
 } from "../api";
-import { MvpQuestion, MvpTicket, SUGGESTED_THRESHOLD, SharingStatus } from "../data/model";
+import {
+  MvpQuestion,
+  MvpTicket,
+  SUGGESTED_THRESHOLD,
+  SharingStatus,
+  TBD_DEPARTMENT,
+} from "../data/model";
+
+// The backend classifier's fallback bucket is "General"; questions show it as
+// "TBD" so analysts know the AI did not pick a department. Stored value stays
+// "General" until the classifier vocabulary is renamed on the backend too.
+export function questionDeptFromBackend(d: string | null | undefined): string {
+  return d && d !== "General" ? d : TBD_DEPARTMENT;
+}
+function questionDeptToBackend(d: string): string {
+  return d === TBD_DEPARTMENT ? "General" : d;
+}
 
 // Configurable for deployment (PR #3 review): VITE_API_BASE on Vercel,
 // localhost default for development. All requests in this module go through
@@ -38,7 +54,9 @@ function report(live: boolean) {
 
 export async function pingBackend(): Promise<boolean> {
   try {
-    const res = await fetch(`${BASE}/tickets`, { signal: AbortSignal.timeout(2500) });
+    // Generous timeout: the hosted backend answers in ~1-2s when warm, and a
+    // premature abort here silently strands the app on demo seed data.
+    const res = await fetch(`${BASE}/tickets`, { signal: AbortSignal.timeout(8000) });
     report(res.ok);
     return res.ok;
   } catch {
@@ -98,15 +116,33 @@ async function patch<T>(path: string, body: unknown): Promise<T | null> {
   );
 }
 
-async function postFile<T>(path: string, file: File): Promise<T | null> {
+// File uploads need richer outcomes than attempt(): a 400 from the parser is
+// the backend WORKING and telling us the file is wrong — that must reach the
+// user instead of silently falling back to simulated questions.
+type FileOutcome<T> =
+  | { kind: "ok"; data: T }
+  | { kind: "rejected"; message: string }
+  | { kind: "offline" };
+
+async function postFile<T>(path: string, file: File): Promise<FileOutcome<T>> {
   const form = new FormData();
   form.append("file", file);
-  return attempt(
-    fetch(`${BASE}${path}`, { method: "POST", body: form }).then((r) => {
-      if (!r.ok) throw new Error(String(r.status));
-      return r.json() as Promise<T>;
-    }),
-  );
+  try {
+    const r = await fetch(`${BASE}${path}`, { method: "POST", body: form });
+    report(true);
+    if (!r.ok) {
+      let message = `HTTP ${r.status}`;
+      try {
+        const body = (await r.json()) as { message?: string };
+        if (body?.message) message = body.message;
+      } catch { /* non-JSON error body */ }
+      return { kind: "rejected", message };
+    }
+    return { kind: "ok", data: (await r.json()) as T };
+  } catch {
+    report(false);
+    return { kind: "offline" };
+  }
 }
 
 async function get<T>(path: string): Promise<T | null> {
@@ -188,7 +224,7 @@ export function syncTicketFields(backendId: number | undefined, t: Partial<MvpTi
 // endpoint filters ITS copy of the questions by department.
 export function syncQuestionDepartment(backendId: number | undefined, department: string) {
   if (!backendId) return;
-  void put(`/questions/${backendId}`, { department });
+  void put(`/questions/${backendId}`, { department: questionDeptToBackend(department) });
 }
 
 export function syncTicketStatus(backendId: number | undefined, status: string) {
@@ -215,31 +251,43 @@ export type ParsedBackendQuestion = {
   section: string;
 };
 
+export type ParseOutcome =
+  | { kind: "ok"; questions: ParsedBackendQuestion[] }
+  | { kind: "rejected"; message: string } // backend alive but refused the file
+  | { kind: "offline" };
+
 export async function parseQuestionnaire(
   file: File,
   backendTicketId: number | null,
-): Promise<ParsedBackendQuestion[] | null> {
+): Promise<ParseOutcome> {
   if (backendTicketId !== null) {
     const imported = await postFile<FormQuestion[]>(
       `/questionnaire/import?ticketId=${backendTicketId}`,
       file,
     );
-    if (imported)
-      return imported.map((fq) => ({
-        backendId: fq.id,
-        text: fq.questionText,
-        department: fq.department ?? "General",
-        section: fq.rowReference ?? "",
-      }));
+    if (imported.kind === "ok")
+      return {
+        kind: "ok",
+        questions: imported.data.map((fq) => ({
+          backendId: fq.id,
+          text: fq.questionText,
+          department: questionDeptFromBackend(fq.department),
+          section: fq.rowReference ?? "",
+        })),
+      };
+    if (imported.kind === "rejected") return imported; // classify would fail identically
   }
   const classified = await postFile<ClassifiedQuestion[]>("/questionnaire/classify", file);
-  if (classified)
-    return classified.map((c) => ({
-      text: c.questionText,
-      department: c.department || "General",
-      section: c.section,
-    }));
-  return null;
+  if (classified.kind === "ok")
+    return {
+      kind: "ok",
+      questions: classified.data.map((c) => ({
+        text: c.questionText,
+        department: questionDeptFromBackend(c.department),
+        section: c.section,
+      })),
+    };
+  return classified;
 }
 
 // ─── RAG retrieval for suggestions and AI Search ─────────────────────────────
@@ -326,6 +374,7 @@ type QuestionWithAnswer = {
   questionId: number;
   answerText: string | null;
   sourceType: string | null;
+  approvalStatus: string | null;
   answered: boolean;
 };
 
@@ -346,22 +395,42 @@ export async function loadBackendWorld(knownBackendIds: Set<number>): Promise<Ba
   if (raw === null) return null;
   const world: BackendWorld = { tickets: [], questions: [], smeRequests: [] };
 
-  for (const bt of raw) {
-    if (knownBackendIds.has(bt.id)) continue; // already in local state this session
-    const localId = `TK-${9000 + bt.id}`;
+  // Each round-trip to the hosted backend costs ~1s; sequential fetching made
+  // hydration take 30s+ for a handful of tickets. Fetch every ticket's detail
+  // lists concurrently.
+  const perTicket = await Promise.all(
+    raw
+      .filter((bt) => !knownBackendIds.has(bt.id)) // already in local state this session
+      .map(async (bt) => {
+        const [bqs, answers, breqsRaw] = await Promise.all([
+          get<FormQuestion[]>(`/questions/ticket/${bt.id}`),
+          get<QuestionWithAnswer[]>(`/final-review/ticket/${bt.id}`),
+          get<BackendSmeRequestFull[]>(`/sme-requests/ticket/${bt.id}`),
+        ]);
+        const breqs = breqsRaw ?? [];
+        const linkLists = await Promise.all(
+          breqs.map((r) => get<SmeRequestQuestion[]>(`/sme-request-questions/request/${r.id}`)),
+        );
+        return { bt, bqs: bqs ?? [], answers: answers ?? [], breqs, linkLists };
+      }),
+  );
 
-    const bqs = (await get<FormQuestion[]>(`/questions/ticket/${bt.id}`)) ?? [];
-    const answers = (await get<QuestionWithAnswer[]>(`/final-review/ticket/${bt.id}`)) ?? [];
-    const answerByQ = new Map(answers.filter((a) => a.answered).map((a) => [a.questionId, a]));
-    const breqs = (await get<BackendSmeRequestFull[]>(`/sme-requests/ticket/${bt.id}`)) ?? [];
+  for (const { bt, bqs, answers, breqs, linkLists } of perTicket) {
+    const localId = `TK-${9000 + bt.id}`;
+    // Only Confirmed answers count as approved — a Draft row is what an
+    // unapproved answer looks like, and must not hydrate back as Approved.
+    const answerByQ = new Map(
+      answers
+        .filter((a) => a.answered && a.approvalStatus === "Confirmed")
+        .map((a) => [a.questionId, a]),
+    );
 
     // which backend questions are linked to an SME request (and their link ids)
     const linkByQ = new Map<number, { reqId: number; srqId: number; returned: boolean }>();
-    for (const r of breqs) {
-      const links = (await get<SmeRequestQuestion[]>(`/sme-request-questions/request/${r.id}`)) ?? [];
-      for (const l of links)
+    breqs.forEach((r, i) => {
+      for (const l of linkLists[i] ?? [])
         linkByQ.set(l.questionId, { reqId: r.id, srqId: l.id, returned: l.status === "Returned" });
-    }
+    });
 
     const localQs: MvpQuestion[] = bqs.map((q, i) => {
       const fa = answerByQ.get(q.id);
@@ -379,7 +448,7 @@ export async function loadBackendWorld(knownBackendIds: Set<number>): Promise<Ba
         row: i + 1,
         original: q.questionText,
         normalised: q.questionText,
-        department: q.department ?? "General",
+        department: questionDeptFromBackend(q.department),
         risk: (q.riskLevel as MvpQuestion["risk"]) ?? "Medium",
         status,
         confidence: null,
@@ -394,6 +463,7 @@ export async function loadBackendWorld(knownBackendIds: Set<number>): Promise<Ba
         "ETA Confirmed": "ETA Set",
         Overdue: "ETA Set", // our UI derives overdue from the clock
         Returned: "Returned",
+        "In Progress": "ETA Set", // legacy rows written before the vocab guard
       };
       const srqIds: Record<number, number> = {};
       const questionIds: number[] = [];
@@ -602,14 +672,18 @@ export function syncSmeRequest(
   patch: { eta?: string | null; status?: string; confirmedBy?: string | null; returnedAt?: string | null },
 ) {
   if (!backendId) return;
+  // Backend vocabulary: Waiting for ETA / ETA Confirmed / Overdue / Returned.
+  // Anything unmapped is a frontend-only state — drop it rather than writing
+  // an invalid string into the shared database.
   const statusMap: Record<string, string> = {
     Requested: "Waiting for ETA",
     "ETA Set": "ETA Confirmed",
+    Overdue: "Overdue",
     Returned: "Returned",
   };
   void put(`/sme-requests/${backendId}`, {
     ...patch,
-    status: patch.status ? (statusMap[patch.status] ?? patch.status) : undefined,
+    status: patch.status ? statusMap[patch.status] : undefined,
     eta: patch.eta ? patch.eta.slice(0, 19) : patch.eta,
     returnedAt: patch.returnedAt ? patch.returnedAt.slice(0, 19) : patch.returnedAt,
   });

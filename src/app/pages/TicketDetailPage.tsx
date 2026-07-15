@@ -48,7 +48,7 @@ export function TicketDetailPage({
       <div className="px-7 pt-5 pb-0 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0">
         <button
           onClick={() => actions.go("tickets")}
-          className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.06em] uppercase text-[#ABABAB] hover:text-[#F96702] transition-colors mb-2"
+          className="flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase text-[#ABABAB] hover:text-[#F96702] transition-colors mb-2"
         >
           <ArrowLeft size={11} /> Tickets
         </button>
@@ -109,18 +109,18 @@ export function TicketDetailPage({
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-3.5 py-2 text-[11px] font-semibold border-b-2 transition-colors ${tab === t ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
+              className={`px-3.5 py-2 text-[12px] font-semibold border-b-2 transition-colors ${tab === t ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
             >
               {t}
               {t === "Workflow" && qs.length > 0 && (
-                <span className="ml-1 text-[9px] font-bold text-[#9CA3AF]">{qs.length}</span>
+                <span className="ml-1 text-[10px] font-bold text-[#9CA3AF]">{qs.length}</span>
               )}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto px-8 py-6">
+      <div className="flex-1 overflow-auto px-4 sm:px-8 py-7">
         {tab === "Overview" && (
           <OverviewTab state={state} actions={actions} ticketId={ticketId} progress={progress} />
         )}
@@ -150,7 +150,12 @@ function OverviewTab({
   const qs = state.questions.filter((q) => q.ticketId === ticketId);
   const smeReqs = state.smeRequests.filter((r) => r.ticketId === ticketId);
 
-  const deptStats = DEPARTMENTS.map((d) => {
+  const qDepts = [...new Set(qs.map((q) => q.department))];
+  const allDepts = [
+    ...DEPARTMENTS.filter((d) => qDepts.includes(d)),
+    ...qDepts.filter((d) => !DEPARTMENTS.includes(d)),
+  ];
+  const deptStats = allDepts.map((d) => {
     const dq = qs.filter((q) => q.department === d);
     return {
       dept: d,
@@ -164,9 +169,9 @@ function OverviewTab({
   const duplicates = qs.filter((q) => q.duplicateOf).length;
 
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <Card title="Ticket Metadata">
-        <div className="px-4 py-3 space-y-2 text-xs">
+        <div className="px-4 py-3 space-y-2 text-[13px]">
           {[
             ["Customer", ticket.customer],
             ["SOR ID", ticket.sorId],
@@ -203,19 +208,19 @@ function OverviewTab({
       <div className="flex flex-col gap-4">
         <Card title="Question Completion by Department">
           {deptStats.length === 0 ? (
-            <p className="px-4 py-4 text-xs text-[#9CA3AF] italic">
+            <p className="px-4 py-4 text-[13px] text-[#9CA3AF] italic">
               No questions extracted yet — confirm intake in the Workflow tab.
             </p>
           ) : (
             <div className="divide-y divide-border">
               {deptStats.map((s) => (
                 <div key={s.dept} className="px-4 py-2.5 flex items-center gap-3">
-                  <span className="text-xs font-semibold text-[#1F2937] flex-1">{s.dept}</span>
-                  <span className="text-[10px] text-[#6B7280]">
+                  <span className="text-[13px] font-semibold text-[#1F2937] flex-1">{s.dept}</span>
+                  <span className="text-[11px] text-[#6B7280]">
                     {s.ready}/{s.total} ready
                   </span>
                   {s.waiting > 0 && (
-                    <span className="text-[9px] font-bold text-[#854D0E] bg-[#FEFCE8] border border-[#FDE68A] rounded-full px-2 py-0.5">
+                    <span className="text-[10px] font-bold text-[#854D0E] bg-[#FEFCE8] border border-[#FDE68A] rounded-full px-2 py-0.5">
                       {s.waiting} with SME
                     </span>
                   )}
@@ -225,7 +230,7 @@ function OverviewTab({
           )}
         </Card>
         <Card title="AI Processing Summary">
-          <div className="px-4 py-3 space-y-1.5 text-xs text-[#374151]">
+          <div className="px-4 py-3 space-y-1.5 text-[13px] text-[#374151]">
             <p>
               <strong>{qs.length}</strong> questions extracted · <strong>{duplicates}</strong>{" "}
               possible duplicate{duplicates === 1 ? "" : "s"} flagged
@@ -234,7 +239,7 @@ function OverviewTab({
               <strong>{suggestions}</strong> suggested answers generated (
               {qs.length ? Math.round((suggestions / qs.length) * 100) : 0}% coverage)
             </p>
-            <p className="text-[10px] text-[#9CA3AF]">
+            <p className="text-[11px] text-[#9CA3AF]">
               AI suggests. Humans decide — every suggestion needs review before approval.
             </p>
           </div>
@@ -243,7 +248,7 @@ function OverviewTab({
 
       <Card title="SME ETA Tracker (this ticket)">
         {smeReqs.length === 0 ? (
-          <p className="px-4 py-4 text-xs text-[#9CA3AF] italic">No SME requests yet.</p>
+          <p className="px-4 py-4 text-[13px] text-[#9CA3AF] italic">No SME requests yet.</p>
         ) : (
           <div className="divide-y divide-border">
             {smeReqs.map((r) => {
@@ -254,12 +259,12 @@ function OverviewTab({
               return (
                 <div key={r.id} className={`px-4 py-3 ${over ? "bg-red-50/40" : ""}`}>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-[#1F2937] flex-1">
+                    <span className="text-[13px] font-semibold text-[#1F2937] flex-1">
                       {r.department} · {r.assignee}
                     </span>
                     <Pill value={over && r.status !== "Returned" ? "Overdue" : r.status} />
                   </div>
-                  <p className="text-[10px] text-[#6B7280] mt-1">
+                  <p className="text-[11px] text-[#6B7280] mt-1">
                     {r.questionIds.length} question{r.questionIds.length === 1 ? "" : "s"} · ETA{" "}
                     {r.eta ? fmtDateTime(r.eta) : "not set"}
                   </p>
@@ -289,7 +294,7 @@ function FilesTab({
     <Card title="Files">
       <div className="divide-y divide-border">
         {ticket.files.length === 0 && (
-          <p className="px-4 py-5 text-xs text-[#9CA3AF] italic">No files uploaded yet.</p>
+          <p className="px-4 py-5 text-[13px] text-[#9CA3AF] italic">No files uploaded yet.</p>
         )}
         {ticket.files.map((f) => (
           <div key={f.name} className="px-4 py-3 flex items-center gap-3">
@@ -297,8 +302,8 @@ function FilesTab({
               <FileSpreadsheet size={14} className="text-green-600" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-[#1F2937] truncate">{f.name}</p>
-              <p className="text-[10px] text-[#9CA3AF]">
+              <p className="text-[13px] font-semibold text-[#1F2937] truncate">{f.name}</p>
+              <p className="text-[11px] text-[#9CA3AF]">
                 {f.kind} · {f.size} · uploaded {fmtDate(f.uploaded)}
               </p>
             </div>
@@ -307,7 +312,7 @@ function FilesTab({
         ))}
       </div>
       <div className="px-4 py-3 border-t border-border flex flex-col gap-2">
-        <p className="text-[10px] text-[#9CA3AF] flex items-center gap-1">
+        <p className="text-[11px] text-[#9CA3AF] flex items-center gap-1">
           <Brain size={10} /> Question extraction runs automatically when intake is confirmed —
           no manual processing step.
         </p>
@@ -356,7 +361,7 @@ function UploadSupporting({ actions, ticketId }: { actions: AppActions; ticketId
       />
       <button
         onClick={() => inputRef.current?.click()}
-        className="flex items-center justify-center gap-1.5 py-2 w-full border border-dashed border-border rounded-md text-[10px] text-[#6B7280] hover:border-[#F96702]/40 hover:text-[#F96702]"
+        className="flex items-center justify-center gap-1.5 py-2 w-full border border-dashed border-border rounded-md text-[11px] text-[#6B7280] hover:border-[#F96702]/40 hover:text-[#F96702]"
       >
         <Upload size={11} /> Upload supporting document
       </button>
@@ -401,7 +406,7 @@ function TimelineTab({ state, ticketId }: { state: AppState; ticketId: string })
                 )}
               </div>
               <p
-                className={`text-xs pb-4 ${active ? "font-bold text-[#C05600]" : done ? "font-medium text-[#374151]" : "text-[#C0BEBA]"}`}
+                className={`text-[13px] pb-4 ${active ? "font-bold text-[#C05600]" : done ? "font-medium text-[#374151]" : "text-[#C0BEBA]"}`}
               >
                 {m}
               </p>
@@ -418,7 +423,7 @@ function ActivityTab({ state, ticketId }: { state: AppState; ticketId: string })
   return (
     <Card title="Activity Log">
       {events.length === 0 ? (
-        <p className="px-4 py-5 text-xs text-[#9CA3AF] italic">No activity recorded yet.</p>
+        <p className="px-4 py-5 text-[13px] text-[#9CA3AF] italic">No activity recorded yet.</p>
       ) : (
         <div className="divide-y divide-border">
           {events.map((a) => (
@@ -427,10 +432,10 @@ function ActivityTab({ state, ticketId }: { state: AppState; ticketId: string })
                 className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${a.actor === "AI" ? "bg-[#4338CA]" : "bg-[#F96702]/60"}`}
               />
               <div>
-                <p className="text-xs text-[#374151]">
+                <p className="text-[13px] text-[#374151]">
                   <span className="font-semibold">{a.actor}</span> {a.action}
                 </p>
-                <p className="text-[10px] text-[#9CA3AF] mt-0.5">{fmtDateTime(a.at)}</p>
+                <p className="text-[11px] text-[#9CA3AF] mt-0.5">{fmtDateTime(a.at)}</p>
               </div>
             </div>
           ))}

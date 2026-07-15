@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Copy, ExternalLink, Loader2, Lock, Search, Sparkles } from "lucide-react";
+import { Copy, ExternalLink, History, Loader2, Lock, Search, Sparkles, X } from "lucide-react";
 import { MvpKnowledgeEntry } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { mapSharing, ragSearch } from "../services/backend";
@@ -8,9 +8,31 @@ import { Card, ConfidenceBadge, EmptyState, SharingBadge } from "../components/u
 // PRD §12: standalone, citation-first lookup over APPROVED knowledge only.
 // Shows "no answer" rather than inventing content (AIS-06).
 
+type ScoredEntry = { entry: MvpKnowledgeEntry; confidence: number };
+
 type SearchOutcome =
-  | { kind: "hit"; entry: MvpKnowledgeEntry; confidence: number; related: MvpKnowledgeEntry[] }
+  | { kind: "hit"; entry: MvpKnowledgeEntry; confidence: number; related: ScoredEntry[] }
   | { kind: "miss" };
+
+// Clickable starters so first-time users see what kind of question works —
+// each one has matching approved knowledge in the seeded/live KB.
+const SAMPLE_QUESTIONS = [
+  "Do we hold ISO 27001 certification?",
+  "How is customer data encrypted in transit and at rest?",
+  "Can we share our SOC 2 Type II report?",
+  "What is the default data retention period?",
+];
+
+const HISTORY_KEY = "cfh-ai-search-history";
+
+function loadHistory(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]");
+    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 function scoreEntry(entry: MvpKnowledgeEntry, query: string): number {
   const words = query.toLowerCase().split(/\W+/).filter((w) => w.length > 2);
@@ -24,14 +46,39 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [result, setResult] = useState<SearchOutcome | null>(null);
+  const [history, setHistory] = useState<string[]>(loadHistory);
 
-  const run = async () => {
-    if (!query.trim()) return;
+  const remember = (text: string) => {
+    setHistory((h) => {
+      const next = [text, ...h.filter((x) => x !== text)].slice(0, 5);
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+      } catch {
+        // storage full/blocked — history is a convenience, not a requirement
+      }
+      return next;
+    });
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+    try {
+      localStorage.removeItem(HISTORY_KEY);
+    } catch {
+      // ignore
+    }
+  };
+
+  const run = async (preset?: string) => {
+    const text = (preset ?? query).trim();
+    if (!text) return;
+    if (preset) setQuery(preset);
     setSearching(true);
     setResult(null);
+    remember(text);
 
     // Live semantic search first (POST /api/knowledge-base/search)
-    const live = await ragSearch(query.trim());
+    const live = await ragSearch(text);
     if (live !== null) {
       const usable = live; // backend applies its own similarity threshold
       if (usable.length === 0) {
@@ -53,7 +100,9 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
           kind: "hit",
           entry: toEntry(usable[0]),
           confidence: usable[0].similarityScore ?? 0.5,
-          related: usable.slice(1, 4).map(toEntry),
+          related: usable
+            .slice(1, 3)
+            .map((r) => ({ entry: toEntry(r), confidence: r.similarityScore ?? 0 })),
         });
       }
       setSearching(false);
@@ -64,7 +113,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
     setTimeout(() => {
       const approved = state.knowledge.filter((k) => k.status === "Approved");
       const ranked = approved
-        .map((k) => ({ k, s: scoreEntry(k, query) }))
+        .map((k) => ({ k, s: scoreEntry(k, text) }))
         .filter((x) => x.s > 0.3)
         .sort((a, b) => b.s - a.s);
       if (ranked.length === 0) {
@@ -75,7 +124,9 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
           kind: "hit",
           entry: top.k,
           confidence: Math.min(0.97, 0.55 + top.s * 0.4),
-          related: ranked.slice(1, 4).map((x) => x.k),
+          related: ranked
+            .slice(1, 3)
+            .map((x) => ({ entry: x.k, confidence: Math.min(0.97, 0.55 + x.s * 0.4) })),
         });
       }
       setSearching(false);
@@ -84,7 +135,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="px-7 pt-6 pb-4 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center gap-3">
+      <div className="px-4 sm:px-8 pt-7 pb-5 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center gap-3">
         <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0" />
         <div>
           <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight">AI Search</h1>
@@ -93,8 +144,8 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
           </p>
         </div>
       </div>
-      <div className="flex-1 overflow-auto px-8 py-6">
-        <div className="max-w-2xl mx-auto flex flex-col gap-4">
+      <div className="flex-1 overflow-auto px-4 sm:px-8 py-8">
+        <div className="max-w-3xl mx-auto flex flex-col gap-5">
           <div className="relative">
             <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
             <input
@@ -106,9 +157,9 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
               className="w-full pl-10 pr-24 py-3 text-sm border border-[rgba(0,0,0,0.12)] rounded-2xl bg-white placeholder-[#B0B0B0] focus:outline-none focus:ring-2 focus:ring-[#F96702]/30 focus:border-[#F96702]/50 shadow-sm transition-all"
             />
             <button
-              onClick={run}
+              onClick={() => run()}
               disabled={searching || !query.trim()}
-              className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${searching || !query.trim() ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400]"}`}
+              className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${searching || !query.trim() ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400]"}`}
             >
               {searching ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
               Search
@@ -116,25 +167,70 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
           </div>
 
           {!result && !searching && (
-            <EmptyState
-              icon={Sparkles}
-              title="Ask a question to search approved knowledge."
-              hint="Answers cite their source entries with confidence and last-updated dates."
-            />
+            <>
+              <div>
+                <p className="text-[11px] font-black text-[#ABABAB] uppercase tracking-[0.14em] mb-2.5 flex items-center gap-1.5">
+                  <Sparkles size={11} /> Try asking
+                </p>
+                <div className="flex flex-wrap gap-2.5">
+                  {SAMPLE_QUESTIONS.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => run(s)}
+                      className="px-4 py-2 text-[12px] text-[#374151] bg-white border border-[rgba(0,0,0,0.12)] rounded-full hover:border-[#F96702]/50 hover:text-[#F96702] hover:bg-[#FFF9F5] transition-all"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {history.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-black text-[#ABABAB] uppercase tracking-[0.14em] mb-2.5 flex items-center gap-1.5">
+                    <History size={11} /> Recent searches
+                    <button
+                      onClick={clearHistory}
+                      className="ml-auto flex items-center gap-1 text-[10px] font-bold text-[#C0BEBA] hover:text-[#F96702] normal-case tracking-normal transition-colors"
+                    >
+                      <X size={10} /> Clear
+                    </button>
+                  </p>
+                  <div className="bg-white border border-[rgba(0,0,0,0.08)] rounded-xl divide-y divide-border overflow-hidden">
+                    {history.map((h) => (
+                      <button
+                        key={h}
+                        onClick={() => run(h)}
+                        className="w-full text-left px-4 py-2.5 text-[12px] text-[#6B7280] hover:bg-[#FFF9F5] hover:text-[#111111] transition-colors flex items-center gap-2.5"
+                      >
+                        <Search size={11} className="text-[#C0BEBA] shrink-0" />
+                        {h}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <EmptyState
+                icon={Sparkles}
+                title="Answers come only from approved knowledge."
+                hint="Every answer cites its source entry with confidence and last-updated date — nothing is invented."
+              />
+            </>
           )}
 
           {searching && (
             <div className="flex items-center justify-center gap-2 py-12 text-[#9CA3AF]">
               <Loader2 size={16} className="animate-spin text-[#F96702]" />
-              <span className="text-xs">Searching approved knowledge…</span>
+              <span className="text-[13px]">Searching approved knowledge…</span>
             </div>
           )}
 
           {result?.kind === "miss" && (
             <Card>
               <div className="px-4 py-4">
-                <p className="text-xs font-semibold text-[#1F2937]">No approved answer found.</p>
-                <p className="text-xs text-[#6B7280] mt-1">
+                <p className="text-[13px] font-semibold text-[#1F2937]">No approved answer found.</p>
+                <p className="text-[13px] text-[#6B7280] mt-1">
                   Nothing in the approved Knowledge Base matches this question. Consider requesting
                   SME input from a ticket, or submitting a new knowledge entry for review.
                 </p>
@@ -147,8 +243,8 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
               <div className="border border-[#F96702]/25 rounded-xl overflow-hidden bg-white shadow-sm">
                 <div className="px-4 py-2.5 bg-[#FFF4EC] flex items-center gap-2">
                   <Sparkles size={12} className="text-[#C05600]" />
-                  <p className="text-[10px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
-                    Direct answer draft — AI-generated suggestion
+                  <p className="text-[11px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
+                    Best match — AI-generated answer draft
                   </p>
                   <ConfidenceBadge confidence={result.confidence} />
                   <SharingBadge status={result.entry.sharingStatus} />
@@ -159,13 +255,13 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
                 {result.entry.sharingStatus === "NDA Required" && (
                   <div className="mx-4 mb-3 bg-[#FEF2F2] border border-[#FCA5A5]/50 rounded-md px-3 py-2 flex items-start gap-2">
                     <Lock size={11} className="text-[#991B1B] shrink-0 mt-0.5" />
-                    <p className="text-[11px] text-[#991B1B]">
+                    <p className="text-[12px] text-[#991B1B]">
                       This answer is NDA-restricted. Confirm the customer NDA before sharing
                       (AIS-05).
                     </p>
                   </div>
                 )}
-                <div className="px-4 py-2.5 bg-[#FAFAFA] border-t border-border flex items-center gap-4 text-[10px] text-[#6B7280]">
+                <div className="px-4 py-2.5 bg-[#FAFAFA] border-t border-border flex items-center gap-4 text-[11px] text-[#6B7280]">
                   <span>
                     <strong>Source:</strong> {result.entry.title}
                   </span>
@@ -182,40 +278,61 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
                       navigator.clipboard.writeText(result.entry.content);
                       actions.addToast("Answer copied.", "info");
                     }}
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase transition-all"
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase transition-all"
                   >
                     <Copy size={10} /> Copy Answer
                   </button>
                   <button
                     onClick={() => actions.openKnowledge("all", result.entry.id)}
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
                   >
                     <ExternalLink size={10} /> Open Source Entry
                   </button>
                 </div>
               </div>
 
-              {result.related.length > 0 && (
-                <Card title="Related Knowledge Entries">
-                  <div className="divide-y divide-border">
-                    {result.related.map((k) => (
-                      <button
-                        key={k.id}
-                        onClick={() => actions.openKnowledge("all", k.id)}
-                        className="w-full text-left px-4 py-2.5 hover:bg-gray-50/60 transition-colors flex items-center gap-3"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-[#1F2937]">{k.title}</p>
-                          <p className="text-[10px] text-[#9CA3AF] mt-0.5">
-                            {k.department} · updated {k.lastUpdated} (UTC)
-                          </p>
-                        </div>
-                        <SharingBadge status={k.sharingStatus} />
-                      </button>
-                    ))}
+              {/* Matches 2 and 3 as full answers — retrieval returns top 3 and
+                  users compare them, so the content must be readable in place */}
+              {result.related.map(({ entry: k, confidence }, i) => (
+                <div
+                  key={k.id}
+                  className="border border-[rgba(0,0,0,0.08)] rounded-xl overflow-hidden bg-white shadow-sm"
+                >
+                  <div className="px-4 py-2.5 bg-[#F7F8FA] flex items-center gap-2">
+                    <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide flex-1">
+                      Match {i + 2}
+                    </p>
+                    <ConfidenceBadge confidence={confidence} />
+                    <SharingBadge status={k.sharingStatus} />
                   </div>
-                </Card>
-              )}
+                  <div className="px-4 py-3.5 text-sm text-[#374151] leading-relaxed">
+                    {k.content}
+                  </div>
+                  <div className="px-4 py-2.5 bg-[#FAFAFA] border-t border-border flex items-center gap-4 text-[11px] text-[#6B7280]">
+                    <span className="flex-1 min-w-0 truncate">
+                      <strong>Source:</strong> {k.title}
+                    </span>
+                    <span className="whitespace-nowrap">
+                      <strong>Updated:</strong> {k.lastUpdated} (UTC)
+                    </span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(k.content);
+                        actions.addToast("Answer copied.", "info");
+                      }}
+                      className="flex items-center gap-1 font-bold text-[#C05600] hover:underline whitespace-nowrap"
+                    >
+                      <Copy size={10} /> Copy
+                    </button>
+                    <button
+                      onClick={() => actions.openKnowledge("all", k.id)}
+                      className="flex items-center gap-1 font-semibold text-[#6B7280] hover:text-[#F96702] whitespace-nowrap"
+                    >
+                      <ExternalLink size={10} /> Open
+                    </button>
+                  </div>
+                </div>
+              ))}
             </>
           )}
         </div>

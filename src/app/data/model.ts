@@ -80,15 +80,33 @@ export type SharingStatus = "Public" | "Internal" | "NDA Required";
 export type NdaStatus = "In Place" | "Missing" | "Unknown";
 export type Urgency = "High" | "Medium" | "Low";
 
-// PRD §4: department collections
+// Unified department vocabulary: union of the PRD §4 list and the backend
+// LLM classifier's fixed set (QuestionClassifierService). "Security" was
+// merged into "InfoSec" — the backend classifier, KB seeds, and live DB rows
+// all use InfoSec. Keep in sync with the classifier prompt on the backend.
 export const DEPARTMENTS = [
+  "InfoSec",
   "Legal",
   "Finance",
-  "Security",
   "HR",
+  "Compliance",
   "ESG",
   "Product",
   "General",
+];
+
+// The backend classifier buckets unroutable questions as "General". Questions
+// show that as "TBD" so analysts can see the AI did not pick a department and
+// must assign one themselves. "General" remains a real Knowledge Base
+// category (company-overview content) — the rename applies to questions only.
+export const TBD_DEPARTMENT = "TBD";
+
+// Departments a QUESTION can be assigned to: no "General" — a question must
+// end up with a real owning team, or stay parked as TBD until the analyst
+// decides. TBD questions cannot be routed to an SME.
+export const QUESTION_DEPARTMENTS = [
+  ...DEPARTMENTS.filter((d) => d !== "General"),
+  TBD_DEPARTMENT,
 ];
 
 export type MvpFile = {

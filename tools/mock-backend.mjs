@@ -5,8 +5,8 @@ import http from "node:http";
 
 let kbNextId = 100;
 let entries = [
-  { id: 88, documentTitle: "Security FAQ", sectionTitle: "ISO 27001 & SOC 2", content: "Cloudera maintains an ISMS aligned with ISO 27001, certified annually. A SOC 2 Type II report can be shared under NDA. (LIVE BACKEND DATA)", source: "InfoSec Master Doc v3", lastUpdated: "2026-06-10T00:00:00", sharingStatus: "NDA-required", department: "Security", approved: true },
-  { id: 89, documentTitle: "Security FAQ", sectionTitle: "Encryption", content: "All data in transit uses TLS 1.2+; data at rest uses AES-256. (LIVE BACKEND DATA)", source: "Security whitepaper", lastUpdated: "2026-05-22T00:00:00", sharingStatus: "Customer-shareable", department: "Security", approved: true },
+  { id: 88, documentTitle: "Security FAQ", sectionTitle: "ISO 27001 & SOC 2", content: "Cloudera maintains an ISMS aligned with ISO 27001, certified annually. A SOC 2 Type II report can be shared under NDA. (LIVE BACKEND DATA)", source: "InfoSec Master Doc v3", lastUpdated: "2026-06-10T00:00:00", sharingStatus: "NDA-required", department: "InfoSec", approved: true },
+  { id: 89, documentTitle: "Security FAQ", sectionTitle: "Encryption", content: "All data in transit uses TLS 1.2+; data at rest uses AES-256. (LIVE BACKEND DATA)", source: "Security whitepaper", lastUpdated: "2026-05-22T00:00:00", sharingStatus: "Customer-shareable", department: "InfoSec", approved: true },
   { id: 92, documentTitle: "Legal Standards", sectionTitle: "DPA", content: "A standard DPA incorporating the EU SCCs is available; executed copies are managed by Legal. (LIVE BACKEND DATA)", source: "Legal KB 2026", lastUpdated: "2026-06-01T00:00:00", sharingStatus: "Public", department: "Legal", approved: true },
   { id: 93, documentTitle: "ESG Disclosures", sectionTitle: "Sustainability", content: "Cloudera publishes an annual sustainability report with a carbon neutrality roadmap. (LIVE BACKEND DATA)", source: "ESG site", lastUpdated: "2026-03-30T00:00:00", sharingStatus: "Public", department: "ESG", approved: true },
   { id: 94, documentTitle: "Product Capabilities", sectionTitle: "SSO", content: "SAML 2.0 and OIDC single sign-on is supported platform-wide. (LIVE BACKEND DATA)", source: "Product docs", lastUpdated: "2026-06-20T00:00:00", sharingStatus: "Public", department: "Product", approved: true },
@@ -14,8 +14,8 @@ let entries = [
 ];
 
 const QUESTION_TEMPLATES = [
-  { section: "Security!B2", questionText: "Do you hold ISO27001?", department: "Security" },
-  { section: "Security!B3", questionText: "Describe how data is encrypted in transit and at rest.", department: "Security" },
+  { section: "Security!B2", questionText: "Do you hold ISO27001?", department: "InfoSec" },
+  { section: "Security!B3", questionText: "Describe how data is encrypted in transit and at rest.", department: "InfoSec" },
   { section: "HR!B2", questionText: "What is your employee turnover rate?", department: "HR" },
   { section: "Finance!B2", questionText: "Do you maintain cyber insurance and at what coverage?", department: "Finance" },
   { section: "Legal!B2", questionText: "Is a data processing agreement available?", department: "Legal" },
@@ -166,6 +166,7 @@ http
               isEdited: fa?.isEdited ?? null,
               sourceType: fa?.sourceType ?? null,
               approvedBy: fa?.approvedBy ?? null,
+              approvalStatus: fa?.approvalStatus ?? null,
               answered: !!fa,
             };
           }));

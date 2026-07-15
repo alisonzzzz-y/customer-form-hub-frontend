@@ -47,10 +47,17 @@ if (!(await page.isVisible("text=Backend live — real AI parsing & retrieval"))
 // ── Grouping: dept tabs + move one question ──
 await page.locator('button:has-text("HR")').first().click(); // switch to the HR tab
 const turnoverRow = page.locator("div.flex.items-center.gap-3", { hasText: "employee turnover rate" }).first();
-await turnoverRow.locator("select").selectOption("General");
-// question moved out of HR tab -> General tab appears with it
-await page.locator('button:has-text("General")').first().click();
-if (!(await page.isVisible("text=employee turnover rate"))) errors.push("Grouping: moved question not in General tab");
+// TBD questions must show the assign-a-department warning and cannot be routed
+await turnoverRow.locator("select").selectOption("TBD");
+await page.locator('button:has-text("TBD")').first().click();
+if (!(await page.isVisible("text=employee turnover rate"))) errors.push("Grouping: moved question not in TBD tab");
+if (!(await page.isVisible("text=pick the")))
+  errors.push("Grouping: TBD warning banner missing");
+// then move it to a real department for the rest of the flow
+const turnoverRow2 = page.locator("div.flex.items-center.gap-3", { hasText: "employee turnover rate" }).first();
+await turnoverRow2.locator("select").selectOption("Product");
+await page.locator('button:has-text("Product")').first().click();
+if (!(await page.isVisible("text=employee turnover rate"))) errors.push("Grouping: moved question not in Product tab");
 await page.click("text=Next: Generate AI Answers");
 await page.waitForSelector("text=AI suggestions ready — review each answer.");
 await page.waitForSelector("text=of");
@@ -65,7 +72,7 @@ await page.click('button:has-text("Unapprove")');
 await page.waitForSelector("text=Approval undone");
 await page.getByRole("button", { name: "Approve", exact: true }).click();
 await page.waitForSelector("text=Answer approved.");
-// route turnover question (now in General) to SME
+// route turnover question (now in Product) to SME
 await page.click("text=What is your employee turnover rate?");
 await page.getByRole("button", { name: "Route to SME", exact: true }).click();
 await page.waitForSelector("text=SME queue.");
@@ -73,7 +80,7 @@ await page.waitForSelector("text=SME queue.");
 // resolve everything else: walk the left list, approve or route each question
 const pendingItems = () =>
   page
-    .locator("div.w-72 > button")
+    .locator('div[class*="md:w-72"] > button')
     .filter({ hasNot: page.locator('span:text-is("Approved")') })
     .filter({ hasNot: page.locator('span:text-is("SME Queued")') })
     .filter({ hasNot: page.locator('span:text-is("Rejected")') });
@@ -93,7 +100,7 @@ if ((await pendingItems().count()) > 0) errors.push("Review: questions left unre
 try {
   await page.waitForSelector('button:has-text("Next: SME Package")', { timeout: 8000 });
 } catch {
-  const pills = await page.locator("div.w-72 > button span").allTextContents();
+  const pills = await page.locator('div[class*="md:w-72"] > button span').allTextContents();
   console.log("DEBUG left-list pills:", JSON.stringify(pills));
   console.log("DEBUG progress:", await page.locator("p:has-text('resolved ·')").textContent().catch(() => "n/a"));
   throw new Error("Continue button never appeared");

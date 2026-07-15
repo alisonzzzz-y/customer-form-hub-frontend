@@ -33,7 +33,7 @@ export function NotificationsPage({ state, actions }: { state: AppState; actions
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="px-7 pt-6 pb-4 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center justify-between">
+      <div className="px-4 sm:px-8 pt-7 pb-5 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0" />
           <div>
@@ -48,7 +48,7 @@ export function NotificationsPage({ state, actions }: { state: AppState; actions
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-3.5 py-1.5 text-[10px] font-bold rounded-full border transition-all ${filter === f ? "bg-[#F96702] text-white border-transparent" : "border-[rgba(0,0,0,0.15)] text-[#6B7280] hover:border-[#F96702]/50"}`}
+              className={`px-3.5 py-1.5 text-[11px] font-bold rounded-full border transition-all ${filter === f ? "bg-[#F96702] text-white border-transparent" : "border-[rgba(0,0,0,0.15)] text-[#6B7280] hover:border-[#F96702]/50"}`}
             >
               {f}
               {f === "Unread" && unread > 0 && ` (${unread})`}
@@ -60,14 +60,14 @@ export function NotificationsPage({ state, actions }: { state: AppState; actions
                 actions.setNotifications((p) => p.map((n) => ({ ...n, read: true })));
                 actions.addToast("All notifications marked as read.", "info");
               }}
-              className="flex items-center gap-1 px-3.5 py-1.5 text-[10px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+              className="flex items-center gap-1 px-3.5 py-1.5 text-[11px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
             >
               <CheckCheck size={11} /> Mark all read
             </button>
           )}
         </div>
       </div>
-      <div className="flex-1 overflow-auto px-8 py-6">
+      <div className="flex-1 overflow-auto px-4 sm:px-8 py-7">
         <div className="max-w-3xl mx-auto">
           <Card>
             {visible.length === 0 ? (
@@ -89,13 +89,13 @@ export function NotificationsPage({ state, actions }: { state: AppState; actions
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className={`text-xs flex-1 ${!n.read ? "font-bold text-[#0A0A0A]" : "font-medium text-[#374151]"}`}>
+                          <p className={`text-[13px] flex-1 ${!n.read ? "font-bold text-[#0A0A0A]" : "font-medium text-[#374151]"}`}>
                             {n.title}
                           </p>
                           {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-[#F96702] shrink-0" />}
                         </div>
-                        <p className="text-[11px] text-[#6B7280] mt-0.5">{n.content}</p>
-                        <p className="text-[10px] text-[#9CA3AF] mt-1">{fmtDateTime(n.createdAt)}</p>
+                        <p className="text-[12px] text-[#6B7280] mt-0.5">{n.content}</p>
+                        <p className="text-[11px] text-[#9CA3AF] mt-1">{fmtDateTime(n.createdAt)}</p>
                       </div>
                     </button>
                   );
