@@ -127,6 +127,7 @@ export default function AppShell() {
     if (kb) setKnowledge(kb);
   };
 
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     onBackendStatus(setBackendLive);
     void (async () => {
@@ -141,10 +142,25 @@ export default function AppShell() {
       }
       if (!live) {
         addToast("Backend unreachable — showing local demo data only.", "warning");
+        // Keep probing every 30s: without this, an idle session never makes
+        // another backend call and the offline banner's "appears
+        // automatically" promise would be a lie (cold starts can outlast the
+        // backoff window above).
+        pollRef.current = setInterval(() => {
+          void pingBackend().then((ok) => {
+            if (ok && pollRef.current) {
+              clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+          });
+        }, 30000);
         return;
       }
       void hydrate();
     })();
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -396,10 +412,16 @@ export default function AppShell() {
         {backendLive === false && (
           <div className="bg-[#FEF3C7] border-b border-[#F59E0B]/30 px-6 py-2 flex items-center gap-2 shrink-0">
             <AlertTriangle size={13} className="text-[#92400E] shrink-0" />
-            <p className="text-[12px] text-[#92400E] font-medium">
-              Backend unreachable — showing local demo data only. Live tickets appear automatically
-              once the connection returns.
+            <p className="text-[12px] text-[#92400E] font-medium flex-1">
+              Backend unreachable — showing local demo data only. Reconnecting automatically; live
+              tickets appear as soon as it answers.
             </p>
+            <button
+              onClick={() => void pingBackend()}
+              className="text-[11px] font-bold text-[#92400E] border border-[#F59E0B]/40 rounded-full px-3 py-1 hover:bg-[#FDE68A]/60 whitespace-nowrap transition-colors"
+            >
+              Retry now
+            </button>
           </div>
         )}
 
