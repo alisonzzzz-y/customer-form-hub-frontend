@@ -330,7 +330,18 @@ export async function parseQuestionnaire(
 // ─── RAG retrieval for suggestions and AI Search ─────────────────────────────
 
 export async function ragSearch(question: string): Promise<SearchResult[] | null> {
-  return post<SearchResult[]>("/knowledge-base/search", { question });
+  // Read-only search that happens to travel as POST — a failure here must not
+  // raise the "change could not be saved" write warning (PR #6 review).
+  return attempt(
+    fetch(`${BASE}/knowledge-base/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    }).then((r) => {
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json() as Promise<SearchResult[]>;
+    }),
+  );
 }
 
 // Batched retrieval (PR #3 review, discussion 4): a 36-question form must not
@@ -427,14 +438,23 @@ export type BackendWorld = {
   smeRequests: import("../data/model").MvpSmeRequest[];
 };
 
-export async function loadBackendWorld(knownBackendIds: Set<number>): Promise<BackendWorld | null> {
+export async function loadBackendWorld(
+  knownBackendIds: Set<number>,
+): Promise<(BackendWorld & { complete: boolean }) | null> {
   const raw = await get<BackendTicketFull[]>("/tickets");
   if (raw === null) return null;
-  const world: BackendWorld = { tickets: [], questions: [], smeRequests: [] };
+  const world: BackendWorld & { complete: boolean } = {
+    tickets: [],
+    questions: [],
+    smeRequests: [],
+    complete: true,
+  };
 
   // Each round-trip to the hosted backend costs ~1s; sequential fetching made
   // hydration take 30s+ for a handful of tickets. Fetch every ticket's detail
-  // lists concurrently.
+  // lists concurrently. A ticket whose detail fetches failed is SKIPPED and
+  // the result marked incomplete — an empty-array stand-in would render a
+  // wrong stage and the caller would never retry (PR #6 review).
   const perTicket = await Promise.all(
     raw
       .filter((bt) => !knownBackendIds.has(bt.id)) // already in local state this session
@@ -444,15 +464,23 @@ export async function loadBackendWorld(knownBackendIds: Set<number>): Promise<Ba
           get<QuestionWithAnswer[]>(`/final-review/ticket/${bt.id}`),
           get<BackendSmeRequestFull[]>(`/sme-requests/ticket/${bt.id}`),
         ]);
-        const breqs = breqsRaw ?? [];
+        if (bqs === null || answers === null || breqsRaw === null)
+          return { bt, failed: true as const, bqs: [], answers: [], breqs: [], linkLists: [] };
+        const breqs = breqsRaw;
         const linkLists = await Promise.all(
           breqs.map((r) => get<SmeRequestQuestion[]>(`/sme-request-questions/request/${r.id}`)),
         );
-        return { bt, bqs: bqs ?? [], answers: answers ?? [], breqs, linkLists };
+        if (linkLists.some((l) => l === null))
+          return { bt, failed: true as const, bqs: [], answers: [], breqs: [], linkLists: [] };
+        return { bt, failed: false as const, bqs, answers, breqs, linkLists };
       }),
   );
 
-  for (const { bt, bqs, answers, breqs, linkLists } of perTicket) {
+  for (const { bt, failed, bqs, answers, breqs, linkLists } of perTicket) {
+    if (failed) {
+      world.complete = false;
+      continue;
+    }
     const localId = `TK-${9000 + bt.id}`;
     // Only Confirmed answers count as approved — a Draft row is what an
     // unapproved answer looks like, and must not hydrate back as Approved.

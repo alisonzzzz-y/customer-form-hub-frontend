@@ -64,8 +64,8 @@ await page.click('tr:has-text("TK-1027")');
 await page.waitForSelector("text=Back: Grouping");
 await page.click("text=Back: Grouping");
 await page.waitForSelector("text=Department Grouping —");
-await page.click("text=Next: Generate AI Answers");
-await page.waitForSelector("text=AI suggestions ready — review each answer.");
+await page.click("text=Next: Match Knowledge Answers");
+await page.waitForSelector("text=Knowledge matches ready — review each answer.");
 
 console.log(errors.length ? "FAIL:\n" + errors.join("\n") : "UNDO SMOKE OK");
 await browser.close();

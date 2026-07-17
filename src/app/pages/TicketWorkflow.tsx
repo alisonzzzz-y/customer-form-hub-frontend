@@ -537,7 +537,7 @@ function GroupingPanel({
 
   const confirm = async () => {
     setProcessing(true);
-    actions.logActivity("Confirmed department grouping — generating AI suggestions", ticket.id);
+    actions.logActivity("Confirmed department grouping — matching approved knowledge", ticket.id);
     const pending = qs.filter((q) => !q.finalAnswer && q.status !== "SME Queued");
 
     // Live RAG retrieval in batches of 5 (free-tier backend + one embedding
@@ -567,15 +567,15 @@ function GroupingPanel({
       actions.logActivity(
         updates
           ? `AI retrieved suggestions from the live Knowledge Base for ${updates.size} questions`
-          : "AI generated suggested answers from approved knowledge (simulated)",
+          : "AI matched suggested answers from approved knowledge (simulated)",
         ticket.id,
       );
-      actions.addToast("AI suggestions ready — review each answer.", "success");
+      actions.addToast("Knowledge matches ready — review each answer.", "success");
     }, updates ? 0 : 1200); // live path: no artificial delay (F-06)
   };
 
   if (processing)
-    return <ProcessingCard text="Retrieving approved knowledge · generating suggested answers…" />;
+    return <ProcessingCard text="Searching approved knowledge · matching answers to each question…" />;
 
   return (
     <Card
@@ -651,7 +651,7 @@ function GroupingPanel({
       <div className="px-4 py-3 border-t border-border bg-[#FAFAFA]">
         <span title="AI retrieves approved knowledge and drafts an answer for every question">
           <BtnPrimary onClick={confirm}>
-            Next: Generate AI Answers <ChevronRight size={11} />
+            Next: Match Knowledge Answers <ChevronRight size={11} />
           </BtnPrimary>
         </span>
       </div>
@@ -1393,12 +1393,12 @@ function SmePackagePanel({
     <div className="flex flex-col gap-3">
       <div className="bg-[#FAFAFA] border border-[rgba(0,0,0,0.08)] rounded-xl px-4 py-3 flex items-start gap-2.5">
         <Info size={13} className="text-[#9CA3AF] shrink-0 mt-0.5" />
-        <p className="text-[13px] text-[#6B7280]">
-          SMEs do not log into this system. Every question routed during review is packaged here by
-          department into an Excel tab plus an email. Sending opens a pre-filled draft in your mail
-          app (Outlook/Gmail) — <strong>attach the downloaded package manually</strong>, browsers
-          cannot pre-attach files. Batch send registers every package first, then offers each
-          department's draft to open one by one.
+        <p
+          className="text-[13px] text-[#6B7280] truncate"
+          title="SMEs do not log into this system. Every question routed during review is packaged here by department into an Excel file plus an email. Sending opens a pre-filled draft in your mail app (Outlook/Gmail) — attach the downloaded package manually, browsers cannot pre-attach files. Batch send registers every package first, then offers each department's draft to open one by one."
+        >
+          SMEs don't log in — send each department a package + mail draft (<strong>attach the file
+          manually</strong>). Hover for details.
         </p>
       </div>
       {unsentDepts.length > 0 && (

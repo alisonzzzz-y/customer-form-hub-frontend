@@ -117,7 +117,12 @@ export default function AppShell() {
         ),
         loadBackendKnowledge(),
       ]);
-      if (world !== null) hydratedRef.current = true; // success — don't rerun
+      // Only a COMPLETE load counts as done: partial results (some ticket
+      // detail fetches failed) stay un-hydrated so the next live flip or
+      // "Retry now" completes the missing tickets (PR #6 review).
+      if (world !== null && world.complete) hydratedRef.current = true;
+      if (world !== null && !world.complete)
+        addToast("Some tickets could not be fully loaded — will retry on reconnect.", "warning");
       if (world && world.tickets.length > 0) {
         setTickets((p) => [
           ...world.tickets.filter((w) => !p.some((t) => t.backendId === w.backendId)),
