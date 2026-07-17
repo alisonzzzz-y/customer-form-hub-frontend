@@ -11,13 +11,12 @@ import { BtnSecondary } from "../components/ui";
 import {
   DEPARTMENTS,
   MOCK_NOW,
-  MvpQuestion,
   fmtDate,
   fmtDateTime,
 } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { WorkflowTab } from "./TicketWorkflow";
-import { Card, Pill, Th } from "../components/ui";
+import { Card, Pill } from "../components/ui";
 
 // PRD §8: Ticket Detail is the core workspace. The Workflow tab carries the
 // guided flow (intake → grouping → review → SME → ETA → final).
@@ -122,7 +121,7 @@ export function TicketDetailPage({
 
       <div className="flex-1 overflow-auto px-4 sm:px-8 py-7">
         {tab === "Overview" && (
-          <OverviewTab state={state} actions={actions} ticketId={ticketId} progress={progress} />
+          <OverviewTab state={state} ticketId={ticketId} progress={progress} />
         )}
         {tab === "Workflow" && <WorkflowTab state={state} actions={actions} ticketId={ticketId} />}
         {tab === "Files" && <FilesTab state={state} actions={actions} ticketId={ticketId} />}
@@ -137,12 +136,10 @@ export function TicketDetailPage({
 
 function OverviewTab({
   state,
-  actions,
   ticketId,
   progress,
 }: {
   state: AppState;
-  actions: AppActions;
   ticketId: string;
   progress: number;
 }) {

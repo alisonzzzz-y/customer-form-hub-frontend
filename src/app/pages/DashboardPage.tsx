@@ -7,7 +7,7 @@ import {
   isOverdueTicket,
 } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
-import { Card, EmptyState, Pill, Th, UrgencyDot } from "../components/ui";
+import { Card, EmptyState, Pill, Th } from "../components/ui";
 
 // PRD §6: what needs attention today, which tickets are blocked, which SME
 // responses are overdue. Metric cards deep-link into filtered Tickets (DB-04).

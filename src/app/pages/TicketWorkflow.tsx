@@ -289,45 +289,55 @@ function IntakePanel({
     let newQs: MvpQuestion[] = [];
     let live = false;
     if (file) {
+      // A real file NEVER falls back to demo questions (F-01): every failure
+      // mode stops here with its own message, and the file stays attached so
+      // "Next: Analyse Form" doubles as the retry button.
       const parsed = await parseQuestionnaire(file, backendId);
-      if (parsed.kind === "rejected") {
-        // The backend is alive and refused the file — never mask this with
-        // demo questions. Stay on intake so the user can fix/replace the file.
+      const fail = (message: string, log: string) => {
         setProcessing(false);
         patch({ status: "Intake Review" });
-        actions.addToast(
+        actions.addToast(message, "warning");
+        actions.logActivity(log, ticket.id);
+      };
+      if (parsed.kind === "rejected") {
+        fail(
           `The backend could not parse ${file.name}: ${parsed.message} Replace the file and try again.`,
-          "warning",
+          `Backend rejected ${file.name}: ${parsed.message}`,
         );
-        actions.logActivity(`Backend rejected ${file.name}: ${parsed.message}`, ticket.id);
         return;
       }
-      if (parsed.kind === "ok" && parsed.questions.length > 0) {
-        live = true;
-        pendingForms.delete(ticket.id);
-        newQs = parsed.questions.map((pq, i) => ({
-          id: base + i + 1,
-          backendId: pq.backendId,
-          ticketId: ticket.id,
-          row: i + 1,
-          original: pq.text,
-          normalised: pq.text,
-          department: pq.department,
-          risk: "Medium" as const,
-          status: "AI Analysed" as const,
-          confidence: null,
-        }));
+      if (parsed.kind === "offline") {
+        fail(
+          `The backend did not answer (unreachable or timed out) — ${file.name} was NOT parsed. Try again shortly, or check the connection banner.`,
+          `Backend unreachable while parsing ${file.name} — analysis aborted, no demo fallback`,
+        );
+        return;
       }
-    }
-    if (newQs.length === 0) {
+      if (parsed.questions.length === 0) {
+        fail(
+          `The backend parsed ${file.name} but found no questions. Check the sheet has a "Question" column with filled rows, then try again.`,
+          `Backend parsed ${file.name} but returned zero questions`,
+        );
+        return;
+      }
+      live = true;
+      pendingForms.delete(ticket.id);
+      newQs = parsed.questions.map((pq, i) => ({
+        id: base + i + 1,
+        backendId: pq.backendId,
+        ticketId: ticket.id,
+        row: i + 1,
+        original: pq.text,
+        normalised: pq.text,
+        department: pq.department,
+        risk: "Medium" as const,
+        status: "AI Analysed" as const,
+        confidence: null,
+      }));
+    } else {
+      // No form attached — the explicitly simulated demo path.
       newQs = extractQuestionsFor(ticket.id, base);
-      // Make the fallback impossible to mistake for real parsing
-      actions.addToast(
-        file
-          ? "Backend unreachable — showing simulated demo questions, NOT the contents of your file."
-          : "No form attached — using simulated demo questions.",
-        file ? "warning" : "info",
-      );
+      actions.addToast("No form attached — using simulated demo questions.", "info");
     }
 
     setTimeout(() => {
@@ -357,7 +367,7 @@ function IntakePanel({
         `${newQs.length} questions ${live ? "parsed from the uploaded form" : "extracted"} — review the department grouping.`,
         "success",
       );
-    }, live ? 300 : 1400);
+    }, live ? 0 : 1400); // live path: no artificial delay (F-06)
   };
 
   if (processing)
@@ -561,7 +571,7 @@ function GroupingPanel({
         ticket.id,
       );
       actions.addToast("AI suggestions ready — review each answer.", "success");
-    }, updates ? 200 : 1200);
+    }, updates ? 0 : 1200); // live path: no artificial delay (F-06)
   };
 
   if (processing)

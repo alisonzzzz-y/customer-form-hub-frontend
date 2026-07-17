@@ -34,7 +34,7 @@ import {
   SEED_TICKETS,
 } from "./data/seeds";
 import { Toast } from "./components/ui";
-import { loadBackendKnowledge, loadBackendWorld, onBackendStatus, pingBackend } from "./services/backend";
+import { loadBackendKnowledge, loadBackendWorld, onBackendStatus, onWriteFailure, pingBackend } from "./services/backend";
 import { DashboardPage } from "./pages/DashboardPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TicketsPage, TicketFilters, EMPTY_FILTERS } from "./pages/TicketsPage";
@@ -99,37 +99,54 @@ export default function AppShell() {
 
   // Hydrate from the backend when it is reachable: existing tickets (with
   // their questions, SME requests and answers) and the live knowledge base
-  // appear alongside the local demo seeds. Runs at most once per session.
+  // appear alongside the local demo seeds. Runs until it SUCCEEDS once —
+  // marking it done before the data actually arrived stranded sessions whose
+  // first hydration failed mid-flight (F-09).
   const hydratedRef = useRef(false);
+  const hydratingRef = useRef(false);
   const hydrate = async () => {
-    if (hydratedRef.current) return;
-    hydratedRef.current = true;
-    addToast("Backend connected — loading live tickets…", "info");
-    const world = await loadBackendWorld(
-      new Set(SEED_TICKETS.map((t) => t.backendId).filter((x): x is number => x !== undefined)),
-    );
-    if (world && world.tickets.length > 0) {
-      setTickets((p) => [
-        ...world.tickets.filter((w) => !p.some((t) => t.backendId === w.backendId)),
-        ...p,
+    if (hydratedRef.current || hydratingRef.current) return;
+    hydratingRef.current = true;
+    try {
+      addToast("Backend connected — loading live tickets…", "info");
+      const [world, kb] = await Promise.all([
+        loadBackendWorld(
+          new Set(
+            SEED_TICKETS.map((t) => t.backendId).filter((x): x is number => x !== undefined),
+          ),
+        ),
+        loadBackendKnowledge(),
       ]);
-      setQuestions((p) => [
-        ...p,
-        ...world.questions.filter((w) => !p.some((q) => q.backendId === w.backendId)),
-      ]);
-      setSmeRequests((p) => [
-        ...p,
-        ...world.smeRequests.filter((w) => !p.some((r) => r.backendId === w.backendId)),
-      ]);
-      addToast(`Loaded ${world.tickets.length} ticket(s) from the live backend.`, "info");
+      if (world !== null) hydratedRef.current = true; // success — don't rerun
+      if (world && world.tickets.length > 0) {
+        setTickets((p) => [
+          ...world.tickets.filter((w) => !p.some((t) => t.backendId === w.backendId)),
+          ...p,
+        ]);
+        setQuestions((p) => [
+          ...p,
+          ...world.questions.filter((w) => !p.some((q) => q.backendId === w.backendId)),
+        ]);
+        setSmeRequests((p) => [
+          ...p,
+          ...world.smeRequests.filter((w) => !p.some((r) => r.backendId === w.backendId)),
+        ]);
+        addToast(`Loaded ${world.tickets.length} ticket(s) from the live backend.`, "info");
+      }
+      if (kb) setKnowledge(kb);
+    } finally {
+      hydratingRef.current = false;
     }
-    const kb = await loadBackendKnowledge();
-    if (kb) setKnowledge(kb);
   };
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     onBackendStatus(setBackendLive);
+    // Fire-and-forget syncs must not fail silently (F-08): surface lost
+    // writes so the user knows a change may not have reached the database.
+    onWriteFailure((detail) =>
+      addToast(`A change could not be saved (${detail}) — it may be lost on refresh.`, "warning"),
+    );
     void (async () => {
       // The hosted backend cold-starts in 30-60s after idling; a single failed
       // probe must not strand the session on demo seeds. Retry with backoff

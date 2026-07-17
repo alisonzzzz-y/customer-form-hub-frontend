@@ -65,14 +65,39 @@ export async function pingBackend(): Promise<boolean> {
   }
 }
 
+// Fire-and-forget writes must not fail silently: the shell registers a
+// listener so a lost write at least tells the user their change may not have
+// been saved. Throttled — a burst of failures is one problem, not ten toasts.
+let writeFailListener: ((detail: string) => void) | null = null;
+export function onWriteFailure(fn: (detail: string) => void) {
+  writeFailListener = fn;
+}
+let lastWriteFailAt = 0;
+function notifyWriteFailure(detail: string) {
+  const now = Date.now();
+  if (now - lastWriteFailAt < 5000) return;
+  lastWriteFailAt = now;
+  writeFailListener?.(detail);
+}
+
 // Wrap any backend promise: resolve null on failure instead of throwing.
-async function attempt<T>(p: Promise<T>): Promise<T | null> {
+// An HTTP error response means the backend ANSWERED — only network-level
+// failures may flip the app into offline mode (a 500 is not "offline").
+async function attempt<T>(p: Promise<T>, mutation = false): Promise<T | null> {
   try {
     const v = await p;
     report(true);
     return v;
-  } catch {
-    report(false);
+  } catch (e) {
+    const status = Number((e as Error)?.message);
+    const isHttp = Number.isFinite(status);
+    report(isHttp);
+    if (mutation)
+      notifyWriteFailure(
+        isHttp
+          ? `the backend answered HTTP ${status}`
+          : "the backend could not be reached",
+      );
     return null;
   }
 }
@@ -87,6 +112,7 @@ async function post<T>(path: string, body: unknown): Promise<T | null> {
       if (!r.ok) throw new Error(String(r.status));
       return r.json() as Promise<T>;
     }),
+    true,
   );
 }
 
@@ -100,6 +126,7 @@ async function put<T>(path: string, body: unknown): Promise<T | null> {
       if (!r.ok) throw new Error(String(r.status));
       return r.json() as Promise<T>;
     }),
+    true,
   );
 }
 
@@ -113,6 +140,7 @@ async function patch<T>(path: string, body: unknown): Promise<T | null> {
       if (!r.ok) throw new Error(String(r.status));
       return r.json() as Promise<T>;
     }),
+    true,
   );
 }
 
@@ -128,7 +156,13 @@ async function postFile<T>(path: string, file: File): Promise<FileOutcome<T>> {
   const form = new FormData();
   form.append("file", file);
   try {
-    const r = await fetch(`${BASE}${path}`, { method: "POST", body: form });
+    // Parsing + LLM classification on the hosted backend can take a while,
+    // but must not spin forever (F-04): 3 minutes, then a clear failure.
+    const r = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(180_000),
+    });
     report(true);
     if (!r.ok) {
       let message = `HTTP ${r.status}`;
@@ -275,7 +309,10 @@ export async function parseQuestionnaire(
           section: fq.rowReference ?? "",
         })),
       };
-    if (imported.kind === "rejected") return imported; // classify would fail identically
+    // One user action = at most one upload (F-03). No fallback to /classify:
+    // if the import response was lost the questions may already be saved
+    // server-side, and a second upload path would double-process the file.
+    return imported;
   }
   const classified = await postFile<ClassifiedQuestion[]>("/questionnaire/classify", file);
   if (classified.kind === "ok")
