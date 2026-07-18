@@ -16,7 +16,7 @@ import {
 } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { WorkflowTab } from "./TicketWorkflow";
-import { Card, Pill, Th } from "../components/ui";
+import { Card, Pill } from "../components/ui";
 import { syncTicketStatus } from "../services/backend";
 
 // PRD §8: Ticket Detail is the core workspace. The Workflow tab carries the
