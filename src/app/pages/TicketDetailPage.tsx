@@ -11,7 +11,6 @@ import { BtnSecondary } from "../components/ui";
 import {
   DEPARTMENTS,
   MOCK_NOW,
-  MvpQuestion,
   fmtDate,
   fmtDateTime,
 } from "../data/model";
@@ -125,7 +124,7 @@ export function TicketDetailPage({
 
       <div className="flex-1 overflow-auto px-4 sm:px-8 py-7">
         {tab === "Overview" && (
-          <OverviewTab state={state} actions={actions} ticketId={ticketId} progress={progress} />
+          <OverviewTab state={state} ticketId={ticketId} progress={progress} />
         )}
         {tab === "Workflow" && <WorkflowTab state={state} actions={actions} ticketId={ticketId} />}
         {tab === "Files" && <FilesTab state={state} actions={actions} ticketId={ticketId} />}
@@ -140,12 +139,10 @@ export function TicketDetailPage({
 
 function OverviewTab({
   state,
-  actions,
   ticketId,
   progress,
 }: {
   state: AppState;
-  actions: AppActions;
   ticketId: string;
   progress: number;
 }) {

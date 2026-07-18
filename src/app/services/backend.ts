@@ -66,14 +66,39 @@ export async function pingBackend(): Promise<boolean> {
   }
 }
 
+// Fire-and-forget writes must not fail silently: the shell registers a
+// listener so a lost write at least tells the user their change may not have
+// been saved. Throttled — a burst of failures is one problem, not ten toasts.
+let writeFailListener: ((detail: string) => void) | null = null;
+export function onWriteFailure(fn: (detail: string) => void) {
+  writeFailListener = fn;
+}
+let lastWriteFailAt = 0;
+function notifyWriteFailure(detail: string) {
+  const now = Date.now();
+  if (now - lastWriteFailAt < 5000) return;
+  lastWriteFailAt = now;
+  writeFailListener?.(detail);
+}
+
 // Wrap any backend promise: resolve null on failure instead of throwing.
-async function attempt<T>(p: Promise<T>): Promise<T | null> {
+// An HTTP error response means the backend ANSWERED — only network-level
+// failures may flip the app into offline mode (a 500 is not "offline").
+async function attempt<T>(p: Promise<T>, mutation = false): Promise<T | null> {
   try {
     const v = await p;
     report(true);
     return v;
-  } catch {
-    report(false);
+  } catch (e) {
+    const status = Number((e as Error)?.message);
+    const isHttp = Number.isFinite(status);
+    report(isHttp);
+    if (mutation)
+      notifyWriteFailure(
+        isHttp
+          ? `the backend answered HTTP ${status}`
+          : "the backend could not be reached",
+      );
     return null;
   }
 }
@@ -88,6 +113,7 @@ async function post<T>(path: string, body: unknown): Promise<T | null> {
       if (!r.ok) throw new Error(String(r.status));
       return r.json() as Promise<T>;
     }),
+    true,
   );
 }
 
@@ -101,6 +127,7 @@ async function put<T>(path: string, body: unknown): Promise<T | null> {
       if (!r.ok) throw new Error(String(r.status));
       return r.json() as Promise<T>;
     }),
+    true,
   );
 }
 
@@ -114,6 +141,7 @@ async function patch<T>(path: string, body: unknown): Promise<T | null> {
       if (!r.ok) throw new Error(String(r.status));
       return r.json() as Promise<T>;
     }),
+    true,
   );
 }
 
@@ -129,7 +157,13 @@ async function postFile<T>(path: string, file: File): Promise<FileOutcome<T>> {
   const form = new FormData();
   form.append("file", file);
   try {
-    const r = await fetch(`${BASE}${path}`, { method: "POST", body: form });
+    // Parsing + LLM classification on the hosted backend can take a while,
+    // but must not spin forever (F-04): 3 minutes, then a clear failure.
+    const r = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(180_000),
+    });
     report(true);
     if (!r.ok) {
       let message = `HTTP ${r.status}`;
@@ -267,7 +301,10 @@ export async function parseQuestionnaire(
           section: fq.rowReference ?? "",
         })),
       };
-    if (imported.kind === "rejected") return imported; // classify would fail identically
+    // One user action = at most one upload (F-03). No fallback to /classify:
+    // if the import response was lost the questions may already be saved
+    // server-side, and a second upload path would double-process the file.
+    return imported;
   }
   const classified = await postFile<ClassifiedQuestion[]>("/questionnaire/classify", file);
   if (classified.kind === "ok")
@@ -285,7 +322,18 @@ export async function parseQuestionnaire(
 // ─── RAG retrieval for suggestions and AI Search ─────────────────────────────
 
 export async function ragSearch(question: string): Promise<SearchResult[] | null> {
-  return post<SearchResult[]>("/knowledge-base/search", { question });
+  // Read-only search that happens to travel as POST — a failure here must not
+  // raise the "change could not be saved" write warning (PR #6 review).
+  return attempt(
+    fetch(`${BASE}/knowledge-base/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    }).then((r) => {
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json() as Promise<SearchResult[]>;
+    }),
+  );
 }
 
 // Batched retrieval (PR #3 review, discussion 4): a 36-question form must not
@@ -413,14 +461,23 @@ export type BackendWorld = {
   smeRequests: import("../data/model").MvpSmeRequest[];
 };
 
-export async function loadBackendWorld(knownBackendIds: Set<number>): Promise<BackendWorld | null> {
+export async function loadBackendWorld(
+  knownBackendIds: Set<number>,
+): Promise<(BackendWorld & { complete: boolean }) | null> {
   const raw = await get<BackendTicketFull[]>("/tickets");
   if (raw === null) return null;
-  const world: BackendWorld = { tickets: [], questions: [], smeRequests: [] };
+  const world: BackendWorld & { complete: boolean } = {
+    tickets: [],
+    questions: [],
+    smeRequests: [],
+    complete: true,
+  };
 
   // Each round-trip to the hosted backend costs ~1s; sequential fetching made
   // hydration take 30s+ for a handful of tickets. Fetch every ticket's detail
-  // lists concurrently.
+  // lists concurrently. A ticket whose detail fetches failed is SKIPPED and
+  // the result marked incomplete — an empty-array stand-in would render a
+  // wrong stage and the caller would never retry (PR #6 review).
   const perTicket = await Promise.all(
     raw
       .filter((bt) => !knownBackendIds.has(bt.id)) // already in local state this session
@@ -430,15 +487,23 @@ export async function loadBackendWorld(knownBackendIds: Set<number>): Promise<Ba
           get<QuestionWithAnswer[]>(`/final-review/ticket/${bt.id}`),
           get<BackendSmeRequestFull[]>(`/sme-requests/ticket/${bt.id}`),
         ]);
-        const breqs = breqsRaw ?? [];
+        if (bqs === null || answers === null || breqsRaw === null)
+          return { bt, failed: true as const, bqs: [], answers: [], breqs: [], linkLists: [] };
+        const breqs = breqsRaw;
         const linkLists = await Promise.all(
           breqs.map((r) => get<SmeRequestQuestion[]>(`/sme-request-questions/request/${r.id}`)),
         );
-        return { bt, bqs: bqs ?? [], answers: answers ?? [], breqs, linkLists };
+        if (linkLists.some((l) => l === null))
+          return { bt, failed: true as const, bqs: [], answers: [], breqs: [], linkLists: [] };
+        return { bt, failed: false as const, bqs, answers, breqs, linkLists };
       }),
   );
 
-  for (const { bt, bqs, answers, breqs, linkLists } of perTicket) {
+  for (const { bt, failed, bqs, answers, breqs, linkLists } of perTicket) {
+    if (failed) {
+      world.complete = false;
+      continue;
+    }
     const localId = `TK-${9000 + bt.id}`;
     // Only Confirmed answers count as approved — a Draft row is what an
     // unapproved answer looks like, and must not hydrate back as Approved.

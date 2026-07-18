@@ -34,7 +34,7 @@ import {
   SEED_TICKETS,
 } from "./data/seeds";
 import { Toast } from "./components/ui";
-import { loadBackendKnowledge, loadBackendWorld, onBackendStatus, pingBackend } from "./services/backend";
+import { loadBackendKnowledge, loadBackendWorld, onBackendStatus, onWriteFailure, pingBackend } from "./services/backend";
 import { DashboardPage } from "./pages/DashboardPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TicketsPage, TicketFilters, EMPTY_FILTERS } from "./pages/TicketsPage";
@@ -99,36 +99,59 @@ export default function AppShell() {
 
   // Hydrate from the backend when it is reachable: existing tickets (with
   // their questions, SME requests and answers) and the live knowledge base
-  // appear alongside the local demo seeds. Runs at most once per session.
+  // appear alongside the local demo seeds. Runs until it SUCCEEDS once —
+  // marking it done before the data actually arrived stranded sessions whose
+  // first hydration failed mid-flight (F-09).
   const hydratedRef = useRef(false);
+  const hydratingRef = useRef(false);
   const hydrate = async () => {
-    if (hydratedRef.current) return;
-    hydratedRef.current = true;
-    addToast("Backend connected — loading live tickets…", "info");
-    const world = await loadBackendWorld(
-      new Set(SEED_TICKETS.map((t) => t.backendId).filter((x): x is number => x !== undefined)),
-    );
-    if (world && world.tickets.length > 0) {
-      setTickets((p) => [
-        ...world.tickets.filter((w) => !p.some((t) => t.backendId === w.backendId)),
-        ...p,
+    if (hydratedRef.current || hydratingRef.current) return;
+    hydratingRef.current = true;
+    try {
+      addToast("Backend connected — loading live tickets…", "info");
+      const [world, kb] = await Promise.all([
+        loadBackendWorld(
+          new Set(
+            SEED_TICKETS.map((t) => t.backendId).filter((x): x is number => x !== undefined),
+          ),
+        ),
+        loadBackendKnowledge(),
       ]);
-      setQuestions((p) => [
-        ...p,
-        ...world.questions.filter((w) => !p.some((q) => q.backendId === w.backendId)),
-      ]);
-      setSmeRequests((p) => [
-        ...p,
-        ...world.smeRequests.filter((w) => !p.some((r) => r.backendId === w.backendId)),
-      ]);
-      addToast(`Loaded ${world.tickets.length} ticket(s) from the live backend.`, "info");
+      // Only a COMPLETE load counts as done: partial results (some ticket
+      // detail fetches failed) stay un-hydrated so the next live flip or
+      // "Retry now" completes the missing tickets (PR #6 review).
+      if (world !== null && world.complete) hydratedRef.current = true;
+      if (world !== null && !world.complete)
+        addToast("Some tickets could not be fully loaded — will retry on reconnect.", "warning");
+      if (world && world.tickets.length > 0) {
+        setTickets((p) => [
+          ...world.tickets.filter((w) => !p.some((t) => t.backendId === w.backendId)),
+          ...p,
+        ]);
+        setQuestions((p) => [
+          ...p,
+          ...world.questions.filter((w) => !p.some((q) => q.backendId === w.backendId)),
+        ]);
+        setSmeRequests((p) => [
+          ...p,
+          ...world.smeRequests.filter((w) => !p.some((r) => r.backendId === w.backendId)),
+        ]);
+        addToast(`Loaded ${world.tickets.length} ticket(s) from the live backend.`, "info");
+      }
+      if (kb) setKnowledge(kb);
+    } finally {
+      hydratingRef.current = false;
     }
-    const kb = await loadBackendKnowledge();
-    if (kb) setKnowledge(kb);
   };
 
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     onBackendStatus(setBackendLive);
+    // Fire-and-forget syncs must not fail silently (F-08): surface lost
+    // writes so the user knows a change may not have reached the database.
+    onWriteFailure((detail) =>
+      addToast(`A change could not be saved (${detail}) — it may be lost on refresh.`, "warning"),
+    );
     void (async () => {
       // The hosted backend cold-starts in 30-60s after idling; a single failed
       // probe must not strand the session on demo seeds. Retry with backoff
@@ -141,10 +164,25 @@ export default function AppShell() {
       }
       if (!live) {
         addToast("Backend unreachable — showing local demo data only.", "warning");
+        // Keep probing every 30s: without this, an idle session never makes
+        // another backend call and the offline banner's "appears
+        // automatically" promise would be a lie (cold starts can outlast the
+        // backoff window above).
+        pollRef.current = setInterval(() => {
+          void pingBackend().then((ok) => {
+            if (ok && pollRef.current) {
+              clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+          });
+        }, 30000);
         return;
       }
       void hydrate();
     })();
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -396,10 +434,16 @@ export default function AppShell() {
         {backendLive === false && (
           <div className="bg-[#FEF3C7] border-b border-[#F59E0B]/30 px-6 py-2 flex items-center gap-2 shrink-0">
             <AlertTriangle size={13} className="text-[#92400E] shrink-0" />
-            <p className="text-[12px] text-[#92400E] font-medium">
-              Backend unreachable — showing local demo data only. Live tickets appear automatically
-              once the connection returns.
+            <p className="text-[12px] text-[#92400E] font-medium flex-1">
+              Backend unreachable — showing local demo data only. Reconnecting automatically; live
+              tickets appear as soon as it answers.
             </p>
+            <button
+              onClick={() => void pingBackend()}
+              className="text-[11px] font-bold text-[#92400E] border border-[#F59E0B]/40 rounded-full px-3 py-1 hover:bg-[#FDE68A]/60 whitespace-nowrap transition-colors"
+            >
+              Retry now
+            </button>
           </div>
         )}
 

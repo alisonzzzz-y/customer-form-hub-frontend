@@ -58,8 +58,8 @@ const turnoverRow2 = page.locator("div.flex.items-center.gap-3", { hasText: "emp
 await turnoverRow2.locator("select").selectOption("Product");
 await page.locator('button:has-text("Product")').first().click();
 if (!(await page.isVisible("text=employee turnover rate"))) errors.push("Grouping: moved question not in Product tab");
-await page.click("text=Next: Generate AI Answers");
-await page.waitForSelector("text=AI suggestions ready — review each answer.");
+await page.click("text=Next: Match Knowledge Answers");
+await page.waitForSelector("text=Knowledge matches ready — review each answer.");
 await page.waitForSelector("text=of");
 
 // ── Review: approve first (high-confidence), route one to SME ──
@@ -108,7 +108,7 @@ try {
 await page.click('button:has-text("Next: SME Package")');
 
 // ── SME package: batch send all departments at once ──
-await page.waitForSelector("text=SMEs do not log into this system");
+await page.waitForSelector("text=SMEs don't log in — send each department");
 await page.click('button:has-text("Send All")');
 await page.waitForSelector("text=All SME packages sent — track ETAs next.", { timeout: 15000 });
 

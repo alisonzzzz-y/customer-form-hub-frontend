@@ -91,7 +91,7 @@ export function NewRequestFlow({
       setExtracting(false);
       close();
       actions.openTicket(id); // always the same full-page intake check
-    }, 1100);
+    }, 0); // extraction is synchronous client-side work — no theatrical delay (F-06)
   };
 
   return (

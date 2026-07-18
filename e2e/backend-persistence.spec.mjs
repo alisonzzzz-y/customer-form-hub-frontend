@@ -35,7 +35,7 @@ await row.click();
 await page.waitForSelector("text=Back: Grouping");
 await page.click("text=Back: Grouping");
 await page.waitForSelector("text=Department Grouping — 8 questions");
-await page.click("text=Next: Generate AI Answers");
+await page.click("text=Next: Match Knowledge Answers");
 await page.waitForSelector("text=AI Suggested Answer — best match", { timeout: 15000 });
 
 // 4) KB module now shows live backend entries

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Archive, ArrowLeft, BookOpen, CheckCircle, Edit3, Plus, RotateCcw, Search, X } from "lucide-react";
 import { BtnPrimary, BtnSecondary } from "../components/ui";
-import { DEPARTMENTS, KnowledgeStatus, MvpKnowledgeEntry, SharingStatus } from "../data/model";
+import { DEPARTMENTS, KnowledgeStatus, SharingStatus } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { upsertBackendKnowledge } from "../services/backend";
-import { EmptyState, FilterSelect, Pill, SharingBadge, Th } from "../components/ui";
+import { EmptyState, Pill, SharingBadge, Th } from "../components/ui";
 
 // PRD §11: entries with metadata, department browsing (not "collections" in
 // the UI), and a Pending Review approval queue (§11.2). Archive, never delete
