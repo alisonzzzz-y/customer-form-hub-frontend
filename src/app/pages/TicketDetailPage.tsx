@@ -16,7 +16,8 @@ import {
 } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { WorkflowTab } from "./TicketWorkflow";
-import { Card, Pill } from "../components/ui";
+import { Card, Pill, Th } from "../components/ui";
+import { syncTicketStatus } from "../services/backend";
 
 // PRD §8: Ticket Detail is the core workspace. The Workflow tab carries the
 // guided flow (intake → grouping → review → SME → ETA → final).
@@ -76,6 +77,7 @@ export function TicketDetailPage({
                           : t,
                       ),
                     );
+                    syncTicketStatus(ticket.backendId, "Ready for Review");
                     actions.logActivity("Reopened ticket for further review", ticket.id);
                     actions.addToast("Ticket reopened — back in final review.", "info");
                   }}
@@ -94,6 +96,7 @@ export function TicketDetailPage({
                         : t,
                     ),
                   );
+                  syncTicketStatus(ticket.backendId, "Closed");
                   actions.logActivity("Marked response sent and closed the ticket", ticket.id);
                   actions.addToast("Ticket marked Sent and Closed.", "success");
                 }}

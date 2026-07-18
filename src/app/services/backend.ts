@@ -17,6 +17,7 @@ import type {
 import {
   MvpQuestion,
   MvpTicket,
+  KnowledgeStatus,
   SUGGESTED_THRESHOLD,
   SharingStatus,
   TBD_DEPARTMENT,
@@ -263,17 +264,8 @@ export function syncQuestionDepartment(backendId: number | undefined, department
 
 export function syncTicketStatus(backendId: number | undefined, status: string) {
   if (!backendId) return;
-  // frontend lifecycle statuses collapse onto the backend's smaller set
-  const map: Record<string, string> = {
-    "In Progress": "In Review",
-    "Intake Review": "Intake Missing",
-    "AI Processing": "In Review",
-    "Ready for Review": "In Review",
-    Approved: "Completed",
-    Sent: "Completed",
-    Closed: "Completed",
-  };
-  void patch(`/tickets/${backendId}/status`, { status: map[status] ?? status });
+  // Frontend and backend now share the same PRD lifecycle vocabulary.
+  void patch(`/tickets/${backendId}/status`, { status });
 }
 
 // ─── Questionnaire parsing + classification (real files) ─────────────────────
@@ -432,6 +424,37 @@ const NDA_FROM_BACKEND: Record<string, MvpTicket["nda"]> = {
   Unknown: "Unknown",
 };
 
+const TICKET_STATUSES: MvpTicket["status"][] = [
+  "New", "AI Processing", "Intake Review", "In Progress", "Waiting SME",
+  "Ready for Review", "Approved", "Sent", "Closed", "Archived",
+];
+
+function ticketStatusFromBackend(raw: string): MvpTicket["status"] {
+  const legacy: Record<string, MvpTicket["status"]> = {
+    "Intake Missing": "Intake Review",
+    "In Review": "In Progress",
+    Completed: "Closed",
+  };
+  const normalised = legacy[raw] ?? raw;
+  return TICKET_STATUSES.includes(normalised as MvpTicket["status"])
+    ? (normalised as MvpTicket["status"])
+    : "In Progress";
+}
+
+const KNOWLEDGE_STATUSES: KnowledgeStatus[] = [
+  "Draft", "Pending Review", "Approved", "Deprecated", "Archived",
+];
+
+function knowledgeStatusFromBackend(
+  raw: string | null | undefined,
+  approved: boolean,
+): KnowledgeStatus {
+  if (raw && KNOWLEDGE_STATUSES.includes(raw as KnowledgeStatus)) {
+    return raw as KnowledgeStatus;
+  }
+  return approved ? "Approved" : "Pending Review";
+}
+
 export type BackendWorld = {
   tickets: MvpTicket[];
   questions: MvpQuestion[];
@@ -558,21 +581,15 @@ export async function loadBackendWorld(
       localQs.every((q) => ["Approved", "SME Complete"].includes(q.status));
     const anyWaiting = localQs.some((q) => q.status === "Waiting SME");
     const anyQueued = localQs.some((q) => q.status === "SME Queued");
+    const hydratedStatus = ticketStatusFromBackend(bt.status);
     const stage: MvpTicket["stage"] =
-      bt.status === "Completed" ? "done"
+      ["Approved", "Sent", "Closed", "Archived"].includes(hydratedStatus) ? "done"
+      : hydratedStatus === "Ready for Review" ? "final"
       : localQs.length === 0 ? "intake"
       : allDone ? "final"
       : anyWaiting ? "eta"
       : anyQueued ? "sme"
       : "review";
-
-    const statusMap: Record<string, MvpTicket["status"]> = {
-      New: "New",
-      "Intake Missing": "Intake Review",
-      "In Review": "In Progress",
-      "Waiting SME": "Waiting SME",
-      Completed: "Closed",
-    };
 
     world.tickets.push({
       id: localId,
@@ -580,11 +597,13 @@ export async function loadBackendWorld(
       customer: bt.customerName,
       sorId: "—",
       owner: bt.assignedTo ?? "Sarah Chen",
-      status: statusMap[bt.status] ?? "In Progress",
+      status: hydratedStatus,
       stage,
       due: bt.deadline?.slice(0, 10) ?? "",
       created: bt.createdAt?.slice(0, 10) ?? "",
-      closed: bt.status === "Completed" ? (bt.createdAt?.slice(0, 10) ?? undefined) : undefined,
+      closed: ["Closed", "Archived"].includes(hydratedStatus)
+        ? (bt.createdAt?.slice(0, 10) ?? undefined)
+        : undefined,
       urgency: (bt.urgency as MvpTicket["urgency"]) ?? "Medium",
       nda: NDA_FROM_BACKEND[bt.ndaStatus ?? "Unknown"] ?? "Unknown",
       region: "—",
@@ -614,15 +633,13 @@ export async function loadBackendKnowledge(): Promise<
     source: k.source,
     lastUpdated: k.lastUpdated?.slice(0, 10) ?? "—",
     sharingStatus: mapSharing(k.sharingStatus),
-    status: k.approved ? "Approved" : "Pending Review",
+    status: knowledgeStatusFromBackend(k.status, k.approved),
     tags: [],
     owner: k.department,
   }));
 }
 
-// Write-back for the MVP Knowledge Base module (approve/edit/archive/create).
-// The backend models approval as a boolean; richer statuses (Draft/Deprecated/
-// Archived) map to approved=false until it gains a status field.
+// Write-back for the full Knowledge Base lifecycle.
 const SHARING_TO_BACKEND: Record<string, string> = {
   Public: "Public",
   Internal: "Internal",
@@ -643,6 +660,7 @@ export async function upsertBackendKnowledge(
     sharingStatus: SHARING_TO_BACKEND[entry.sharingStatus] ?? entry.sharingStatus,
     department: entry.department,
     approved: entry.status === "Approved",
+    status: entry.status,
   };
   if (isNew) {
     const created = await post<{ id: number }>("/knowledge-base", payload);
