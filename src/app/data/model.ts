@@ -153,13 +153,14 @@ export type MvpQuestion = {
   risk: "Low" | "Medium" | "High";
   status: QuestionStatus;
   confidence: number | null; // null = no knowledge match
-  suggested?: { text: string; knowledgeId: number; reasoning: string };
+  suggested?: { text: string; knowledgeId: number; reasoning: string; sourceTitle?: string };
   // further KB matches above the backend's 0.35 threshold (top 3 total)
   alternatives?: {
     text: string;
     knowledgeId: number;
     confidence: number;
     reasoning: string;
+    sourceTitle?: string;
     sharingStatus?: SharingStatus;
   }[];
   sharingStatus?: SharingStatus;
