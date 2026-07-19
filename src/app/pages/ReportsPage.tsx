@@ -47,7 +47,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
 
   // ── Visual overview data (user feedback: graphical progress of multiple tickets) ──
   const RESOLVED = ["Approved", "Ready", "SME Complete"];
-  const progressData = state.tickets
+  const openProgress = state.tickets
     .filter((t) => !["Closed", "Archived", "Sent"].includes(t.status))
     .map((t) => {
       const tq = state.questions.filter((q) => q.ticketId === t.id);
@@ -57,6 +57,10 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
       return { name: `${t.id} · ${t.customer}`, progress: pct, remaining: 100 - pct };
     })
     .sort((a, b) => b.progress - a.progress);
+  // Cap the chart at 10 rows — every open ticket in one bar list stretched
+  // the page endlessly; the full picture lives in the Tickets module.
+  const progressData = openProgress.slice(0, 10);
+  const progressOverflow = openProgress.length - progressData.length;
 
   const STATUS_COLORS: Record<string, string> = {
     New: "#4338CA", "AI Processing": "#6366F1", "Intake Review": "#F59E0B",
@@ -272,6 +276,12 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            {progressOverflow > 0 && (
+              <p className="px-4 pb-2.5 text-[11px] text-[#9CA3AF]">
+                Showing the 10 most-resolved of {openProgress.length} open tickets — see the
+                Tickets module for the full list.
+              </p>
+            )}
           </Card>
           <Card title="Status Mix" className="lg:col-span-1">
             <div className="px-2 py-2 h-[220px]">
