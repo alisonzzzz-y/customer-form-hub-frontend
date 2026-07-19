@@ -848,7 +848,7 @@ function ReviewPanel({
           </BtnSecondary>
         </span>
       </div>
-      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100vh-330px)] md:min-h-[440px]">
+      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100vh-330px)]">
         {/* department tabs */}
         <div className="flex border-b border-border overflow-x-auto shrink-0">
           {["All", ...depts].map((d) => {
@@ -902,7 +902,7 @@ function ReviewPanel({
           </div>
           {/* Answer card: content scrolls, the action bar below stays visible */}
           <div className="flex-1 flex flex-col min-w-0">
-            <div className="flex-1 md:overflow-y-auto overscroll-contain p-6 flex flex-col gap-4">
+            <div className="flex-1 md:overflow-y-auto p-6 flex flex-col gap-4 [&>*]:shrink-0">
             <div className="flex items-start justify-between gap-4 pb-4 border-b border-[rgba(0,0,0,0.06)]">
               <div>
                 <h3 className="text-base font-bold text-[#0A0A0A] leading-snug tracking-tight">
