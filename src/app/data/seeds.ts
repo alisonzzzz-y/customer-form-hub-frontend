@@ -13,7 +13,7 @@ import {
 export const SEED_TICKETS: MvpTicket[] = [
   {
     id: "TK-1027",
-    customer: "Microsoft",
+    customer: "Vandelay Industries",
     sorId: "SOR-88213",
     owner: "Sarah Chen",
     status: "In Progress",
@@ -29,7 +29,7 @@ export const SEED_TICKETS: MvpTicket[] = [
     ae: "Jane Smith",
     files: [
       {
-        name: "Microsoft_Security_Questionnaire.xlsx",
+        name: "Vandelay_Security_Questionnaire.xlsx",
         size: "182 KB",
         kind: "Customer form",
         uploaded: "2026-07-01",
@@ -641,7 +641,7 @@ export const SEED_NOTIFICATIONS: MvpNotification[] = [
   {
     id: 2,
     type: "AI Complete",
-    title: "AI processing complete — TK-1027 Microsoft",
+    title: "AI processing complete — TK-1027 Vandelay Industries",
     content: "9 questions extracted, 1 possible duplicate flagged, 6 suggestions generated.",
     createdAt: "2026-07-01T11:30:00Z",
     read: false,
@@ -677,7 +677,7 @@ export const SEED_NOTIFICATIONS: MvpNotification[] = [
 ];
 
 export const SEED_ACTIVITY: MvpActivity[] = [
-  { id: 1, ticketId: "TK-1027", actor: "AI", action: "Extracted 9 questions from Microsoft_Security_Questionnaire.xlsx (confidence 0.42–0.96, 1 duplicate flagged)", at: "2026-07-01T11:30:00Z" },
+  { id: 1, ticketId: "TK-1027", actor: "AI", action: "Extracted 9 questions from Vandelay_Security_Questionnaire.xlsx (confidence 0.42–0.96, 1 duplicate flagged)", at: "2026-07-01T11:30:00Z" },
   { id: 2, ticketId: "TK-1027", actor: "Sarah Chen", action: "Requested HR SME input for question #3 with ETA 9 Jul, 15:00 UTC", at: "2026-07-02T10:00:00Z" },
   { id: 3, ticketId: "TK-1024", actor: "Legal Team", action: "SME reply received for incident response SLAs", at: "2026-06-30T16:40:00Z" },
   { id: 4, ticketId: "TK-1015", actor: "Priya Patel", action: "Approved final response", at: "2026-06-29T10:05:00Z" },
