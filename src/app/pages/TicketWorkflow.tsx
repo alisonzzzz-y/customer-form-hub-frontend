@@ -808,13 +808,14 @@ function ReviewPanel({
           knowledgeId: q.suggested.knowledgeId,
           confidence: q.confidence ?? 0,
           reasoning: q.suggested.reasoning,
+          sourceTitle: q.suggested.sourceTitle,
           sharingStatus: q.sharingStatus,
         }]
       : [];
     update(
       q.id,
       {
-        suggested: { text: alt.text, knowledgeId: alt.knowledgeId, reasoning: alt.reasoning },
+        suggested: { text: alt.text, knowledgeId: alt.knowledgeId, reasoning: alt.reasoning, sourceTitle: alt.sourceTitle },
         confidence: alt.confidence,
         sharingStatus: alt.sharingStatus ?? q.sharingStatus,
         alternatives: [...q.alternatives.filter((_, i) => i !== altIndex), ...demoted],
@@ -847,7 +848,7 @@ function ReviewPanel({
           </BtnSecondary>
         </span>
       </div>
-      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col h-[calc(100vh-330px)] min-h-[440px]">
+      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100vh-330px)]">
         {/* department tabs */}
         <div className="flex border-b border-border overflow-x-auto shrink-0">
           {["All", ...depts].map((d) => {
@@ -901,7 +902,7 @@ function ReviewPanel({
           </div>
           {/* Answer card: content scrolls, the action bar below stays visible */}
           <div className="flex-1 flex flex-col min-w-0">
-            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
+            <div className="flex-1 md:overflow-y-auto p-6 flex flex-col gap-4 [&>*]:shrink-0">
             <div className="flex items-start justify-between gap-4 pb-4 border-b border-[rgba(0,0,0,0.06)]">
               <div>
                 <h3 className="text-base font-bold text-[#0A0A0A] leading-snug tracking-tight">
@@ -974,6 +975,13 @@ function ReviewPanel({
                         >
                           {source.title}
                         </button>
+                      ) : q.suggested?.sourceTitle ? (
+                        <span
+                          title="This entry is not in the currently loaded Knowledge Base list (the match may have been made in offline/demo mode, or the entry changed) — the title is shown for traceability but cannot be opened"
+                          className="text-[#6B7280] font-semibold"
+                        >
+                          {q.suggested.sourceTitle}
+                        </span>
                       ) : (
                         "Knowledge entry"
                       )}
