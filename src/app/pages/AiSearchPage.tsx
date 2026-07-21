@@ -139,7 +139,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
         <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0" />
         <div>
           <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight">AI Search</h1>
-          <p className="text-sm text-[#6B7280] mt-0.5">
+          <p className="text-sm text-[#374151] mt-0.5">
             Quick answers from approved knowledge — citation-first, never invented
           </p>
         </div>
@@ -147,7 +147,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
       <div className="flex-1 overflow-auto px-4 sm:px-8 py-8">
         <div className="max-w-3xl mx-auto flex flex-col gap-5">
           <div className="relative">
-            <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+            <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#1F2937]" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -159,7 +159,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
             <button
               onClick={() => run()}
               disabled={searching || !query.trim()}
-              className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${searching || !query.trim() ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400]"}`}
+              className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${searching || !query.trim() ? "bg-[#E8E6E3] text-[#1F2937] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400]"}`}
             >
               {searching ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
               Search
@@ -169,7 +169,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
           {!result && !searching && (
             <>
               <div>
-                <p className="text-[11px] font-black text-[#ABABAB] uppercase tracking-[0.14em] mb-2.5 flex items-center gap-1.5">
+                <p className="text-[12px] font-black text-[#1F2937] uppercase tracking-[0.14em] mb-2.5 flex items-center gap-1.5">
                   <Sparkles size={11} /> Try asking
                 </p>
                 <div className="flex flex-wrap gap-2.5">
@@ -187,11 +187,11 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
 
               {history.length > 0 && (
                 <div>
-                  <p className="text-[11px] font-black text-[#ABABAB] uppercase tracking-[0.14em] mb-2.5 flex items-center gap-1.5">
+                  <p className="text-[12px] font-black text-[#1F2937] uppercase tracking-[0.14em] mb-2.5 flex items-center gap-1.5">
                     <History size={11} /> Recent searches
                     <button
                       onClick={clearHistory}
-                      className="ml-auto flex items-center gap-1 text-[10px] font-bold text-[#C0BEBA] hover:text-[#F96702] normal-case tracking-normal transition-colors"
+                      className="ml-auto flex items-center gap-1 text-[11px] font-bold text-[#1F2937] hover:text-[#F96702] normal-case tracking-normal transition-colors"
                     >
                       <X size={10} /> Clear
                     </button>
@@ -201,9 +201,9 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
                       <button
                         key={h}
                         onClick={() => run(h)}
-                        className="w-full text-left px-4 py-2.5 text-[12px] text-[#6B7280] hover:bg-[#FFF9F5] hover:text-[#111111] transition-colors flex items-center gap-2.5"
+                        className="w-full text-left px-4 py-2.5 text-[12px] text-[#374151] hover:bg-[#FFF9F5] hover:text-[#374151] transition-colors flex items-center gap-2.5"
                       >
-                        <Search size={11} className="text-[#C0BEBA] shrink-0" />
+                        <Search size={11} className="text-[#1F2937] shrink-0" />
                         {h}
                       </button>
                     ))}
@@ -220,7 +220,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
           )}
 
           {searching && (
-            <div className="flex items-center justify-center gap-2 py-12 text-[#9CA3AF]">
+            <div className="flex items-center justify-center gap-2 py-12 text-[#1F2937]">
               <Loader2 size={16} className="animate-spin text-[#F96702]" />
               <span className="text-[13px]">Searching approved knowledge…</span>
             </div>
@@ -230,7 +230,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
             <Card>
               <div className="px-4 py-4">
                 <p className="text-[13px] font-semibold text-[#1F2937]">No approved answer found.</p>
-                <p className="text-[13px] text-[#6B7280] mt-1">
+                <p className="text-[13px] text-[#374151] mt-1">
                   Nothing in the approved Knowledge Base matches this question. Consider requesting
                   SME input from a ticket, or submitting a new knowledge entry for review.
                 </p>
@@ -243,7 +243,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
               <div className="border border-[#F96702]/25 rounded-xl overflow-hidden bg-white shadow-sm">
                 <div className="px-4 py-2.5 bg-[#FFF4EC] flex items-center gap-2">
                   <Sparkles size={12} className="text-[#C05600]" />
-                  <p className="text-[11px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
+                  <p className="text-[12px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
                     Best match — answer drafted from approved knowledge
                   </p>
                   <ConfidenceBadge confidence={result.confidence} />
@@ -261,7 +261,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
                     </p>
                   </div>
                 )}
-                <div className="px-4 py-2.5 bg-[#FAFAFA] border-t border-border flex items-center gap-4 text-[11px] text-[#6B7280]">
+                <div className="px-4 py-2.5 bg-[#FAFAFA] border-t border-border flex items-center gap-4 text-[12px] text-[#374151]">
                   <span>
                     <strong>Source:</strong> {result.entry.title}
                   </span>
@@ -278,13 +278,13 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
                       navigator.clipboard.writeText(result.entry.content);
                       actions.addToast("Answer copied.", "info");
                     }}
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase transition-all"
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase transition-all"
                   >
                     <Copy size={10} /> Copy Answer
                   </button>
                   <button
                     onClick={() => actions.openKnowledge("all", result.entry.id)}
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#374151] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
                   >
                     <ExternalLink size={10} /> Open Source Entry
                   </button>
@@ -299,7 +299,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
                   className="border border-[rgba(0,0,0,0.08)] rounded-xl overflow-hidden bg-white shadow-sm"
                 >
                   <div className="px-4 py-2.5 bg-[#F7F8FA] flex items-center gap-2">
-                    <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide flex-1">
+                    <p className="text-[12px] font-bold text-[#374151] uppercase tracking-wide flex-1">
                       Match {i + 2}
                     </p>
                     <ConfidenceBadge confidence={confidence} />
@@ -308,7 +308,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
                   <div className="px-4 py-3.5 text-sm text-[#374151] leading-relaxed">
                     {k.content}
                   </div>
-                  <div className="px-4 py-2.5 bg-[#FAFAFA] border-t border-border flex items-center gap-4 text-[11px] text-[#6B7280]">
+                  <div className="px-4 py-2.5 bg-[#FAFAFA] border-t border-border flex items-center gap-4 text-[12px] text-[#374151]">
                     <span className="flex-1 min-w-0 truncate">
                       <strong>Source:</strong> {k.title}
                     </span>
@@ -326,7 +326,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
                     </button>
                     <button
                       onClick={() => actions.openKnowledge("all", k.id)}
-                      className="flex items-center gap-1 font-semibold text-[#6B7280] hover:text-[#F96702] whitespace-nowrap"
+                      className="flex items-center gap-1 font-semibold text-[#374151] hover:text-[#F96702] whitespace-nowrap"
                     >
                       <ExternalLink size={10} /> Open
                     </button>

@@ -73,7 +73,7 @@ export function KnowledgeBasePage({
     <div className="flex-1 flex overflow-hidden">
       {/* Department browser (KB-02) */}
       <aside className="w-48 bg-white border-r border-[rgba(0,0,0,0.06)] shrink-0 overflow-y-auto py-4 px-3 hidden md:block">
-        <p className="text-[10px] font-black text-[#ABABAB] uppercase tracking-[0.14em] px-3 pb-2">
+        <p className="text-[11px] font-black text-[#1F2937] uppercase tracking-[0.14em] px-3 pb-2">
           Browse
         </p>
         <button
@@ -81,11 +81,11 @@ export function KnowledgeBasePage({
             setView("all");
             setDept("All");
           }}
-          className={`w-full text-left px-3 py-1.5 rounded-lg text-[12px] transition-all ${view === "all" && dept === "All" ? "bg-[#F96702] text-white font-bold" : "text-[#6B7280] hover:bg-[#F5F3F0]"}`}
+          className={`w-full text-left px-3 py-1.5 rounded-lg text-[12px] transition-all ${view === "all" && dept === "All" ? "bg-[#F96702] text-white font-bold" : "text-[#374151] hover:bg-[#F5F3F0]"}`}
         >
           All Entries
         </button>
-        <p className="text-[10px] font-black text-[#ABABAB] uppercase tracking-[0.14em] px-3 pt-4 pb-2">
+        <p className="text-[11px] font-black text-[#1F2937] uppercase tracking-[0.14em] px-3 pt-4 pb-2">
           Departments
         </p>
         {/* derive from the entries themselves — live data uses labels (e.g.
@@ -102,25 +102,25 @@ export function KnowledgeBasePage({
               setView("all");
               setDept(d);
             }}
-            className={`w-full text-left px-3 py-1.5 rounded-lg text-[12px] transition-all flex items-center ${view === "all" && dept === d ? "bg-[#F96702] text-white font-bold" : "text-[#6B7280] hover:bg-[#F5F3F0]"}`}
+            className={`w-full text-left px-3 py-1.5 rounded-lg text-[12px] transition-all flex items-center ${view === "all" && dept === d ? "bg-[#F96702] text-white font-bold" : "text-[#374151] hover:bg-[#F5F3F0]"}`}
           >
             <span className="flex-1">{d}</span>
-            <span className={`text-[10px] ${view === "all" && dept === d ? "text-white/80" : "text-[#C0BEBA]"}`}>
+            <span className={`text-[11px] ${view === "all" && dept === d ? "text-white/80" : "text-[#1F2937]"}`}>
               {knowledge.filter((k) => k.department === d && k.status !== "Archived").length}
             </span>
           </button>
         ))}
-        <p className="text-[10px] font-black text-[#ABABAB] uppercase tracking-[0.14em] px-3 pt-4 pb-2">
+        <p className="text-[11px] font-black text-[#1F2937] uppercase tracking-[0.14em] px-3 pt-4 pb-2">
           Review
         </p>
         <button
           onClick={() => setView("pending")}
-          className={`w-full text-left px-3 py-1.5 rounded-lg text-[12px] transition-all flex items-center ${view === "pending" ? "bg-[#F96702] text-white font-bold" : "text-[#6B7280] hover:bg-[#F5F3F0]"}`}
+          className={`w-full text-left px-3 py-1.5 rounded-lg text-[12px] transition-all flex items-center ${view === "pending" ? "bg-[#F96702] text-white font-bold" : "text-[#374151] hover:bg-[#F5F3F0]"}`}
         >
           <span className="flex-1">Pending Review</span>
           {pendingCount > 0 && (
             <span
-              className={`text-[10px] font-bold rounded-full px-1.5 py-px ${view === "pending" ? "bg-white text-[#F96702]" : "bg-[#FEFCE8] text-[#854D0E] border border-[#FDE68A]"}`}
+              className={`text-[11px] font-bold rounded-full px-1.5 py-px ${view === "pending" ? "bg-white text-[#F96702]" : "bg-[#FEFCE8] text-[#854D0E] border border-[#FDE68A]"}`}
             >
               {pendingCount}
             </span>
@@ -145,7 +145,7 @@ export function KnowledgeBasePage({
               <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight">
                 {view === "pending" ? "Pending Review" : "Knowledge Base"}
               </h1>
-              <p className="text-sm text-[#6B7280] mt-0.5">
+              <p className="text-sm text-[#374151] mt-0.5">
                 {view === "pending"
                   ? "Proposed reusable answers awaiting approval — approved entries feed AI retrieval"
                   : "Approved answers used by AI suggestions and AI Search"}
@@ -154,7 +154,7 @@ export function KnowledgeBasePage({
           </div>
           <button
             onClick={() => setEditorFor("new")}
-            className="flex items-center gap-1.5 px-5 py-2 text-[11px] bg-[#F96702] text-white rounded-full hover:bg-[#D95400] font-bold tracking-[0.06em] shadow-[0_2px_8px_rgba(249,103,2,0.3)] transition-all"
+            className="flex items-center gap-1.5 px-5 py-2 text-[12px] bg-[#F96702] text-white rounded-full hover:bg-[#D95400] font-bold tracking-[0.06em] shadow-[0_2px_8px_rgba(249,103,2,0.3)] transition-all"
           >
             <Plus size={12} /> Add Entry
           </button>
@@ -163,7 +163,7 @@ export function KnowledgeBasePage({
         <div className="flex-1 overflow-auto px-4 sm:px-8 py-7 flex flex-col gap-5">
           {view === "all" && (
             <div className="relative w-72">
-              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F2937]" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -210,14 +210,14 @@ export function KnowledgeBasePage({
                       <td className="px-4 py-2.5 text-[13px] text-[#374151] whitespace-nowrap">{k.department}</td>
                       <td className="px-4 py-2.5">
                         <p className="text-[13px] font-semibold text-[#1F2937]">{k.title}</p>
-                        <p className="text-[11px] text-[#9CA3AF] line-clamp-1 mt-0.5">{k.content}</p>
+                        <p className="text-[12px] text-[#1F2937] line-clamp-1 mt-0.5">{k.content}</p>
                       </td>
                       <td className="px-4 py-2.5"><SharingBadge status={k.sharingStatus} /></td>
-                      <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">
+                      <td className="px-4 py-2.5 text-[13px] text-[#374151] whitespace-nowrap">
                         {k.lastUpdated} (UTC)
                       </td>
                       <td className="px-4 py-2.5"><Pill value={k.status} /></td>
-                      <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">{k.owner}</td>
+                      <td className="px-4 py-2.5 text-[13px] text-[#374151] whitespace-nowrap">{k.owner}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -233,11 +233,11 @@ export function KnowledgeBasePage({
           <div className="flex-1 bg-black/30" onClick={() => setDetailId(null)} />
           <div className="w-full max-w-[400px] bg-white h-full shadow-[-8px_0_32px_rgba(0,0,0,0.12)] flex flex-col overflow-hidden">
             <div className="px-5 py-3.5 border-b border-border flex items-center gap-2 shrink-0">
-              <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide flex-1">
+              <p className="text-[12px] font-bold text-[#374151] uppercase tracking-wide flex-1">
                 Knowledge Entry #{detail.id}
               </p>
               <Pill value={detail.status} />
-              <button onClick={() => setDetailId(null)} className="text-gray-400 hover:text-gray-600 ml-1">
+              <button onClick={() => setDetailId(null)} className="text-gray-600 hover:text-gray-600 ml-1">
                 <X size={14} />
               </button>
             </div>
@@ -245,12 +245,12 @@ export function KnowledgeBasePage({
               <h3 className="text-sm font-bold text-[#0A0A0A]">{detail.title}</h3>
               <div className="flex items-center gap-2 flex-wrap">
                 <SharingBadge status={detail.sharingStatus} />
-                <span className="text-[11px] text-[#6B7280]">{detail.department}</span>
+                <span className="text-[12px] text-[#374151]">{detail.department}</span>
               </div>
               <div className="text-[13px] text-[#374151] leading-relaxed bg-[#F7F8FA] border border-border rounded-md px-3 py-2.5">
                 {detail.content}
               </div>
-              <div className="space-y-1.5 text-[12px] text-[#6B7280]">
+              <div className="space-y-1.5 text-[12px] text-[#374151]">
                 <p><strong>Source:</strong> {detail.source}</p>
                 <p><strong>Last updated:</strong> {detail.lastUpdated} (UTC)</p>
                 <p><strong>Owner:</strong> {detail.owner}</p>
@@ -261,7 +261,7 @@ export function KnowledgeBasePage({
               {returnTicket && (
                 <button
                   onClick={() => actions.openTicket(returnTicket)}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase shadow-[0_2px_8px_rgba(249,103,2,0.25)] transition-all"
+                  className="w-full flex items-center justify-center gap-1.5 py-2 text-[12px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase shadow-[0_2px_8px_rgba(249,103,2,0.25)] transition-all"
                 >
                   <ArrowLeft size={11} /> Back to Ticket {returnTicket}
                 </button>
@@ -321,7 +321,7 @@ export function KnowledgeBasePage({
                     actions.addToast("Entry archived (preserved, never deleted).", "info");
                     setDetailId(null);
                   }}
-                  className="flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold border border-[#FCA5A5]/60 rounded-full text-[#991B1B] hover:bg-[#FEF2F2] transition-all ml-auto"
+                  className="flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold border border-[#FCA5A5]/60 rounded-full text-[#991B1B] hover:bg-[#FEF2F2] transition-all ml-auto"
                 >
                   <Archive size={11} /> Archive
                 </button>
@@ -403,7 +403,7 @@ function EntryEditor({
   };
 
   const field = "w-full border border-border rounded-md px-2.5 py-1.5 text-[13px]";
-  const label = "text-[11px] font-medium text-[#6B7280] mb-1 block";
+  const label = "text-[12px] font-medium text-[#374151] mb-1 block";
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -412,7 +412,7 @@ function EntryEditor({
           <h3 className="text-sm font-semibold text-[#1F2937]">
             {existing ? "Edit Knowledge Entry" : "New Knowledge Entry"}
           </h3>
-          <button onClick={close} className="text-gray-400 hover:text-gray-600">
+          <button onClick={close} className="text-gray-600 hover:text-gray-600">
             <X size={14} />
           </button>
         </div>
@@ -453,7 +453,7 @@ function EntryEditor({
           </div>
         </div>
         {!existing && (
-          <p className="text-[11px] text-[#854D0E] bg-[#FEFCE8] border border-[#FDE68A] rounded-md px-2.5 py-1.5 mt-2.5">
+          <p className="text-[12px] text-[#854D0E] bg-[#FEFCE8] border border-[#FDE68A] rounded-md px-2.5 py-1.5 mt-2.5">
             New entries start in Pending Review — they only feed AI retrieval after approval
             (KB-05, §11.2).
           </p>

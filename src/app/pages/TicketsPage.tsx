@@ -118,7 +118,7 @@ export function TicketsPage({
           <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0" />
           <div>
             <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight">Tickets</h1>
-            <p className="text-sm text-[#6B7280] mt-0.5">
+            <p className="text-sm text-[#374151] mt-0.5">
               All customer form requests — statuses are filters, not pages
             </p>
           </div>
@@ -152,13 +152,13 @@ export function TicketsPage({
                 actions.logActivity("Imported ticket from mock Salesforce SOR", id);
                 actions.addToast(`Imported ${id} from mock SOR.`, "success");
               }}
-              className="flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
+              className="flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#374151] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
             >
               Import Mock SOR
             </button>
             <button
               onClick={() => setNewTicketOpen(true)}
-              className="flex items-center gap-1.5 px-5 py-2 text-[11px] bg-[#F96702] text-white rounded-full hover:bg-[#D95400] font-bold tracking-[0.06em] shadow-[0_2px_8px_rgba(249,103,2,0.3)] transition-all"
+              className="flex items-center gap-1.5 px-5 py-2 text-[12px] bg-[#F96702] text-white rounded-full hover:bg-[#D95400] font-bold tracking-[0.06em] shadow-[0_2px_8px_rgba(249,103,2,0.3)] transition-all"
             >
               <Plus size={12} /> New Request
             </button>
@@ -170,7 +170,7 @@ export function TicketsPage({
         {/* TK-01 search + filters */}
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
-            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F2937]" />
             <input
               value={filters.query}
               onChange={(e) => set({ query: e.target.value })}
@@ -183,7 +183,7 @@ export function TicketsPage({
           <FilterSelect label="NDA" value={filters.nda} options={["In Place", "Missing", "Unknown"]} onChange={(v) => set({ nda: v })} />
           <FilterSelect label="Urgency" value={filters.urgency} options={["High", "Medium", "Low"]} onChange={(v) => set({ urgency: v })} />
           <FilterSelect label="Due" value={filters.due} options={["Overdue", "Due today"]} onChange={(v) => set({ due: v })} />
-          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-[#6B7280] cursor-pointer ml-1">
+          <label className="flex items-center gap-1.5 text-[12px] font-semibold text-[#374151] cursor-pointer ml-1">
             <input
               type="checkbox"
               className="accent-[#F96702]"
@@ -195,7 +195,7 @@ export function TicketsPage({
           {JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS) && (
             <button
               onClick={() => setFilters(EMPTY_FILTERS)}
-              className="flex items-center gap-1 text-[11px] font-semibold text-[#9CA3AF] hover:text-[#F96702]"
+              className="flex items-center gap-1 text-[12px] font-semibold text-[#1F2937] hover:text-[#F96702]"
             >
               <X size={10} /> Clear
             </button>
@@ -233,7 +233,7 @@ export function TicketsPage({
                   >
                     <td className="px-4 py-2.5 text-[13px] font-mono font-bold text-[#1F2937]">{t.id}</td>
                     <td className="px-4 py-2.5 text-[13px] font-semibold text-[#1F2937]">{t.customer}</td>
-                    <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">{t.owner}</td>
+                    <td className="px-4 py-2.5 text-[13px] text-[#374151] whitespace-nowrap">{t.owner}</td>
                     <td className="px-4 py-2.5"><Pill value={t.status} /></td>
                     <td className="px-4 py-2.5"><UrgencyDot urgency={t.urgency} /></td>
                     <td className={`px-4 py-2.5 text-[13px] whitespace-nowrap ${isOverdueTicket(t) ? "text-red-600 font-semibold" : "text-[#374151]"}`}>
@@ -241,7 +241,7 @@ export function TicketsPage({
                     </td>
                     <td className="px-4 py-2.5">
                       <span
-                        className={`text-[11px] font-bold ${t.nda === "In Place" ? "text-green-700" : t.nda === "Missing" ? "text-red-600" : "text-[#C05600]"}`}
+                        className={`text-[12px] font-bold ${t.nda === "In Place" ? "text-green-700" : t.nda === "Missing" ? "text-red-600" : "text-[#C05600]"}`}
                       >
                         {t.nda}
                       </span>
@@ -249,7 +249,7 @@ export function TicketsPage({
                     <td className="px-4 py-2.5 text-[13px] font-mono font-bold text-[#1F2937]">
                       {smePending(t.id) || "—"}
                     </td>
-                    <td className="px-4 py-2.5 text-[11px] text-[#9CA3AF] whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-[12px] text-[#1F2937] whitespace-nowrap">
                       {lastActivity(t.id)}
                     </td>
                   </tr>

@@ -121,14 +121,14 @@ export function DashboardPage({
             <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight">
               {greeting}
             </h1>
-            <p className="text-sm text-[#6B7280] mt-0.5">
+            <p className="text-sm text-[#374151] mt-0.5">
               {role === "Manager"
                 ? "All team tickets, bottlenecks and pending reviews"
                 : "Your tickets, blockers and overdue SME responses"}
             </p>
           </div>
         </div>
-        <span className="text-[11px] font-semibold text-[#9CA3AF]">
+        <span className="text-[12px] font-semibold text-[#1F2937]">
           Demo date: {fmtDate(MOCK_NOW.toISOString())} · This week
         </span>
       </div>
@@ -147,7 +147,7 @@ export function DashboardPage({
               >
                 {m.value}
               </p>
-              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#B8B5B0] mt-1.5 group-hover:text-[#C05600] transition-colors">
+              <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#1F2937] mt-1.5 group-hover:text-[#C05600] transition-colors">
                 {m.label}
               </p>
             </button>
@@ -164,12 +164,12 @@ export function DashboardPage({
                   <p className="text-[26px] font-black tracking-tight leading-none text-[#0A0A0A]">
                     {stats.aiCoveragePercent}%
                   </p>
-                  <p className="text-[11px] text-[#6B7280] mt-1 leading-snug">
+                  <p className="text-[12px] text-[#374151] mt-1 leading-snug">
                     of confirmed answers came
                     <br />
                     from the knowledge base
                   </p>
-                  <p className="text-[10px] text-[#9CA3AF] mt-1.5">
+                  <p className="text-[11px] text-[#4B5563] mt-1.5">
                     {stats.answeredFromKnowledgeBase} AI · {stats.answeredBySme}{" "}
                     SME/manual
                   </p>
@@ -184,7 +184,7 @@ export function DashboardPage({
                 >
                   {overdueSmeCount}
                 </p>
-                <p className="text-[11px] text-[#6B7280] mt-1.5">
+                <p className="text-[12px] text-[#374151] mt-1.5">
                   overdue SME request{overdueSmeCount === 1 ? "" : "s"}
                 </p>
               </div>
@@ -195,7 +195,7 @@ export function DashboardPage({
                 <p className="text-[26px] font-black tracking-tight leading-none text-[#0A0A0A]">
                   {stats.totalQuestions}
                 </p>
-                <p className="text-[11px] text-[#6B7280] mt-1.5">
+                <p className="text-[12px] text-[#374151] mt-1.5">
                   questions across {stats.totalTickets} tickets
                 </p>
               </div>
@@ -203,11 +203,11 @@ export function DashboardPage({
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-8 gap-4">
           {/* DB-02 priority list */}
           <Card
             title="My Priority Tickets"
-            className="lg:col-span-3 overflow-hidden"
+            className="lg:col-span-5 overflow-hidden"
           >
             {priority.length === 0 ? (
               <EmptyState
@@ -234,7 +234,7 @@ export function DashboardPage({
                         onClick={() => actions.openTicket(t.id)}
                         className={`border-b border-border last:border-0 cursor-pointer transition-colors ${isOverdueTicket(t) ? "bg-red-50/40 hover:bg-red-50/70" : "hover:bg-gray-50/60"}`}
                       >
-                        <td className="px-4 py-2.5 text-[13px] font-mono font-bold text-[#1F2937]">
+                        <td className="px-4 py-2.5 text-[13px] font-mono font-bold text-[#1F2937] whitespace-nowrap">
                           {t.id}
                         </td>
                         <td className="px-4 py-2.5 text-[13px] font-semibold text-[#1F2937]">
@@ -248,12 +248,12 @@ export function DashboardPage({
                         >
                           {fmtDate(t.due)}
                           {isDueToday(t) && (
-                            <span className="ml-1.5 text-[10px] font-bold text-[#C05600]">
+                            <span className="ml-1.5 text-[11px] font-bold text-[#C05600]">
                               TODAY
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">
+                        <td className="px-4 py-2.5 text-[13px] text-[#374151] whitespace-nowrap">
                           {t.owner}
                         </td>
                       </tr>
@@ -267,7 +267,7 @@ export function DashboardPage({
           {/* DB-03 SME ETA Tracker — rows link to their ticket */}
           <Card
             title="SME ETA Tracker"
-            className="lg:col-span-2 overflow-hidden"
+            className="lg:col-span-3 overflow-hidden"
           >
             {activeSme.length === 0 ? (
               <EmptyState icon={Clock} title="No pending SME requests." />
@@ -283,7 +283,7 @@ export function DashboardPage({
                       <p className="text-[13px] font-semibold text-[#1F2937]">
                         {r.department} · {r.assignee}
                       </p>
-                      <p className="text-[11px] text-[#9CA3AF] mt-0.5">
+                      <p className="text-[12px] text-[#4B5563] mt-0.5">
                         <span className="font-mono font-bold text-[#C05600]">
                           {r.ticketId}
                         </span>
@@ -291,18 +291,18 @@ export function DashboardPage({
                         {r.eta ? fmtDateTime(r.eta) : "not set"}
                       </p>
                     </div>
-                    <span className="text-[11px] text-[#6B7280] whitespace-nowrap">
+                    <span className="text-[12px] text-[#374151] whitespace-nowrap">
                       {r.questionIds.length} question
                       {r.questionIds.length === 1 ? "" : "s"}
                     </span>
                     {r.over ? (
-                      <span className="text-[10px] font-bold text-[#991B1B] bg-[#FEF2F2] border border-[#FCA5A5]/50 rounded-full px-2 py-0.5 whitespace-nowrap">
+                      <span className="text-[11px] font-bold text-[#991B1B] bg-[#FEF2F2] border border-[#FCA5A5]/50 rounded-full px-2 py-0.5 whitespace-nowrap">
                         Overdue
                       </span>
                     ) : (
                       <ChevronRight
                         size={12}
-                        className="text-[#C0BEBA] shrink-0"
+                        className="text-[#374151] shrink-0"
                       />
                     )}
                   </button>
@@ -335,7 +335,7 @@ export function DashboardPage({
                         <span className="font-semibold">{a.actor}</span>{" "}
                         {a.action}
                       </p>
-                      <p className="text-[11px] text-[#9CA3AF] mt-0.5">
+                      <p className="text-[12px] text-[#1F2937] mt-0.5">
                         {a.ticketId && (
                           <button
                             onClick={() => actions.openTicket(a.ticketId!)}
@@ -360,7 +360,7 @@ export function DashboardPage({
             right={
               <button
                 onClick={() => actions.openKnowledge("pending")}
-                className="text-[11px] font-bold text-white hover:underline flex items-center gap-0.5"
+                className="text-[12px] font-bold text-white hover:underline flex items-center gap-0.5"
               >
                 Review all <ChevronRight size={10} />
               </button>
@@ -379,7 +379,7 @@ export function DashboardPage({
                     <p className="text-[13px] font-semibold text-[#1F2937]">
                       {k.title}
                     </p>
-                    <p className="text-[11px] text-[#9CA3AF] mt-0.5">
+                    <p className="text-[12px] text-[#4B5563] mt-0.5">
                       {k.department} · submitted by {k.owner} ·{" "}
                       {fmtDate(k.lastUpdated)}
                     </p>
