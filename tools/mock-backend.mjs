@@ -1,7 +1,9 @@
-// Full mock of Alison's backend contracts (localhost:8080) for local frontend
+// Full mock of Alison's backend contracts for local frontend
 // integration testing. Same request/response shapes as the Spring controllers;
 // in-memory state, restart = reset.
 import http from "node:http";
+
+const PORT = Number(process.env.MOCK_PORT ?? 8080);
 
 let kbNextId = 100;
 let entries = [
@@ -266,6 +268,13 @@ http
         if (i >= 0) smeRequests[i] = { ...smeRequests[i], ...parse() };
         return json(res, 200, smeRequests[i] ?? {});
       }
+      if ((m = path.match(/^\/api\/sme-requests\/(\d+)\/unreturn$/)) && req.method === "POST") {
+        const r = smeRequests.find((x) => x.id === +m[1]);
+        if (!r) return json(res, 404, {});
+        r.returnedAt = null;
+        r.status = r.eta ? "ETA Confirmed" : "Waiting for ETA";
+        return json(res, 200, r);
+      }
 
       // ── sme request questions ──
       if (path === "/api/sme-request-questions/package" && req.method === "POST") {
@@ -315,4 +324,4 @@ http
       return json(res, 404, { error: "not mocked: " + req.method + " " + path });
     });
   })
-  .listen(8080, () => console.log("Full backend mock on http://localhost:8080"));
+  .listen(PORT, () => console.log(`Full backend mock on http://localhost:${PORT}`));

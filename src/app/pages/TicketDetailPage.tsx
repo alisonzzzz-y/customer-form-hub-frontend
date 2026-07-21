@@ -10,9 +10,9 @@ import {
 import { BtnSecondary } from "../components/ui";
 import {
   DEPARTMENTS,
-  MOCK_NOW,
   fmtDate,
   fmtDateTime,
+  isOverdueSmeRequest,
 } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { WorkflowTab } from "./TicketWorkflow";
@@ -252,17 +252,14 @@ function OverviewTab({
         ) : (
           <div className="divide-y divide-border">
             {smeReqs.map((r) => {
-              const over =
-                r.status !== "Returned" &&
-                r.eta !== null &&
-                new Date(r.eta) < (r.backendId ? new Date() : MOCK_NOW);
+              const over = isOverdueSmeRequest(r);
               return (
                 <div key={r.id} className={`px-4 py-3 ${over ? "bg-red-50/40" : ""}`}>
                   <div className="flex items-center gap-2">
                     <span className="text-[13px] font-semibold text-[#1F2937] flex-1">
                       {r.department} · {r.assignee}
                     </span>
-                    <Pill value={over && r.status !== "Returned" ? "Overdue" : r.status} />
+                    <Pill value={over ? "Overdue" : r.status} />
                   </div>
                   <p className="text-[11px] text-[#6B7280] mt-1">
                     {r.questionIds.length} question{r.questionIds.length === 1 ? "" : "s"} · ETA{" "}

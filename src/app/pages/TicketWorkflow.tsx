@@ -26,7 +26,6 @@ import {
   DEPARTMENTS,
   QUESTION_DEPARTMENTS,
   TBD_DEPARTMENT,
-  MOCK_NOW,
   MvpQuestion,
   MvpSmeRequest,
   MvpTicket,
@@ -34,13 +33,16 @@ import {
   SUGGESTED_THRESHOLD,
   fmtDate,
   fmtDateTime,
+  isOverdueSmeRequest,
   pendingForms,
+  smeRequestReferenceNow,
 } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import {
   applyRagResult,
   createBackendSmeRequest,
   createBackendTicket,
+  downloadTicketExport,
   parseQuestionnaire,
   fetchSmeEmail,
   packageBackendQuestions,
@@ -53,10 +55,10 @@ import {
   syncSmeAnswer,
   syncSmeRequest,
   syncTicketStatus,
+  unreturnBackendSmeRequest,
 } from "../services/backend";
 import { ClarificationEmailModal } from "./NewRequestFlow";
 import { attachSuggestions, extractQuestionsFor, smeAnswerFor } from "../services/simulation";
-import { exportUrl } from "../services/backend";
 import { Card, ConfidenceBadge, Pill, SharingBadge, Th, openMailDraft } from "../components/ui";
 
 // Guided per-ticket workflow, ported from the original prototype:
@@ -1313,22 +1315,64 @@ function SmePackagePanel({
       sentAt: new Date().toISOString(),
     };
     if (ticket.backendId) {
+      if (deptQueued.some((q) => !q.backendId)) {
+        actions.addToast(
+          `${dept} cannot be sent yet because one or more questions are not synced to the backend.`,
+          "warning",
+        );
+        return;
+      }
+      const prepared = await Promise.all(
+        deptQueued.map(async (q) => {
+          const [departmentSaved, statusSaved] = await Promise.all([
+            syncQuestionDepartment(q.backendId, dept),
+            syncQuestionStatus(q.backendId, "SME Needed"),
+          ]);
+          return departmentSaved && statusSaved;
+        }),
+      );
+      if (prepared.some((ok) => !ok)) {
+        actions.addToast(
+          `${dept} was not sent because the queued questions could not be prepared on the backend.`,
+          "warning",
+        );
+        return;
+      }
       const backendReqId = await createBackendSmeRequest(
         ticket.backendId, dept, `${dept} Team`, deptQueued.length,
       );
-      if (backendReqId) {
-        req.backendId = backendReqId;
-        const srqByBackendQ = await packageBackendQuestions(backendReqId, ticket.backendId, dept);
-        if (srqByBackendQ) {
-          req.srqIds = {};
-          for (const q of deptQueued) {
-            if (q.backendId && srqByBackendQ[q.backendId] !== undefined)
-              req.srqIds[q.id] = srqByBackendQ[q.backendId];
-          }
-        }
-        const email = await fetchSmeEmail(backendReqId);
-        if (email) req.sentEmail = email;
+      if (!backendReqId) {
+        actions.addToast(
+          `${dept} was not sent because the SME request could not be saved.`,
+          "warning",
+        );
+        return;
       }
+      req.backendId = backendReqId;
+      const srqByBackendQ = await packageBackendQuestions(
+        backendReqId,
+        ticket.backendId,
+        dept,
+      );
+      const linkedCount = srqByBackendQ
+        ? deptQueued.filter(
+            (q) => q.backendId && srqByBackendQ[q.backendId] !== undefined,
+          ).length
+        : 0;
+      if (!srqByBackendQ || linkedCount !== deptQueued.length) {
+        actions.addToast(
+          `${dept} was not sent because only ${linkedCount} of ${deptQueued.length} questions were packaged.`,
+          "warning",
+        );
+        return;
+      }
+      req.srqIds = {};
+      for (const q of deptQueued) {
+        if (q.backendId && srqByBackendQ[q.backendId] !== undefined)
+          req.srqIds[q.id] = srqByBackendQ[q.backendId];
+      }
+      const email = await fetchSmeEmail(backendReqId);
+      if (email) req.sentEmail = email;
     }
     actions.setSmeRequests((p) => [...p, req]);
     actions.setQuestions((p) =>
@@ -1345,12 +1389,16 @@ function SmePackagePanel({
     setBusy(true);
     try {
       const drafts: NonNullable<typeof batchDrafts> = [];
+      const sent: string[] = [];
       for (const d of deptList) {
         const req = await sendOne(d);
-        if (req) drafts.push({ ...draftFor(d, req), opened: false });
+        if (req) {
+          sent.push(d);
+          drafts.push({ ...draftFor(d, req), opened: false });
+        }
       }
       setSelected([]);
-      const remaining = unsentDepts.filter((d) => !deptList.includes(d));
+      const remaining = unsentDepts.filter((d) => !sent.includes(d));
       if (remaining.length === 0) {
         actions.setTickets((p) =>
           p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta", status: "Waiting SME" } : t)),
@@ -1359,8 +1407,8 @@ function SmePackagePanel({
         actions.addToast("All SME packages sent — track ETAs next.", "success");
       } else {
         actions.addToast(
-          `${deptList.length} SME package${deptList.length === 1 ? "" : "s"} sent. ${remaining.join(", ")} still queued.`,
-          "success",
+          `${sent.length} SME package${sent.length === 1 ? "" : "s"} sent. ${remaining.join(", ")} still queued.`,
+          sent.length > 0 ? "info" : "warning",
         );
       }
       // browsers allow one mailto per click — hand the drafts over one by one
@@ -1375,15 +1423,14 @@ function SmePackagePanel({
     setBusy(true);
     try {
       const req = await sendOne(tab);
-      if (req) {
-        // The system never sends email itself — open the draft in the mail app.
-        const d = draftFor(tab, req);
-        openMailDraft(d.to, d.subject, d.body);
-        actions.addToast(
-          "Draft opened in your mail app — attach the downloaded Excel before sending.",
-          "info",
-        );
-      }
+      if (!req) return;
+      // The system never sends email itself — open the draft in the mail app.
+      const d = draftFor(tab, req);
+      openMailDraft(d.to, d.subject, d.body);
+      actions.addToast(
+        "Draft opened in your mail app — attach the downloaded Excel before sending.",
+        "info",
+      );
       const remaining = unsentDepts.filter((d) => d !== tab);
       if (remaining.length === 0) {
         actions.setTickets((p) =>
@@ -1706,11 +1753,8 @@ function EtaPanel({
   const [confirmedBy, setConfirmedBy] = useState("");
   const [nudgeFor, setNudgeFor] = useState<MvpSmeRequest | null>(null);
   const [recordFor, setRecordFor] = useState<MvpSmeRequest | null>(null);
+  const [undoingId, setUndoingId] = useState<number | null>(null);
 
-  // live-synced requests use the real clock (matches the backend); seeded demo
-  // data stays anchored to MOCK_NOW so the story is deterministic
-  const isOver = (r: MvpSmeRequest) =>
-    r.status !== "Returned" && r.eta !== null && new Date(r.eta) < (r.backendId ? new Date() : MOCK_NOW);
   const allReturned = reqs.length > 0 && reqs.every((r) => r.status === "Returned");
 
   const saveEta = () => {
@@ -1732,6 +1776,73 @@ function EtaPanel({
     setEtaModal(null);
   };
 
+  const undoReturned = async (request: MvpSmeRequest) => {
+    if (undoingId !== null) return;
+    setUndoingId(request.id);
+    try {
+      const affected = qs.filter(
+        (q) =>
+          request.questionIds.includes(q.id) &&
+          q.finalAnswer?.sourceType === "SME",
+      );
+      const requestRestored = await unreturnBackendSmeRequest(
+        request.backendId,
+      );
+      if (!requestRestored) {
+        actions.addToast(
+          `${request.department} could not be reopened on the backend. Nothing was changed locally.`,
+          "warning",
+        );
+        return;
+      }
+      const answerResults = await Promise.all(
+        affected.map(async (q) => {
+          const [answerReverted, statusReverted] = await Promise.all([
+            revertFinalAnswer(q),
+            syncQuestionStatus(q.backendId, "SME Needed"),
+          ]);
+          return answerReverted && statusReverted;
+        }),
+      );
+      actions.setSmeRequests((p) =>
+        p.map((x) =>
+          x.id === request.id
+            ? {
+                ...x,
+                status: request.eta ? "ETA Set" : "Requested",
+                returnedAt: undefined,
+              }
+            : x,
+        ),
+      );
+      actions.setQuestions((p) =>
+        p.map((q) =>
+          request.questionIds.includes(q.id) &&
+          q.finalAnswer?.sourceType === "SME"
+            ? { ...q, status: "Waiting SME", finalAnswer: undefined }
+            : q,
+        ),
+      );
+      actions.logActivity(
+        `Undid returned status for ${request.department}`,
+        ticket.id,
+      );
+      if (answerResults.every(Boolean)) {
+        actions.addToast(
+          `${request.department} marked as still pending.`,
+          "info",
+        );
+      } else {
+        actions.addToast(
+          `${request.department} was reopened, but one or more answers could not be rolled back on the backend.`,
+          "warning",
+        );
+      }
+    } finally {
+      setUndoingId(null);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <Card title="SME ETA Tracking — this ticket">
@@ -1748,7 +1859,7 @@ function EtaPanel({
           </thead>
           <tbody>
             {reqs.map((r) => {
-              const over = isOver(r);
+              const over = isOverdueSmeRequest(r);
               return (
                 <tr
                   key={r.id}
@@ -1805,31 +1916,11 @@ function EtaPanel({
                         <span className="text-[11px] text-green-700 font-medium flex items-center gap-1.5">
                           <CheckCircle size={11} /> {r.returnedAt ? fmtDateTime(r.returnedAt) : "Returned"}
                           <button
-                            onClick={() => {
-                              actions.setSmeRequests((p) =>
-                                p.map((x) =>
-                                  x.id === r.id
-                                    ? { ...x, status: r.eta ? "ETA Set" : "Requested", returnedAt: undefined }
-                                    : x,
-                                ),
-                              );
-                              actions.setQuestions((p) =>
-                                p.map((qq) =>
-                                  r.questionIds.includes(qq.id) && qq.finalAnswer?.sourceType === "SME"
-                                    ? { ...qq, status: "Waiting SME", finalAnswer: undefined }
-                                    : qq,
-                                ),
-                              );
-                              syncSmeRequest(r.backendId, {
-                                status: r.eta ? "ETA Set" : "Requested",
-                                returnedAt: null,
-                              });
-                              actions.logActivity(`Undid returned status for ${r.department}`, ticket.id);
-                              actions.addToast(`${r.department} marked as still pending.`, "info");
-                            }}
+                            onClick={() => void undoReturned(r)}
+                            disabled={undoingId !== null}
                             className="text-[10px] font-bold text-[#6B7280] border border-[rgba(0,0,0,0.15)] rounded-full px-2 py-0.5 hover:border-[#F96702]/50 hover:text-[#F96702] uppercase tracking-[0.06em]"
                           >
-                            Undo
+                            {undoingId === r.id ? "Undoing…" : "Undo"}
                           </button>
                         </span>
                       )}
@@ -2148,8 +2239,8 @@ function NudgeModal({
   actions: AppActions;
   close: () => void;
 }) {
-  const clock = req.backendId ? new Date() : MOCK_NOW;
-  const over = req.eta !== null && new Date(req.eta) < clock;
+  const clock = smeRequestReferenceNow(req);
+  const over = isOverdueSmeRequest(req);
   const dueSoon =
     !over && req.eta !== null && new Date(req.eta).getTime() - clock.getTime() < 24 * 3600 * 1000;
   const variant = !req.eta ? "no-eta" : over ? "overdue" : dueSoon ? "due-soon" : "check-in";
@@ -2292,26 +2383,45 @@ function FinalPanel({
     (q) => q.sharingStatus === "NDA Required" && ticket.nda !== "In Place" && q.finalAnswer,
   );
 
-  const handleExport = () => {
+  const handleExport = async () => {
     setExportModal(false);
     setExporting(true);
     actions.addToast("Exporting response…", "info");
+    if (ticket.backendId) {
+      const file = await downloadTicketExport(ticket.backendId);
+      if (!file) {
+        setExporting(false);
+        setExported(false);
+        actions.addToast(
+          "The response package could not be downloaded. Ticket approval is still locked.",
+          "warning",
+        );
+        return;
+      }
+      const url = URL.createObjectURL(file.blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      setExporting(false);
+      setExported(true);
+      actions.logActivity(
+        "Downloaded backend-generated Excel response package",
+        ticket.id,
+      );
+      actions.addToast("Excel exported from the live backend.", "success");
+      return;
+    }
     setTimeout(() => {
       setExporting(false);
       setExported(true);
-      if (ticket.backendId) {
-        // Real Excel generated by the backend (GET /api/export/ticket/{id})
-        const a = document.createElement("a");
-        a.href = exportUrl(ticket.backendId);
-        a.download = "";
-        a.click();
-        actions.logActivity("Downloaded backend-generated Excel response package", ticket.id);
-        actions.addToast("Excel exported from the live backend.", "success");
-      } else {
-        actions.logActivity("Exported completed response package (simulated)", ticket.id);
-        actions.addToast("Response exported successfully.", "success");
-      }
-    }, ticket.backendId ? 300 : 1200);
+      actions.logActivity(
+        "Exported completed response package (simulated)",
+        ticket.id,
+      );
+      actions.addToast("Response exported successfully.", "success");
+    }, 1200);
   };
 
   return (
@@ -2484,7 +2594,7 @@ function FinalPanel({
             </div>
             <div className="flex justify-end gap-2">
               <BtnSecondary onClick={() => setExportModal(false)}>Cancel</BtnSecondary>
-              <BtnPrimary onClick={handleExport}>
+              <BtnPrimary onClick={() => void handleExport()}>
                 <Download size={11} /> Export
               </BtnPrimary>
             </div>

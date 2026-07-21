@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 
 const BASE_URL = process.env.E2E_URL ?? "http://localhost:5199/";
+const API_URL = process.env.E2E_API_URL ?? "http://localhost:8080";
 
 const errors = [];
 const browser = await chromium.launch();
@@ -12,7 +13,7 @@ page.on("console", (m) => {
     errors.push("console: " + m.text());
 });
 
-await fetch("http://localhost:8080/api/_debug/reset").catch(() => {});
+await fetch(`${API_URL}/api/_debug/reset`).catch(() => {});
 await page.goto(BASE_URL);
 await page.waitForSelector("text=Good morning, Sarah");
 
@@ -147,7 +148,7 @@ await page.waitForSelector('header ~ * >> text=Mark Sent & Close', { timeout: 50
 await page.click("text=Mark Sent & Close");
 await page.waitForSelector("text=Ticket marked Sent and Closed.");
 
-const calls = await (await fetch("http://localhost:8080/api/_debug/calls")).json();
+const calls = await (await fetch(`${API_URL}/api/_debug/calls`)).json();
 const expectCalls = [
   "POST /api/tickets",
   "POST /api/questionnaire/import",

@@ -57,6 +57,15 @@ const NAV: { id: ModuleId; label: string; icon: React.ElementType }[] = [
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
+// Production/live sessions show only persistent records once hydration
+// succeeds. The E2E/demo harness opts back into the mixed seed dataset.
+const INCLUDE_DEMO_DATA = import.meta.env.VITE_INCLUDE_DEMO_DATA === "true";
+const SEED_TICKET_IDS = new Set(SEED_TICKETS.map((t) => t.id));
+const SEED_QUESTION_IDS = new Set(SEED_QUESTIONS.map((q) => q.id));
+const SEED_SME_REQUEST_IDS = new Set(SEED_SME_REQUESTS.map((r) => r.id));
+const SEED_NOTIFICATION_IDS = new Set(SEED_NOTIFICATIONS.map((n) => n.id));
+const SEED_ACTIVITY_IDS = new Set(SEED_ACTIVITY.map((a) => a.id));
+
 export type AppState = {
   role: Role;
   currentUser: string;
@@ -123,22 +132,55 @@ export default function AppShell() {
       if (world !== null && world.complete) hydratedRef.current = true;
       if (world !== null && !world.complete)
         addToast("Some tickets could not be fully loaded — will retry on reconnect.", "warning");
-      if (world && world.tickets.length > 0) {
-        setTickets((p) => [
-          ...world.tickets.filter((w) => !p.some((t) => t.backendId === w.backendId)),
-          ...p,
-        ]);
-        setQuestions((p) => [
-          ...p,
-          ...world.questions.filter((w) => !p.some((q) => q.backendId === w.backendId)),
-        ]);
-        setSmeRequests((p) => [
-          ...p,
-          ...world.smeRequests.filter((w) => !p.some((r) => r.backendId === w.backendId)),
-        ]);
+      if (world) {
+        const keepDemo = INCLUDE_DEMO_DATA || !world.complete;
+        setTickets((p) => {
+          const retained = keepDemo
+            ? p
+            : p.filter((t) => !SEED_TICKET_IDS.has(t.id));
+          return [
+            ...world.tickets.filter(
+              (w) => !retained.some((t) => t.backendId === w.backendId),
+            ),
+            ...retained,
+          ];
+        });
+        setQuestions((p) => {
+          const retained = keepDemo
+            ? p
+            : p.filter((q) => !SEED_QUESTION_IDS.has(q.id));
+          return [
+            ...retained,
+            ...world.questions.filter(
+              (w) => !retained.some((q) => q.backendId === w.backendId),
+            ),
+          ];
+        });
+        setSmeRequests((p) => {
+          const retained = keepDemo
+            ? p
+            : p.filter((r) => !SEED_SME_REQUEST_IDS.has(r.id));
+          return [
+            ...retained,
+            ...world.smeRequests.filter(
+              (w) => !retained.some((r) => r.backendId === w.backendId),
+            ),
+          ];
+        });
+        if (!keepDemo) {
+          setNotifications((p) =>
+            p.filter((n) => !SEED_NOTIFICATION_IDS.has(n.id)),
+          );
+          setActivity((p) =>
+            p.filter((a) => !SEED_ACTIVITY_IDS.has(a.id)),
+          );
+        }
         addToast(`Loaded ${world.tickets.length} ticket(s) from the live backend.`, "info");
       }
-      if (kb) setKnowledge(kb);
+      if (kb !== null)
+        setKnowledge(
+          INCLUDE_DEMO_DATA && kb.length === 0 ? SEED_KNOWLEDGE : kb,
+        );
     } finally {
       hydratingRef.current = false;
     }

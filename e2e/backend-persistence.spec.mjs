@@ -1,13 +1,14 @@
 import { chromium } from "playwright";
 
 const BASE_URL = process.env.E2E_URL ?? "http://localhost:5199/";
+const API_URL = process.env.E2E_API_URL ?? "http://localhost:8080";
 const errors = [];
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 
 // 1) create a live ticket with a real file
-await fetch("http://localhost:8080/api/_debug/reset").catch(() => {});
+await fetch(`${API_URL}/api/_debug/reset`).catch(() => {});
 await page.goto(BASE_URL);
 await page.waitForSelector("text=Good morning, Sarah");
 await page.click('header >> text=New Request');

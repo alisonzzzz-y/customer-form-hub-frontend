@@ -13,7 +13,13 @@ import {
   YAxis,
 } from "recharts";
 import { BtnPrimary, BtnSecondary } from "../components/ui";
-import { DEPARTMENTS, MOCK_NOW, MvpReport, fmtDate, isOverdueTicket } from "../data/model";
+import {
+  DEPARTMENTS,
+  MvpReport,
+  fmtDate,
+  isOverdueTicket,
+  ticketReferenceNow,
+} from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { Card, EmptyState, FilterSelect, Pill, Th } from "../components/ui";
 
@@ -22,6 +28,25 @@ import { Card, EmptyState, FilterSelect, Pill, Th } from "../components/ui";
 // minimum viable export (RP-09).
 
 const RANGES = ["This week", "This month", "Last 30 days", "All time"];
+
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[char]!,
+  );
+}
+
+function csvCell(value: string): string {
+  const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
 
 type Metrics = {
   volume: number;
@@ -100,12 +125,33 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
         state.questions.some((q) => q.ticketId === t.id && q.department === dept),
       );
     if (range === "This week") {
-      const weekAgo = new Date(MOCK_NOW.getTime() - 7 * 24 * 3600 * 1000);
-      ts = ts.filter((t) => new Date(t.created) >= weekAgo);
-    } else if (range === "This month" || range === "Last 30 days") {
-      const monthAgo = new Date(MOCK_NOW.getTime() - 30 * 24 * 3600 * 1000);
-      ts = ts.filter((t) => new Date(t.created) >= monthAgo);
+      ts = ts.filter(
+        (t) =>
+          new Date(t.created) >=
+          new Date(ticketReferenceNow(t).getTime() - 7 * 24 * 3600 * 1000),
+      );
+    } else if (range === "This month") {
+      ts = ts.filter((t) => {
+        const now = ticketReferenceNow(t);
+        const monthStart = new Date(
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+        );
+        return new Date(t.created) >= monthStart;
+      });
+    } else if (range === "Last 30 days") {
+      ts = ts.filter(
+        (t) =>
+          new Date(t.created) >=
+          new Date(ticketReferenceNow(t).getTime() - 30 * 24 * 3600 * 1000),
+      );
     }
+
+    const selectedTicketIds = new Set(ts.map((t) => t.id));
+    const selectedQuestions = state.questions.filter(
+      (q) =>
+        selectedTicketIds.has(q.ticketId) &&
+        (dept === "All" || q.department === dept),
+    );
 
     const closed = ts.filter((t) => t.closed);
     const avgCompletion = closed.length
@@ -114,20 +160,25 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
         ) / closed.length / 86400000
       : 0;
 
-    const returned = state.smeRequests.filter((r) => r.returnedAt);
+    const returned = state.smeRequests.filter(
+      (r) =>
+        selectedTicketIds.has(r.ticketId) &&
+        (dept === "All" || r.department === dept) &&
+        r.returnedAt,
+    );
     const avgSme = returned.length
       ? returned.reduce(
           (s, r) => s + (new Date(r.returnedAt!).getTime() - new Date(r.sentAt).getTime()), 0,
         ) / returned.length / 86400000
       : 0;
 
-    const reviewed = state.questions.filter(
+    const reviewed = selectedQuestions.filter(
       (q) => q.finalAnswer || q.status === "Rejected",
     );
     const accepted = reviewed.filter(
       (q) => q.finalAnswer && ["AI", "AI Edited"].includes(q.finalAnswer.sourceType),
     );
-    const answered = state.questions.filter((q) => q.finalAnswer);
+    const answered = selectedQuestions.filter((q) => q.finalAnswer);
     const fromKnowledge = answered.filter(
       (q) => q.finalAnswer!.sourceType === "AI" || q.finalAnswer!.sourceType === "AI Edited",
     );
@@ -151,7 +202,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
     setMetrics(null);
     setTimeout(() => {
       const m = compute();
-      const s = `In the selected period (${range.toLowerCase()}${dept !== "All" ? `, ${dept} department` : ""}${company !== "All" ? `, ${company}` : ""}), the team handled ${m.volume} ticket(s) with ${m.overdue} currently overdue. Average completion time was ${m.avgCompletionDays} day(s) and SME turnaround averaged ${m.avgSmeTurnaroundDays} day(s). AI suggestions were accepted at a rate of ${m.aiAcceptance}, with ${m.knowledgeReuse} of final answers reusing approved knowledge. ${m.overdue > 0 ? "The main bottleneck is overdue SME responses — consider reviewing department ETAs." : "No structural bottlenecks detected in this period."}`;
+      const s = `In the selected period (${range.toLowerCase()}${dept !== "All" ? `, ${dept} department` : ""}${company !== "All" ? `, ${company}` : ""}), the team handled ${m.volume} ticket(s) with ${m.overdue} currently overdue. Average completion time was ${m.avgCompletionDays} day(s) and SME turnaround averaged ${m.avgSmeTurnaroundDays} day(s). AI suggestions were accepted at a rate of ${m.aiAcceptance}, with ${m.knowledgeReuse} of final answers reusing approved knowledge. ${m.overdue > 0 ? "The main bottleneck is overdue tickets — review their deadlines and outstanding SME ETAs." : "No structural bottlenecks detected in this period."}`;
       setMetrics(m);
       setSummary(s);
       const rec: MvpReport = {
@@ -186,7 +237,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
     a.href = url;
     a.download = name;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
   // Excel-friendly CSV of the metrics + summary
@@ -199,9 +250,13 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
       ["Metric", "Value"],
       ...r.metrics.map((m) => [m.label, m.value]),
       [],
-      ["AI Summary", `"${r.summary.replace(/"/g, '""')}"`],
+      ["AI Summary", r.summary],
     ];
-    downloadBlob(rows.map((row) => row.join(",")).join("\n"), "text/csv", `report-${r.id}.csv`);
+    downloadBlob(
+      rows.map((row) => row.map((cell) => csvCell(String(cell))).join(",")).join("\n"),
+      "text/csv",
+      `report-${r.id}.csv`,
+    );
     actions.addToast("Report exported for Excel (.csv).", "info");
   };
 
@@ -209,7 +264,17 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
   const exportPdf = (r: MvpReport) => {
     const w = window.open("", "_blank", "width=840,height=640");
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><title>${r.title}</title><style>
+    const title = escapeHtml(r.title);
+    const type = escapeHtml(r.type);
+    const createdBy = escapeHtml(r.createdBy);
+    const summaryText = escapeHtml(r.summary);
+    const metricRows = r.metrics
+      .map(
+        (metric) =>
+          `<tr><td>${escapeHtml(metric.label)}</td><td><strong>${escapeHtml(metric.value)}</strong></td></tr>`,
+      )
+      .join("");
+    w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
       body{font-family:Inter,system-ui,sans-serif;color:#1F2937;padding:36px;max-width:720px;margin:0 auto}
       h1{font-size:20px;border-left:4px solid #F96702;padding-left:12px}
       .meta{color:#6B7280;font-size:12px;margin-bottom:24px}
@@ -218,12 +283,12 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
       td{border-bottom:1px solid #E5E7EB;padding:8px 12px;font-size:13px}
       .summary{background:#FFF7F0;border:1px solid #F9670233;border-radius:8px;padding:16px;font-size:13px;line-height:1.6}
     </style></head><body>
-      <h1>${r.title}</h1>
-      <p class="meta">${r.type} report · ${r.createdBy} · ${fmtDate(r.createdAt)}</p>
+      <h1>${title}</h1>
+      <p class="meta">${type} report · ${createdBy} · ${fmtDate(r.createdAt)}</p>
       <table><tr><th>Metric</th><th>Value</th></tr>
-        ${r.metrics.map((m) => `<tr><td>${m.label}</td><td><strong>${m.value}</strong></td></tr>`).join("")}
+        ${metricRows}
       </table>
-      <div class="summary"><strong>AI Executive Summary</strong><br/>${r.summary}</div>
+      <div class="summary"><strong>AI Executive Summary</strong><br/>${summaryText}</div>
       <script>window.onload = () => window.print();</` + `script></body></html>`);
     w.document.close();
     actions.addToast("Print dialog opened — choose 'Save as PDF'.", "info");

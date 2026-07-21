@@ -7,13 +7,6 @@
 // backend entities lives here so it can be deleted once the schemas converge
 // (see NOTES_FOR_ALISON.md §4.6).
 
-import type {
-  ClassifiedQuestion,
-  FinalAnswerInput,
-  FormQuestion,
-  SearchResult,
-  SmeRequestQuestion,
-} from "../api";
 import {
   MvpQuestion,
   MvpTicket,
@@ -22,6 +15,57 @@ import {
   SharingStatus,
   TBD_DEPARTMENT,
 } from "../data/model";
+
+interface SearchResult {
+  id: number;
+  documentTitle: string;
+  sectionTitle: string;
+  content: string;
+  source: string;
+  lastUpdated: string;
+  sharingStatus: string;
+  department: string;
+  approved: boolean;
+  status?: string;
+  similarityScore: number | null;
+}
+
+interface FormQuestion {
+  id: number;
+  ticketId: number;
+  questionText: string;
+  department: string;
+  status: string;
+  riskLevel: string | null;
+  rowReference: string | null;
+  createdAt: string | null;
+}
+
+interface FinalAnswerInput {
+  questionId: number;
+  sourceChunkId: number | null;
+  answerText: string;
+  isEdited: boolean;
+  sourceType: string;
+  approvalStatus: string;
+  approvedBy: string;
+}
+
+interface SmeRequestQuestion {
+  id: number;
+  smeRequestId: number;
+  questionId: number;
+  status: string;
+  includedReason: string | null;
+  returnedAnswer: string | null;
+  updatedAt: string | null;
+}
+
+interface ClassifiedQuestion {
+  section: string;
+  questionText: string;
+  department: string;
+}
 
 // The backend classifier's fallback bucket is "General"; questions show it as
 // "TBD" so analysts know the AI did not pick a department. Stored value stays
@@ -35,12 +79,30 @@ function questionDeptToBackend(d: string): string {
 
 // Configurable for deployment (PR #3 review): VITE_API_BASE on Vercel,
 // localhost default for development. All requests in this module go through
-// BASE — api.ts is only used for its types here, since its axios instance is
-// hardcoded to localhost.
+// this configurable base URL.
 const BASE = `${import.meta.env.VITE_API_BASE ?? "http://localhost:8080"}/api`;
 
-export function exportUrl(backendTicketId: number): string {
-  return `${BASE}/export/ticket/${backendTicketId}`;
+export async function downloadTicketExport(
+  backendTicketId: number,
+): Promise<{ blob: Blob; filename: string } | null> {
+  try {
+    const response = await fetch(`${BASE}/export/ticket/${backendTicketId}`, {
+      signal: AbortSignal.timeout(30_000),
+    });
+    report(true);
+    if (!response.ok) return null;
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const filename =
+      disposition.match(/filename\*?=(?:UTF-8''|["']?)([^"';]+)/i)?.[1] ??
+      `ticket-${backendTicketId}-answers.xlsx`;
+    return {
+      blob: await response.blob(),
+      filename: decodeURIComponent(filename),
+    };
+  } catch {
+    report(false);
+    return null;
+  }
 }
 
 // ─── Live/offline status ─────────────────────────────────────────────────────
@@ -57,7 +119,9 @@ export async function pingBackend(): Promise<boolean> {
   try {
     // Generous timeout: the hosted backend answers in ~1-2s when warm, and a
     // premature abort here silently strands the app on demo seed data.
-    const res = await fetch(`${BASE}/tickets`, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(`${BASE}/tickets`, {
+      signal: AbortSignal.timeout(8000),
+    });
     report(res.ok);
     return res.ok;
   } catch {
@@ -170,7 +234,9 @@ async function postFile<T>(path: string, file: File): Promise<FileOutcome<T>> {
       try {
         const body = (await r.json()) as { message?: string };
         if (body?.message) message = body.message;
-      } catch { /* non-JSON error body */ }
+      } catch {
+        /* non-JSON error body */
+      }
       return { kind: "rejected", message };
     }
     return { kind: "ok", data: (await r.json()) as T };
@@ -211,7 +277,9 @@ export function mapSharing(raw: string | null | undefined): SharingStatus {
 
 type BackendTicket = { id: number };
 
-export async function createBackendTicket(t: MvpTicket): Promise<number | null> {
+export async function createBackendTicket(
+  t: MvpTicket,
+): Promise<number | null> {
   const created = await post<BackendTicket>("/tickets", {
     customerName: t.customer,
     createdBy: t.ae ?? null,
@@ -232,18 +300,26 @@ export async function createBackendTicket(t: MvpTicket): Promise<number | null> 
 const ticketSyncTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const ticketSyncPending = new Map<number, Record<string, unknown>>();
 
-export function syncTicketFields(backendId: number | undefined, t: Partial<MvpTicket>) {
+export function syncTicketFields(
+  backendId: number | undefined,
+  t: Partial<MvpTicket>,
+) {
   if (!backendId) return;
   const payload: Record<string, unknown> = {};
   if (t.customer !== undefined) payload.customerName = t.customer;
   if (t.ae !== undefined) payload.createdBy = t.ae ?? undefined;
   if (t.due) payload.deadline = `${t.due}T00:00:00`;
   if (t.urgency !== undefined) payload.urgency = t.urgency;
-  if (t.nda !== undefined) payload.ndaStatus = NDA_TO_BACKEND[t.nda] ?? "Unknown";
-  if (t.businessImpact !== undefined) payload.businessImpact = t.businessImpact ?? undefined;
+  if (t.nda !== undefined)
+    payload.ndaStatus = NDA_TO_BACKEND[t.nda] ?? "Unknown";
+  if (t.businessImpact !== undefined)
+    payload.businessImpact = t.businessImpact ?? undefined;
   if (Object.keys(payload).length === 0) return;
 
-  ticketSyncPending.set(backendId, { ...ticketSyncPending.get(backendId), ...payload });
+  ticketSyncPending.set(backendId, {
+    ...ticketSyncPending.get(backendId),
+    ...payload,
+  });
   clearTimeout(ticketSyncTimers.get(backendId));
   ticketSyncTimers.set(
     backendId,
@@ -257,12 +333,20 @@ export function syncTicketFields(backendId: number | undefined, t: Partial<MvpTi
 
 // Grouping/review department changes must reach the backend: the SME package
 // endpoint filters ITS copy of the questions by department.
-export function syncQuestionDepartment(backendId: number | undefined, department: string) {
-  if (!backendId) return;
-  void put(`/questions/${backendId}`, { department: questionDeptToBackend(department) });
+export async function syncQuestionDepartment(
+  backendId: number | undefined,
+  department: string,
+): Promise<boolean> {
+  if (!backendId) return true;
+  return (await put(`/questions/${backendId}`, {
+    department: questionDeptToBackend(department),
+  })) !== null;
 }
 
-export function syncTicketStatus(backendId: number | undefined, status: string) {
+export function syncTicketStatus(
+  backendId: number | undefined,
+  status: string,
+) {
   if (!backendId) return;
   // Frontend and backend now share the same PRD lifecycle vocabulary.
   void patch(`/tickets/${backendId}/status`, { status });
@@ -287,6 +371,24 @@ export async function parseQuestionnaire(
   backendTicketId: number | null,
 ): Promise<ParseOutcome> {
   if (backendTicketId !== null) {
+    // Reconcile before importing. If a previous upload committed but its
+    // response was lost, the saved questions are the source of truth and a
+    // second POST would duplicate every row.
+    const existing = await get<FormQuestion[]>(
+      `/questions/ticket/${backendTicketId}`,
+    );
+    if (existing === null) return { kind: "offline" };
+    if (existing.length > 0) {
+      return {
+        kind: "ok",
+        questions: existing.map((fq) => ({
+          backendId: fq.id,
+          text: fq.questionText,
+          department: questionDeptFromBackend(fq.department),
+          section: fq.rowReference ?? "",
+        })),
+      };
+    }
     const imported = await postFile<FormQuestion[]>(
       `/questionnaire/import?ticketId=${backendTicketId}`,
       file,
@@ -301,12 +403,14 @@ export async function parseQuestionnaire(
           section: fq.rowReference ?? "",
         })),
       };
-    // One user action = at most one upload (F-03). No fallback to /classify:
-    // if the import response was lost the questions may already be saved
-    // server-side, and a second upload path would double-process the file.
+    // One user action = at most one upload (F-03). No fallback to /classify;
+    // the next attempt first reconciles from the ticket's saved questions.
     return imported;
   }
-  const classified = await postFile<ClassifiedQuestion[]>("/questionnaire/classify", file);
+  const classified = await postFile<ClassifiedQuestion[]>(
+    "/questionnaire/classify",
+    file,
+  );
   if (classified.kind === "ok")
     return {
       kind: "ok",
@@ -321,7 +425,9 @@ export async function parseQuestionnaire(
 
 // ─── RAG retrieval for suggestions and AI Search ─────────────────────────────
 
-export async function ragSearch(question: string): Promise<SearchResult[] | null> {
+export async function ragSearch(
+  question: string,
+): Promise<SearchResult[] | null> {
   // Read-only search that happens to travel as POST — a failure here must not
   // raise the "change could not be saved" write warning (PR #6 review).
   return attempt(
@@ -359,7 +465,10 @@ export async function ragSearchAll(
 // Apply the retrieval hits to a question. Mirrors RetrievalService: cosine
 // similarity >= 0.35, top 3 — first hit becomes the primary suggestion, the
 // rest are shown as alternative matches (AI-03/04/05).
-export function applyRagResult(q: MvpQuestion, results: SearchResult[]): MvpQuestion {
+export function applyRagResult(
+  q: MvpQuestion,
+  results: SearchResult[],
+): MvpQuestion {
   // the backend already applies its 0.35 similarity threshold and returns top 3
   const hits = results.slice(0, 3);
   const describe = (r: SearchResult) =>
@@ -431,8 +540,16 @@ const NDA_FROM_BACKEND: Record<string, MvpTicket["nda"]> = {
 };
 
 const TICKET_STATUSES: MvpTicket["status"][] = [
-  "New", "AI Processing", "Intake Review", "In Progress", "Waiting SME",
-  "Ready for Review", "Approved", "Sent", "Closed", "Archived",
+  "New",
+  "AI Processing",
+  "Intake Review",
+  "In Progress",
+  "Waiting SME",
+  "Ready for Review",
+  "Approved",
+  "Sent",
+  "Closed",
+  "Archived",
 ];
 
 function ticketStatusFromBackend(raw: string): MvpTicket["status"] {
@@ -448,7 +565,11 @@ function ticketStatusFromBackend(raw: string): MvpTicket["status"] {
 }
 
 const KNOWLEDGE_STATUSES: KnowledgeStatus[] = [
-  "Draft", "Pending Review", "Approved", "Deprecated", "Archived",
+  "Draft",
+  "Pending Review",
+  "Approved",
+  "Deprecated",
+  "Archived",
 ];
 
 function knowledgeStatusFromBackend(
@@ -494,13 +615,29 @@ export async function loadBackendWorld(
           get<BackendSmeRequestFull[]>(`/sme-requests/ticket/${bt.id}`),
         ]);
         if (bqs === null || answers === null || breqsRaw === null)
-          return { bt, failed: true as const, bqs: [], answers: [], breqs: [], linkLists: [] };
+          return {
+            bt,
+            failed: true as const,
+            bqs: [],
+            answers: [],
+            breqs: [],
+            linkLists: [],
+          };
         const breqs = breqsRaw;
         const linkLists = await Promise.all(
-          breqs.map((r) => get<SmeRequestQuestion[]>(`/sme-request-questions/request/${r.id}`)),
+          breqs.map((r) =>
+            get<SmeRequestQuestion[]>(`/sme-request-questions/request/${r.id}`),
+          ),
         );
         if (linkLists.some((l) => l === null))
-          return { bt, failed: true as const, bqs: [], answers: [], breqs: [], linkLists: [] };
+          return {
+            bt,
+            failed: true as const,
+            bqs: [],
+            answers: [],
+            breqs: [],
+            linkLists: [],
+          };
         return { bt, failed: false as const, bqs, answers, breqs, linkLists };
       }),
   );
@@ -520,20 +657,32 @@ export async function loadBackendWorld(
     );
 
     // which backend questions are linked to an SME request (and their link ids)
-    const linkByQ = new Map<number, { reqId: number; srqId: number; returned: boolean }>();
+    const linkByQ = new Map<
+      number,
+      { reqId: number; srqId: number; returned: boolean }
+    >();
     breqs.forEach((r, i) => {
       for (const l of linkLists[i] ?? [])
-        linkByQ.set(l.questionId, { reqId: r.id, srqId: l.id, returned: l.status === "Returned" });
+        linkByQ.set(l.questionId, {
+          reqId: r.id,
+          srqId: l.id,
+          returned: l.status === "Returned",
+        });
     });
 
     const localQs: MvpQuestion[] = bqs.map((q, i) => {
       const fa = answerByQ.get(q.id);
       const link = linkByQ.get(q.id);
       const sourceType =
-        fa?.sourceType === "SME" ? "SME" : fa?.sourceType === "Manual" ? "Manual" : "AI";
+        fa?.sourceType === "SME"
+          ? "SME"
+          : fa?.sourceType === "Manual"
+            ? "Manual"
+            : "AI";
       let status: MvpQuestion["status"];
       if (fa) status = link?.returned ? "SME Complete" : "Approved";
-      else if (q.status === "SME Needed") status = link ? "Waiting SME" : "SME Queued";
+      else if (q.status === "SME Needed")
+        status = link ? "Waiting SME" : "SME Queued";
       else status = "Needs Review";
       return {
         id: 100000 + q.id,
@@ -552,7 +701,10 @@ export async function loadBackendWorld(
     });
 
     const localReqs = breqs.map((r) => {
-      const statusMap: Record<string, import("../data/model").MvpSmeRequest["status"]> = {
+      const statusMap: Record<
+        string,
+        import("../data/model").MvpSmeRequest["status"]
+      > = {
         "Waiting for ETA": "Requested",
         "ETA Confirmed": "ETA Set",
         Overdue: "ETA Set", // our UI derives overdue from the clock
@@ -588,14 +740,24 @@ export async function loadBackendWorld(
     const anyWaiting = localQs.some((q) => q.status === "Waiting SME");
     const anyQueued = localQs.some((q) => q.status === "SME Queued");
     const hydratedStatus = ticketStatusFromBackend(bt.status);
-    const stage: MvpTicket["stage"] =
-      ["Approved", "Sent", "Closed", "Archived"].includes(hydratedStatus) ? "done"
-      : hydratedStatus === "Ready for Review" ? "final"
-      : localQs.length === 0 ? "intake"
-      : allDone ? "final"
-      : anyWaiting ? "eta"
-      : anyQueued ? "sme"
-      : "review";
+    const stage: MvpTicket["stage"] = [
+      "Approved",
+      "Sent",
+      "Closed",
+      "Archived",
+    ].includes(hydratedStatus)
+      ? "done"
+      : hydratedStatus === "Ready for Review"
+        ? "final"
+        : localQs.length === 0
+          ? "intake"
+          : allDone
+            ? "final"
+            : anyWaiting
+              ? "eta"
+              : anyQueued
+                ? "sme"
+                : "review";
 
     world.tickets.push({
       id: localId,
@@ -630,7 +792,7 @@ export async function loadBackendKnowledge(): Promise<
   import("../data/model").MvpKnowledgeEntry[] | null
 > {
   const raw = await get<SearchResult[]>("/knowledge-base");
-  if (raw === null || raw.length === 0) return null;
+  if (raw === null) return null;
   return raw.map((k) => ({
     id: k.id,
     title: `${k.documentTitle} — ${k.sectionTitle}`,
@@ -662,8 +824,12 @@ export async function upsertBackendKnowledge(
     sectionTitle,
     content: entry.content,
     source: entry.source,
-    lastUpdated: entry.lastUpdated && entry.lastUpdated !== "—" ? `${entry.lastUpdated}T00:00:00` : null,
-    sharingStatus: SHARING_TO_BACKEND[entry.sharingStatus] ?? entry.sharingStatus,
+    lastUpdated:
+      entry.lastUpdated && entry.lastUpdated !== "—"
+        ? `${entry.lastUpdated}T00:00:00`
+        : null,
+    sharingStatus:
+      SHARING_TO_BACKEND[entry.sharingStatus] ?? entry.sharingStatus,
     department: entry.department,
     approved: entry.status === "Approved",
     status: entry.status,
@@ -672,13 +838,21 @@ export async function upsertBackendKnowledge(
     const created = await post<{ id: number }>("/knowledge-base", payload);
     return created?.id ?? null;
   }
-  const updated = await put<{ id: number }>(`/knowledge-base/${entry.id}`, payload);
+  const updated = await put<{ id: number }>(
+    `/knowledge-base/${entry.id}`,
+    payload,
+  );
   return updated?.id ?? null;
 }
 
 // ─── Answers ─────────────────────────────────────────────────────────────────
 
-export function syncFinalAnswer(q: MvpQuestion, answerText: string, edited: boolean, approvedBy: string) {
+export function syncFinalAnswer(
+  q: MvpQuestion,
+  answerText: string,
+  edited: boolean,
+  approvedBy: string,
+) {
   if (!q.backendId) return;
   const input: FinalAnswerInput = {
     questionId: q.backendId,
@@ -697,14 +871,20 @@ export function syncFinalAnswer(q: MvpQuestion, answerText: string, edited: bool
 // it. The backend upserts by questionId with null-skip, and its Excel export
 // prints "(Draft – not confirmed)" for anything not Confirmed — so a reverted
 // answer can never reach the customer while the audit trail is preserved.
-export function revertFinalAnswer(q: MvpQuestion) {
-  if (!q.backendId) return;
-  void post("/final-answers", { questionId: q.backendId, approvalStatus: "Draft" });
+export async function revertFinalAnswer(q: MvpQuestion): Promise<boolean> {
+  if (!q.backendId) return true;
+  return (await post("/final-answers", {
+    questionId: q.backendId,
+    approvalStatus: "Draft",
+  })) !== null;
 }
 
-export function syncQuestionStatus(backendId: number | undefined, status: string) {
-  if (!backendId) return;
-  void patch(`/questions/${backendId}/status`, { status });
+export async function syncQuestionStatus(
+  backendId: number | undefined,
+  status: string,
+): Promise<boolean> {
+  if (!backendId) return true;
+  return (await patch(`/questions/${backendId}/status`, { status })) !== null;
 }
 
 // ─── SME requests ────────────────────────────────────────────────────────────
@@ -736,14 +916,24 @@ export async function packageBackendQuestions(
   backendTicketId: number,
   department: string,
 ): Promise<Record<number, number> | null> {
-  const linked = await post<SmeRequestQuestion[]>("/sme-request-questions/package", {
-    smeRequestId: backendRequestId,
-    ticketId: backendTicketId,
-    department,
-  });
-  if (!linked) return null;
+  const linked = await post<SmeRequestQuestion[]>(
+    "/sme-request-questions/package",
+    {
+      smeRequestId: backendRequestId,
+      ticketId: backendTicketId,
+      department,
+    },
+  );
+  // If the POST response was lost after the backend committed the links,
+  // reconcile from the read endpoint instead of reporting a false failure.
+  const reconciled =
+    linked ??
+    (await get<SmeRequestQuestion[]>(
+      `/sme-request-questions/request/${backendRequestId}`,
+    ));
+  if (!reconciled) return null;
   const map: Record<number, number> = {};
-  for (const srq of linked) map[srq.questionId] = srq.id;
+  for (const srq of reconciled) map[srq.questionId] = srq.id;
   return map;
 }
 
@@ -758,7 +948,12 @@ export async function fetchSmeEmail(
 
 export function syncSmeRequest(
   backendId: number | undefined,
-  patch: { eta?: string | null; status?: string; confirmedBy?: string | null; returnedAt?: string | null },
+  patch: {
+    eta?: string | null;
+    status?: string;
+    confirmedBy?: string | null;
+    returnedAt?: string | null;
+  },
 ) {
   if (!backendId) return;
   // Backend vocabulary: Waiting for ETA / ETA Confirmed / Overdue / Returned.
@@ -774,11 +969,47 @@ export function syncSmeRequest(
     ...patch,
     status: patch.status ? statusMap[patch.status] : undefined,
     eta: patch.eta ? patch.eta.slice(0, 19) : patch.eta,
-    returnedAt: patch.returnedAt ? patch.returnedAt.slice(0, 19) : patch.returnedAt,
+    returnedAt: patch.returnedAt
+      ? patch.returnedAt.slice(0, 19)
+      : patch.returnedAt,
   });
+}
+
+export async function unreturnBackendSmeRequest(
+  backendId: number | undefined,
+): Promise<boolean> {
+  if (!backendId) return true;
+  return (await post(`/sme-requests/${backendId}/unreturn`, {})) !== null;
 }
 
 export function syncSmeAnswer(srqId: number | undefined, answer: string) {
   if (!srqId) return;
-  void patch(`/sme-request-questions/${srqId}/answer`, { returnedAnswer: answer });
+  void patch(`/sme-request-questions/${srqId}/answer`, {
+    returnedAnswer: answer,
+  });
+}
+
+// ── Dashboard live stats (read-only aggregate from the backend) ──────────────
+
+export type DashboardStats = {
+  totalTickets: number;
+  closedTickets: number;
+  inProgressTickets: number;
+  totalQuestions: number;
+  answeredFromKnowledgeBase: number;
+  answeredBySme: number;
+  overdueSmeRequests: number;
+  aiCoveragePercent: number;
+};
+
+export async function fetchDashboardStats(): Promise<DashboardStats | null> {
+  try {
+    const res = await fetch(`${BASE}/dashboard/stats`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as DashboardStats;
+  } catch {
+    return null; // offline or timeout → caller falls back to hiding the card
+  }
 }

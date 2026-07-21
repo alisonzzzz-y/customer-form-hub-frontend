@@ -11,8 +11,6 @@ src/
     AppShell.tsx           # application shell: sidebar, top bar, role switch,
                            # global state (tickets/questions/SME/knowledge/
                            # notifications/activity) and module routing
-    api.ts                 # Alison's typed backend API layer (types consumed
-                           # by services/backend.ts; do not edit without her)
     vite-env.d.ts          # typing for import.meta.env.VITE_API_BASE
     data/
       model.ts             # domain types (Ticket/Question/SmeRequest/…),

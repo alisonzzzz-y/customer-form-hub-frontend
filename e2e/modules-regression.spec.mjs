@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 
 const BASE_URL = process.env.E2E_URL ?? "http://localhost:5199/";
+const API_URL = process.env.E2E_API_URL ?? "http://localhost:8080";
 
 const errors = [];
 const browser = await chromium.launch();
@@ -12,7 +13,7 @@ page.on("console", (m) => {
     errors.push("console: " + m.text());
 });
 
-await fetch("http://localhost:8080/api/_debug/reset").catch(() => {});
+await fetch(`${API_URL}/api/_debug/reset`).catch(() => {});
 await page.goto(BASE_URL);
 
 // Dashboard
@@ -31,7 +32,7 @@ if (rows !== 1) errors.push(`Tickets: expected 1 Waiting SME row, got ${rows}`);
 // Clear filters, open ticket detail
 await page.click("text=Clear");
 await page.click('tr:has-text("TK-1027")');
-await page.waitForSelector("text=TK-1027 · Microsoft");
+await page.waitForSelector("text=TK-1027 · Vandelay Industries");
 await page.click('button:has-text("Overview")');
 if (!(await page.isVisible("text=Question Completion by Department"))) errors.push("Detail: overview missing");
 await page.click('button:has-text("Workflow")');

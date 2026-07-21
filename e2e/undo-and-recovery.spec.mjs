@@ -1,12 +1,13 @@
 import { chromium } from "playwright";
 
 const BASE_URL = process.env.E2E_URL ?? "http://localhost:5199/";
+const API_URL = process.env.E2E_API_URL ?? "http://localhost:8080";
 const errors = [];
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 
-await fetch("http://localhost:8080/api/_debug/reset").catch(() => {});
+await fetch(`${API_URL}/api/_debug/reset`).catch(() => {});
 await page.goto(BASE_URL);
 await page.waitForSelector("text=Good morning, Sarah");
 
@@ -28,7 +29,7 @@ await page.click("text=ISO 27001 & SOC 2"); // resolves to the live KB entry tit
 // entry drawer auto-opens; the back button lives inside it too
 await page.waitForSelector('div.fixed button:has-text("Back to Ticket TK-1027")');
 await page.click('div.fixed button:has-text("Back to Ticket TK-1027")');
-await page.waitForSelector("text=TK-1027 · Microsoft");
+await page.waitForSelector("text=TK-1027 · Vandelay Industries");
 
 // sidebar nav clears stale banner
 await page.click('nav >> text=Knowledge Base');

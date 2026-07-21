@@ -1,10 +1,11 @@
 import { chromium } from "playwright";
 
 const BASE_URL = process.env.E2E_URL ?? "http://localhost:5199/";
+const API_URL = process.env.E2E_API_URL ?? "http://localhost:8080";
 const errors = [];
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-await fetch("http://localhost:8080/api/_debug/reset").catch(() => {});
+await fetch(`${API_URL}/api/_debug/reset`).catch(() => {});
 await page.goto(BASE_URL);
 await page.waitForSelector("text=Good morning, Sarah");
 // reports: generate → open in-app viewer → export excel downloads a csv

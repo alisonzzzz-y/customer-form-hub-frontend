@@ -4,20 +4,45 @@ import {
   fmtDate,
   fmtDateTime,
   isDueToday,
+  isOverdueSmeRequest,
   isOverdueTicket,
 } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { Card, EmptyState, Pill, Th } from "../components/ui";
+import { useEffect, useState } from "react";
+import { fetchDashboardStats, type DashboardStats } from "../services/backend";
 
 // PRD §6: what needs attention today, which tickets are blocked, which SME
 // responses are overdue. Metric cards deep-link into filtered Tickets (DB-04).
 
-export function DashboardPage({ state, actions }: { state: AppState; actions: AppActions }) {
-  const { tickets, smeRequests, activity, knowledge, role, currentUser } = state;
+export function DashboardPage({
+  state,
+  actions,
+}: {
+  state: AppState;
+  actions: AppActions;
+}) {
+  const { tickets, smeRequests, activity, knowledge, role, currentUser } =
+    state;
+  // Live aggregate metrics from the backend (whole-database truth, not just
+  // this session). Null until loaded, or if the backend is unreachable —
+  // the cards simply hide in that case.
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetchDashboardStats().then((s) => {
+      if (alive) setStats(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // DB-06: Analyst sees own tickets first; Manager sees team level
   const scoped =
-    role === "Manager" ? tickets : tickets.filter((t) => t.owner === currentUser);
+    role === "Manager"
+      ? tickets
+      : tickets.filter((t) => t.owner === currentUser);
   const live = scoped.filter((t) => t.status !== "Archived");
 
   const open = live.filter((t) => !["Closed", "Sent"].includes(t.status));
@@ -32,11 +57,32 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
 
   const metrics = [
     { label: "Open Tickets", value: open.length, filter: {} },
-    { label: "Waiting SME", value: waitingSme.length, filter: { status: "Waiting SME" } },
-    { label: "Due Today", value: dueToday.length, filter: { due: "Due today" } },
-    { label: "Overdue", value: overdue.length, filter: { due: "Overdue" }, accent: true },
-    { label: "AI Ready", value: aiReady.length, filter: { status: "Ready for Review" } },
-    { label: "Closed This Week", value: closedThisWeek.length, filter: { status: "Closed" } },
+    {
+      label: "Waiting SME",
+      value: waitingSme.length,
+      filter: { status: "Waiting SME" },
+    },
+    {
+      label: "Due Today",
+      value: dueToday.length,
+      filter: { due: "Due today" },
+    },
+    {
+      label: "Overdue Tickets",
+      value: overdue.length,
+      filter: { due: "Overdue" },
+      accent: true,
+    },
+    {
+      label: "AI Ready",
+      value: aiReady.length,
+      filter: { status: "Ready for Review" },
+    },
+    {
+      label: "Closed This Week",
+      value: closedThisWeek.length,
+      filter: { status: "Closed" },
+    },
   ];
 
   // DB-02: priority = overdue first, then due date
@@ -52,15 +98,19 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
     .filter((r) => !["Returned", "Closed"].includes(r.status))
     .map((r) => ({
       ...r,
-      over:
-        r.status === "Overdue" ||
-        (r.eta !== null && new Date(r.eta) < (r.backendId ? new Date() : MOCK_NOW)),
+      over: isOverdueSmeRequest(r),
       ticket: tickets.find((t) => t.id === r.ticketId),
     }))
     .sort((a, b) => Number(b.over) - Number(a.over));
+  const overdueSmeCount = activeSme.filter((r) => r.over).length;
 
-  const pendingKnowledge = knowledge.filter((k) => k.status === "Pending Review");
-  const greeting = role === "Manager" ? "Team overview" : `Good morning, ${currentUser.split(" ")[0]}`;
+  const pendingKnowledge = knowledge.filter(
+    (k) => k.status === "Pending Review",
+  );
+  const greeting =
+    role === "Manager"
+      ? "Team overview"
+      : `Good morning, ${currentUser.split(" ")[0]}`;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -68,7 +118,9 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
         <div className="flex items-center gap-3">
           <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0" />
           <div>
-            <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight">{greeting}</h1>
+            <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight">
+              {greeting}
+            </h1>
             <p className="text-sm text-[#6B7280] mt-0.5">
               {role === "Manager"
                 ? "All team tickets, bottlenecks and pending reviews"
@@ -102,9 +154,61 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
           ))}
         </div>
 
+        {/* Live AI metrics from the backend */}
+        {stats && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card title="AI Coverage" className="overflow-hidden">
+              <div className="px-4 py-4 flex items-center gap-4">
+                <DonutChart percent={stats.aiCoveragePercent} />
+                <div className="min-w-0">
+                  <p className="text-[26px] font-black tracking-tight leading-none text-[#0A0A0A]">
+                    {stats.aiCoveragePercent}%
+                  </p>
+                  <p className="text-[11px] text-[#6B7280] mt-1 leading-snug">
+                    of confirmed answers came
+                    <br />
+                    from the knowledge base
+                  </p>
+                  <p className="text-[10px] text-[#9CA3AF] mt-1.5">
+                    {stats.answeredFromKnowledgeBase} AI · {stats.answeredBySme}{" "}
+                    SME/manual
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            <Card title="SME Bottleneck" className="overflow-hidden">
+              <div className="px-4 py-4">
+                <p
+                  className={`text-[26px] font-black tracking-tight leading-none ${overdueSmeCount > 0 ? "text-red-600" : "text-[#0A0A0A]"}`}
+                >
+                  {overdueSmeCount}
+                </p>
+                <p className="text-[11px] text-[#6B7280] mt-1.5">
+                  overdue SME request{overdueSmeCount === 1 ? "" : "s"}
+                </p>
+              </div>
+            </Card>
+
+            <Card title="Processed" className="overflow-hidden">
+              <div className="px-4 py-4">
+                <p className="text-[26px] font-black tracking-tight leading-none text-[#0A0A0A]">
+                  {stats.totalQuestions}
+                </p>
+                <p className="text-[11px] text-[#6B7280] mt-1.5">
+                  questions across {stats.totalTickets} tickets
+                </p>
+              </div>
+            </Card>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* DB-02 priority list */}
-          <Card title="My Priority Tickets" className="lg:col-span-3 overflow-hidden">
+          <Card
+            title="My Priority Tickets"
+            className="lg:col-span-3 overflow-hidden"
+          >
             {priority.length === 0 ? (
               <EmptyState
                 icon={Inbox}
@@ -112,52 +216,59 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
                 hint="Create a ticket to begin."
               />
             ) : (
-              <div className="overflow-x-auto"><table className="w-full">
-                <thead>
-                  <tr>
-                    <Th>Ticket</Th>
-                    <Th>Company</Th>
-                    <Th>Status</Th>
-                    <Th>Due</Th>
-                    <Th>Owner</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {priority.slice(0, 6).map((t) => (
-                    <tr
-                      key={t.id}
-                      onClick={() => actions.openTicket(t.id)}
-                      className={`border-b border-border last:border-0 cursor-pointer transition-colors ${isOverdueTicket(t) ? "bg-red-50/40 hover:bg-red-50/70" : "hover:bg-gray-50/60"}`}
-                    >
-                      <td className="px-4 py-2.5 text-[13px] font-mono font-bold text-[#1F2937]">
-                        {t.id}
-                      </td>
-                      <td className="px-4 py-2.5 text-[13px] font-semibold text-[#1F2937]">
-                        {t.customer}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <Pill value={t.status} />
-                      </td>
-                      <td
-                        className={`px-4 py-2.5 text-[13px] whitespace-nowrap ${isOverdueTicket(t) ? "text-red-600 font-semibold" : "text-[#374151]"}`}
-                      >
-                        {fmtDate(t.due)}
-                        {isDueToday(t) && (
-                          <span className="ml-1.5 text-[10px] font-bold text-[#C05600]">TODAY</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">
-                        {t.owner}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr>
+                      <Th>Ticket</Th>
+                      <Th>Company</Th>
+                      <Th>Status</Th>
+                      <Th>Due</Th>
+                      <Th>Owner</Th>
                     </tr>
-                  ))}
-                </tbody>
-              </table></div>
+                  </thead>
+                  <tbody>
+                    {priority.slice(0, 6).map((t) => (
+                      <tr
+                        key={t.id}
+                        onClick={() => actions.openTicket(t.id)}
+                        className={`border-b border-border last:border-0 cursor-pointer transition-colors ${isOverdueTicket(t) ? "bg-red-50/40 hover:bg-red-50/70" : "hover:bg-gray-50/60"}`}
+                      >
+                        <td className="px-4 py-2.5 text-[13px] font-mono font-bold text-[#1F2937]">
+                          {t.id}
+                        </td>
+                        <td className="px-4 py-2.5 text-[13px] font-semibold text-[#1F2937]">
+                          {t.customer}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <Pill value={t.status} />
+                        </td>
+                        <td
+                          className={`px-4 py-2.5 text-[13px] whitespace-nowrap ${isOverdueTicket(t) ? "text-red-600 font-semibold" : "text-[#374151]"}`}
+                        >
+                          {fmtDate(t.due)}
+                          {isDueToday(t) && (
+                            <span className="ml-1.5 text-[10px] font-bold text-[#C05600]">
+                              TODAY
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">
+                          {t.owner}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Card>
 
           {/* DB-03 SME ETA Tracker — rows link to their ticket */}
-          <Card title="SME ETA Tracker" className="lg:col-span-2 overflow-hidden">
+          <Card
+            title="SME ETA Tracker"
+            className="lg:col-span-2 overflow-hidden"
+          >
             {activeSme.length === 0 ? (
               <EmptyState icon={Clock} title="No pending SME requests." />
             ) : (
@@ -173,20 +284,26 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
                         {r.department} · {r.assignee}
                       </p>
                       <p className="text-[11px] text-[#9CA3AF] mt-0.5">
-                        <span className="font-mono font-bold text-[#C05600]">{r.ticketId}</span>
+                        <span className="font-mono font-bold text-[#C05600]">
+                          {r.ticketId}
+                        </span>
                         {r.ticket ? ` ${r.ticket.customer}` : ""} · ETA{" "}
                         {r.eta ? fmtDateTime(r.eta) : "not set"}
                       </p>
                     </div>
                     <span className="text-[11px] text-[#6B7280] whitespace-nowrap">
-                      {r.questionIds.length} question{r.questionIds.length === 1 ? "" : "s"}
+                      {r.questionIds.length} question
+                      {r.questionIds.length === 1 ? "" : "s"}
                     </span>
                     {r.over ? (
                       <span className="text-[10px] font-bold text-[#991B1B] bg-[#FEF2F2] border border-[#FCA5A5]/50 rounded-full px-2 py-0.5 whitespace-nowrap">
                         Overdue
                       </span>
                     ) : (
-                      <ChevronRight size={12} className="text-[#C0BEBA] shrink-0" />
+                      <ChevronRight
+                        size={12}
+                        className="text-[#C0BEBA] shrink-0"
+                      />
                     )}
                   </button>
                 ))}
@@ -197,19 +314,26 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* DB-05 recent activity */}
-          <Card title="Recent Activity" className="lg:col-span-3 overflow-hidden">
+          <Card
+            title="Recent Activity"
+            className="lg:col-span-3 overflow-hidden"
+          >
             {activity.length === 0 ? (
               <EmptyState icon={Activity} title="No activity yet." />
             ) : (
               <div className="divide-y divide-border">
                 {activity.slice(0, 6).map((a) => (
-                  <div key={a.id} className="px-4 py-2.5 flex items-start gap-2.5">
+                  <div
+                    key={a.id}
+                    className="px-4 py-2.5 flex items-start gap-2.5"
+                  >
                     <div
                       className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${a.actor === "AI" ? "bg-[#4338CA]" : "bg-[#F96702]/60"}`}
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] text-[#374151]">
-                        <span className="font-semibold">{a.actor}</span> {a.action}
+                        <span className="font-semibold">{a.actor}</span>{" "}
+                        {a.action}
                       </p>
                       <p className="text-[11px] text-[#9CA3AF] mt-0.5">
                         {a.ticketId && (
@@ -252,9 +376,12 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
                     onClick={() => actions.openKnowledge("pending", k.id)}
                     className="w-full text-left px-4 py-2.5 hover:bg-gray-50/60 transition-colors"
                   >
-                    <p className="text-[13px] font-semibold text-[#1F2937]">{k.title}</p>
+                    <p className="text-[13px] font-semibold text-[#1F2937]">
+                      {k.title}
+                    </p>
                     <p className="text-[11px] text-[#9CA3AF] mt-0.5">
-                      {k.department} · submitted by {k.owner} · {fmtDate(k.lastUpdated)}
+                      {k.department} · submitted by {k.owner} ·{" "}
+                      {fmtDate(k.lastUpdated)}
                     </p>
                   </button>
                 ))}
@@ -264,5 +391,39 @@ export function DashboardPage({ state, actions }: { state: AppState; actions: Ap
         </div>
       </div>
     </div>
+  );
+}
+
+// Minimal dependency-free donut. r=16 → circumference ≈ 100.53, driven by a 0-100 percentage.
+function DonutChart({ percent }: { percent: number }) {
+  const r = 16;
+  const c = 2 * Math.PI * r;
+  const filled = (Math.min(100, Math.max(0, percent)) / 100) * c;
+  return (
+    <svg
+      width="56"
+      height="56"
+      viewBox="0 0 40 40"
+      className="shrink-0 -rotate-90"
+    >
+      <circle
+        cx="20"
+        cy="20"
+        r={r}
+        fill="none"
+        stroke="#F1EFEC"
+        strokeWidth="5"
+      />
+      <circle
+        cx="20"
+        cy="20"
+        r={r}
+        fill="none"
+        stroke="#F96702"
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeDasharray={`${filled} ${c - filled}`}
+      />
+    </svg>
   );
 }
