@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "mock": "node tools/mock-backend.mjs",
-    "test:e2e": "node e2e/run-all.mjs"
+    "test:e2e": "node e2e/run-all.mjs",
+    "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "lucide-react": "0.487.0",
@@ -20,13 +22,20 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
-    "@vitejs/plugin-react": "4.7.0",
-    "playwright": "^1.61.1",
-    "tailwindcss": "4.1.12",
-    "vite": "6.4.3",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^26.1.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "typescript": "^5.6.3"
+    "@vitejs/plugin-react": "4.7.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "jsdom": "^29.1.1",
+    "playwright": "^1.61.1",
+    "tailwindcss": "4.1.12",
+    "typescript": "^5.6.3",
+    "vite": "6.4.3",
+    "vitest": "^4.1.10"
   },
   "pnpm": {
     "overrides": {
