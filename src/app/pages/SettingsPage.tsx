@@ -72,7 +72,7 @@ function ToggleRow({
     <label className="flex items-center justify-between gap-4 py-2.5 cursor-pointer group">
       <div>
         <p className="text-[13px] font-medium text-[#1F2937]">{label}</p>
-        <p className="text-[11px] text-[#9CA3AF] mt-0.5">{hint}</p>
+        <p className="text-[12px] text-[#1F2937] mt-0.5">{hint}</p>
       </div>
       <button
         type="button"
@@ -149,13 +149,13 @@ export function SettingsPage({
             <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight">
               Settings
             </h1>
-            <p className="text-sm text-[#6B7280] mt-0.5 font-normal">
+            <p className="text-sm text-[#374151] mt-0.5 font-normal">
               Analyst preferences for this workspace
             </p>
           </div>
         </div>
         {dirty && (
-          <span className="text-[11px] font-semibold text-[#C05600] bg-[#FFF4EC] border border-[#F96702]/25 rounded-full px-3 py-1">
+          <span className="text-[12px] font-semibold text-[#C05600] bg-[#FFF4EC] border border-[#F96702]/25 rounded-full px-3 py-1">
             Unsaved changes
           </span>
         )}
@@ -165,7 +165,7 @@ export function SettingsPage({
           <SectionCard icon={User} title="Profile">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] font-medium text-[#6B7280] mb-1 block">
+                <label className="text-[12px] font-medium text-[#374151] mb-1 block">
                   Display Name
                 </label>
                 <input
@@ -175,7 +175,7 @@ export function SettingsPage({
                 />
               </div>
               <div>
-                <label className="text-[11px] font-medium text-[#6B7280] mb-1 block">
+                <label className="text-[12px] font-medium text-[#374151] mb-1 block">
                   Email
                 </label>
                 <input
@@ -186,13 +186,13 @@ export function SettingsPage({
                 />
               </div>
             </div>
-            <p className="text-[11px] text-[#9CA3AF] mt-2 flex items-center gap-1">
+            <p className="text-[12px] text-[#1F2937] mt-2 flex items-center gap-1">
               <Info size={10} /> Role is assigned by your admin: GOM Analyst
             </p>
           </SectionCard>
 
           <SectionCard icon={Globe} title="Region & Time">
-            <label className="text-[11px] font-medium text-[#6B7280] mb-1 block">
+            <label className="text-[12px] font-medium text-[#374151] mb-1 block">
               Preferred Timezone
             </label>
             <select
@@ -206,7 +206,7 @@ export function SettingsPage({
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-[#9CA3AF] mt-2 flex items-center gap-1">
+            <p className="text-[12px] text-[#1F2937] mt-2 flex items-center gap-1">
               <Info size={10} /> ETAs and deadlines are stored in UTC; this
               controls how they will be displayed for you.
             </p>
@@ -242,7 +242,7 @@ export function SettingsPage({
               value={form.signature}
               onChange={(e) => setField("signature", e.target.value)}
             />
-            <p className="text-[11px] text-[#9CA3AF] mt-2 flex items-center gap-1">
+            <p className="text-[12px] text-[#1F2937] mt-2 flex items-center gap-1">
               <Info size={10} /> Used at the bottom of clarification, SME and
               reminder email drafts.
             </p>

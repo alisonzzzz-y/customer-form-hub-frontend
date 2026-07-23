@@ -113,7 +113,7 @@ function StageStepper({ stage }: { stage: TicketStage }) {
         return (
           <div key={s.id} className="flex items-center shrink-0">
             <div
-              className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold tracking-[0.04em] uppercase ${active ? "text-[#F96702]" : done ? "text-[#C05600]" : "text-[#C0BEBA]"}`}
+              className={`flex items-center gap-1.5 px-2 py-1 text-[12px] font-bold tracking-[0.04em] uppercase ${active ? "text-[#F96702]" : done ? "text-[#C05600]" : "text-[#1F2937]"}`}
             >
               {done ? (
                 <div className="w-3.5 h-3.5 rounded-full bg-[#F96702] flex items-center justify-center">
@@ -135,7 +135,7 @@ function StageStepper({ stage }: { stage: TicketStage }) {
         );
       })}
       {stage === "done" && (
-        <span className="ml-auto text-[11px] font-bold text-green-700 flex items-center gap-1 shrink-0">
+        <span className="ml-auto text-[12px] font-bold text-green-700 flex items-center gap-1 shrink-0">
           <CheckCircle size={11} /> Workflow complete
         </span>
       )}
@@ -430,12 +430,12 @@ function IntakePanel({
         </table></div>
         <div className="mt-2 flex items-center gap-2">
           {pendingForms.has(ticket.id) ? (
-            <p className="text-[11px] text-[#6B7280] flex items-center gap-1">
+            <p className="text-[12px] text-[#374151] flex items-center gap-1">
               <FileSpreadsheet size={10} className="text-green-600" />
               {pendingForms.get(ticket.id)!.name} attached — parsed right after this step.
             </p>
           ) : (
-            <p className="text-[11px] text-[#9CA3AF]">
+            <p className="text-[12px] text-[#1F2937]">
               No customer form attached — analysis will use simulated demo questions.
             </p>
           )}
@@ -457,7 +457,7 @@ function IntakePanel({
           <button
             onClick={() => intakeFileRef.current?.click()}
             title="Attach or replace the customer form (.xlsx/.docx) parsed by the backend"
-            className="text-[11px] font-semibold text-[#C05600] underline hover:text-[#8B4500]"
+            className="text-[12px] font-semibold text-[#C05600] underline hover:text-[#8B4500]"
           >
             {pendingForms.has(ticket.id) ? "Replace file" : "Attach file"}
           </button>
@@ -471,7 +471,7 @@ function IntakePanel({
           <button
             onClick={() => setClarifyOpen(true)}
             title="Auto-drafts an editable email to the AE asking only for the missing intake fields"
-            className="flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold border border-[#F96702]/30 text-[#C05600] bg-[#FFF4EC] rounded-full hover:bg-[#FFE8D0] transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold border border-[#F96702]/30 text-[#C05600] bg-[#FFF4EC] rounded-full hover:bg-[#FFE8D0] transition-colors"
           >
             <Mail size={11} /> Draft Clarification Email
           </button>
@@ -499,7 +499,7 @@ function ProcessingCard({ text }: { text: string }) {
   return (
     <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] p-10 flex flex-col items-center gap-3">
       <Loader2 size={24} className="animate-spin text-[#F96702]" />
-      <p className="text-[13px] text-[#6B7280]">{text}</p>
+      <p className="text-[13px] text-[#374151]">{text}</p>
     </div>
   );
 }
@@ -583,7 +583,7 @@ function GroupingPanel({
     <Card
       title={`Department Grouping — ${qs.length} questions`}
       right={
-        <span className="text-[11px] text-white/85">
+        <span className="text-[12px] text-white/85">
           AI classified each question — adjust below, then confirm
         </span>
       }
@@ -606,11 +606,11 @@ function GroupingPanel({
             key={d}
             onClick={() => setTab(d)}
             title={d === TBD_DEPARTMENT ? "The AI could not classify these questions — assign each one to its owning department" : `Show the ${d} questions`}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 shrink-0 transition-colors ${active === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 shrink-0 transition-colors ${active === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#374151] hover:text-[#1F2937]"}`}
           >
             {d === TBD_DEPARTMENT && <AlertTriangle size={11} className="text-[#D97706]" />}
             {d}
-            <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${active === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
+            <span className={`px-1.5 py-0.5 rounded text-[12px] font-bold ${active === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-700"}`}>
               {qs.filter((q) => q.department === d).length}
             </span>
           </button>
@@ -619,11 +619,11 @@ function GroupingPanel({
       <div className="divide-y divide-border/60">
         {dq.map((q) => (
           <div key={q.id} className="px-4 py-2.5 flex items-center gap-3">
-            <span className="text-[11px] font-mono text-[#9CA3AF] w-5 shrink-0">{q.row}</span>
+            <span className="text-[12px] font-mono text-[#1F2937] w-5 shrink-0">{q.row}</span>
             <div className="flex-1 min-w-0">
               <p className="text-[13px] text-[#1F2937]">{q.original}</p>
               {q.duplicateOf && (
-                <span className="text-[10px] font-bold text-[#4338CA] bg-[#EEF2FF] border border-[#C7D2FE] rounded-full px-2 py-0.5 mt-1 inline-block">
+                <span className="text-[11px] font-bold text-[#4338CA] bg-[#EEF2FF] border border-[#C7D2FE] rounded-full px-2 py-0.5 mt-1 inline-block">
                   Possible duplicate — confirm before answering
                 </span>
               )}
@@ -640,7 +640,7 @@ function GroupingPanel({
                 }
                 moveDept(q, e.target.value);
               }}
-              className="border border-[rgba(0,0,0,0.15)] rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white shrink-0"
+              className="border border-[rgba(0,0,0,0.15)] rounded-full px-2.5 py-1 text-[12px] font-semibold bg-white shrink-0"
             >
               {knownDepts.map((dep) => (
                 <option key={dep}>{dep}</option>
@@ -662,7 +662,7 @@ function GroupingPanel({
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-xs">
             <h3 className="text-sm font-semibold text-[#1F2937] mb-0.5">Custom Department</h3>
-            <p className="text-[13px] text-[#6B7280] mb-3">
+            <p className="text-[13px] text-[#374151] mb-3">
               Name a department that is not in the standard list — it becomes a tab and gets its
               own SME package later.
             </p>
@@ -832,7 +832,7 @@ function ReviewPanel({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3 flex-wrap">
-        <p className="text-[13px] text-[#6B7280]">
+        <p className="text-[13px] text-[#374151]">
           <strong className="text-[#1F2937]">{resolved.length}</strong> of{" "}
           <strong className="text-[#1F2937]">{qs.length}</strong> resolved ·{" "}
           <strong className="text-[#C05600]">{queued.length}</strong> queued for SME
@@ -865,10 +865,10 @@ function ReviewPanel({
                   if (first) select(first.id);
                 }}
                 title={d === "All" ? "Review every question in one list" : `Review only the ${d} questions`}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 shrink-0 transition-colors ${deptTab === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 shrink-0 transition-colors ${deptTab === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#374151] hover:text-[#1F2937]"}`}
               >
                 {d}
-                <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${deptTab === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
+                <span className={`px-1.5 py-0.5 rounded text-[12px] font-bold ${deptTab === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-700"}`}>
                   {count}
                 </span>
                 {/* neutral "nothing left here" marker — a green check reads as
@@ -876,7 +876,7 @@ function ReviewPanel({
                 {done && (
                   <span
                     title="No questions left to review in this department — each one is approved or routed to an SME"
-                    className="text-[10px] font-bold text-[#9CA3AF] bg-gray-100 rounded-full px-1.5 py-0.5 whitespace-nowrap"
+                    className="text-[11px] font-bold text-[#1F2937] bg-gray-100 rounded-full px-1.5 py-0.5 whitespace-nowrap"
                   >
                     0 left
                   </span>
@@ -897,7 +897,7 @@ function ReviewPanel({
                 <p className="text-[12px] text-[#0A0A0A] leading-snug font-medium">{item.original}</p>
                 <div className="flex items-center gap-1.5">
                   <Pill value={item.status} />
-                  <span className="text-[10px] text-[#9CA3AF]">{item.department}</span>
+                  <span className="text-[11px] text-[#1F2937]">{item.department}</span>
                 </div>
               </button>
             ))}
@@ -910,7 +910,7 @@ function ReviewPanel({
                 <h3 className="text-base font-bold text-[#0A0A0A] leading-snug tracking-tight">
                   {q.normalised}
                 </h3>
-                <p className="text-[12px] text-[#9CA3AF] mt-1 italic">Customer wording: “{q.original}”</p>
+                <p className="text-[12px] text-[#1F2937] mt-1 italic">Customer wording: “{q.original}”</p>
               </div>
               <Pill value={q.status} />
             </div>
@@ -928,7 +928,7 @@ function ReviewPanel({
 
             {editing ? (
               <div className="bg-[#F5F4F1] rounded-xl p-4 flex flex-col gap-2">
-                <p className="text-[10px] font-black text-[#ABABAB] uppercase tracking-[0.14em]">
+                <p className="text-[11px] font-black text-[#1F2937] uppercase tracking-[0.14em]">
                   {q.suggested ? "Edit answer" : "Manual answer"}
                 </p>
                 <textarea
@@ -950,7 +950,7 @@ function ReviewPanel({
               </div>
             ) : q.finalAnswer ? (
               <div className="bg-green-50 border border-green-100 rounded-xl p-4">
-                <p className="text-[10px] font-black text-green-700 uppercase tracking-[0.14em] mb-2">
+                <p className="text-[11px] font-black text-green-700 uppercase tracking-[0.14em] mb-2">
                   Final answer · {q.finalAnswer.sourceType}
                 </p>
                 <p className="text-[13px] text-[#1F2937] leading-relaxed">{q.finalAnswer.text}</p>
@@ -960,13 +960,13 @@ function ReviewPanel({
                 <div className="border border-[#F96702]/25 rounded-xl overflow-hidden">
                   <div className="px-3.5 py-2 bg-[#FFF4EC] flex items-center gap-2">
                     <Brain size={11} className="text-[#C05600]" />
-                    <p className="text-[11px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
+                    <p className="text-[12px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
                       AI Suggested Answer — best match
                     </p>
                     <ConfidenceBadge confidence={q.confidence} />
                   </div>
                   <p className="px-3.5 py-3 text-[13px] text-[#1F2937] leading-relaxed">{q.suggested.text}</p>
-                  <div className="px-3.5 py-2 bg-[#FAFAFA] border-t border-border grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] text-[#6B7280]">
+                  <div className="px-3.5 py-2 bg-[#FAFAFA] border-t border-border grid grid-cols-1 md:grid-cols-2 gap-2 text-[12px] text-[#374151]">
                     <p>
                       <strong>Source:</strong>{" "}
                       {source ? (
@@ -980,7 +980,7 @@ function ReviewPanel({
                       ) : q.suggested?.sourceTitle ? (
                         <span
                           title="This entry is not in the currently loaded Knowledge Base list (the match may have been made in offline/demo mode, or the entry changed) — the title is shown for traceability but cannot be opened"
-                          className="text-[#6B7280] font-semibold"
+                          className="text-[#374151] font-semibold"
                         >
                           {q.suggested.sourceTitle}
                         </span>
@@ -1008,28 +1008,28 @@ function ReviewPanel({
                       title="The Knowledge Base returned more than one relevant entry — compare and pick the best fit"
                       className="w-full px-3.5 py-2 bg-[#F7F8FA] flex items-center gap-2 hover:bg-[#F0F1F3] transition-colors"
                     >
-                      <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide flex-1 text-left">
+                      <p className="text-[12px] font-bold text-[#374151] uppercase tracking-wide flex-1 text-left">
                         {q.alternatives!.length} other possible match
                         {q.alternatives!.length === 1 ? "" : "es"} from the Knowledge Base
                       </p>
                       <ChevronRight
                         size={12}
-                        className={`text-[#9CA3AF] transition-transform ${showAlternatives ? "rotate-90" : ""}`}
+                        className={`text-[#1F2937] transition-transform ${showAlternatives ? "rotate-90" : ""}`}
                       />
                     </button>
                     {showAlternatives &&
                       q.alternatives!.map((alt, i) => (
                         <div key={i} className="px-3.5 py-3 border-t border-border flex flex-col gap-1.5">
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-black text-[#9CA3AF] uppercase tracking-[0.08em] whitespace-nowrap">
+                            <span className="text-[11px] font-black text-[#1F2937] uppercase tracking-[0.08em] whitespace-nowrap">
                               Match {i + 2}
                             </span>
                             <ConfidenceBadge confidence={alt.confidence} />
-                            <span className="text-[11px] text-[#9CA3AF] flex-1">{alt.reasoning}</span>
+                            <span className="text-[12px] text-[#1F2937] flex-1">{alt.reasoning}</span>
                             <button
                               onClick={() => useAlternative(i)}
                               title="Replace the suggestion above with this match"
-                              className="px-3 py-1 text-[10px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                              className="px-3 py-1 text-[11px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                             >
                               Use this answer
                             </button>
@@ -1041,7 +1041,7 @@ function ReviewPanel({
                 )}
               </>
             ) : (
-              <div className="bg-[#F7F8FA] border border-border rounded-xl px-4 py-3.5 text-[12px] text-[#6B7280]">
+              <div className="bg-[#F7F8FA] border border-border rounded-xl px-4 py-3.5 text-[12px] text-[#374151]">
                 No approved knowledge match — <strong>Research Required</strong>. Enter a manual
                 answer or route this question to the {q.department} SME team.
               </div>
@@ -1105,7 +1105,7 @@ function ReviewPanel({
                       }}
                       disabled={ndaBlocked}
                       title={ndaBlocked ? "Blocked: this answer needs an NDA that the ticket does not have" : "Accept this AI answer as the final answer for this question"}
-                      className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${ndaBlocked ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-green-600 text-white hover:bg-green-700"}`}
+                      className={`flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${ndaBlocked ? "bg-[#E8E6E3] text-[#1F2937] cursor-not-allowed" : "bg-green-600 text-white hover:bg-green-700"}`}
                     >
                       <CheckCircle size={11} /> Approve
                     </button>
@@ -1159,7 +1159,7 @@ function ReviewPanel({
                           ? "This question has no department yet (TBD) — assign one in the Grouping stage before routing it to an SME"
                           : `Queue this question for the ${q.department} SME team — nothing is sent yet; all queued questions go out together as one package per department`
                       }
-                      className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${q.department === TBD_DEPARTMENT ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)]"}`}
+                      className={`flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${q.department === TBD_DEPARTMENT ? "bg-[#E8E6E3] text-[#1F2937] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)]"}`}
                     >
                       <Send size={11} /> Route to SME
                     </button>
@@ -1183,7 +1183,7 @@ function ReviewPanel({
                       actions.addToast(`Clarification request sent to ${ticket.ae ?? "the AE"}.`, "info");
                     }}
                     title="Email the account executive for missing context about this question"
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold border border-[rgba(0,0,0,0.18)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-semibold border border-[rgba(0,0,0,0.18)] rounded-full text-[#374151] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
                   >
                     <Mail size={11} /> Ask AE
                   </button>
@@ -1191,7 +1191,7 @@ function ReviewPanel({
                   <button
                     onClick={nextQuestion}
                     title="Move on to the next question in this tab (wraps around)"
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase transition-all"
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-bold border border-[#F96702]/40 rounded-full text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase transition-all"
                   >
                     Next Question <ChevronRight size={11} />
                   </button>
@@ -1447,9 +1447,9 @@ function SmePackagePanel({
   return (
     <div className="flex flex-col gap-3">
       <div className="bg-[#FAFAFA] border border-[rgba(0,0,0,0.08)] rounded-xl px-4 py-3 flex items-start gap-2.5">
-        <Info size={13} className="text-[#9CA3AF] shrink-0 mt-0.5" />
+        <Info size={13} className="text-[#1F2937] shrink-0 mt-0.5" />
         <p
-          className="text-[13px] text-[#6B7280] truncate"
+          className="text-[13px] text-[#374151] truncate"
           title="SMEs do not log into this system. Every question routed during review is packaged here by department into an Excel file plus an email. Sending opens a pre-filled draft in your mail app (Outlook/Gmail) — attach the downloaded package manually, browsers cannot pre-attach files. Batch send registers every package first, then offers each department's draft to open one by one."
         >
           SMEs don't log in — send each department a package + mail draft (<strong>attach the file
@@ -1458,7 +1458,7 @@ function SmePackagePanel({
       </div>
       {unsentDepts.length > 0 && (
         <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] px-4 py-2.5 flex items-center gap-3 flex-wrap">
-          <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide">
+          <p className="text-[12px] font-bold text-[#374151] uppercase tracking-wide">
             Send packages
           </p>
           {unsentDepts.map((d) => (
@@ -1476,7 +1476,7 @@ function SmePackagePanel({
                 }
               />
               {d}
-              <span className="text-[10px] font-bold text-[#C05600]">
+              <span className="text-[11px] font-bold text-[#C05600]">
                 {queued.filter((q) => q.department === d).length}
               </span>
             </label>
@@ -1486,7 +1486,7 @@ function SmePackagePanel({
             onClick={() => sendMany(selected)}
             disabled={selected.length === 0 || busy}
             title="Registers the ticked packages, then offers each mail draft to open one by one"
-            className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${selected.length === 0 || busy ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400]"}`}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${selected.length === 0 || busy ? "bg-[#E8E6E3] text-[#1F2937] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400]"}`}
           >
             {busy ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />} Send
             Selected ({selected.length})
@@ -1495,7 +1495,7 @@ function SmePackagePanel({
             onClick={() => sendMany(unsentDepts)}
             disabled={busy}
             title="Registers every remaining package, then offers each mail draft to open one by one"
-            className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold border rounded-full tracking-[0.06em] uppercase transition-all ${busy ? "border-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "border-[#F96702]/40 text-[#C05600] hover:bg-[#FFF4EC]"}`}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-bold border rounded-full tracking-[0.06em] uppercase transition-all ${busy ? "border-[#E8E6E3] text-[#1F2937] cursor-not-allowed" : "border-[#F96702]/40 text-[#C05600] hover:bg-[#FFF4EC]"}`}
           >
             {busy ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />} Send All (
             {unsentDepts.length})
@@ -1513,10 +1513,10 @@ function SmePackagePanel({
               <button
                 key={d}
                 onClick={() => setTab(d)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 shrink-0 transition-colors ${tab === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 shrink-0 transition-colors ${tab === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#374151] hover:text-[#1F2937]"}`}
               >
                 {d}
-                <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${tab === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
+                <span className={`px-1.5 py-0.5 rounded text-[12px] font-bold ${tab === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-700"}`}>
                   {count}
                 </span>
                 {sent && <CheckCircle size={11} className="text-green-500" />}
@@ -1529,8 +1529,8 @@ function SmePackagePanel({
           <div className="flex flex-col">
             <div className="px-3.5 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center gap-1.5">
               <FileSpreadsheet size={12} className="text-green-600" />
-              <p className="text-[11px] font-bold text-[#1F2937]">SME Excel Package Preview</p>
-              <span className="ml-auto text-[11px] text-[#9CA3AF]">
+              <p className="text-[12px] font-bold text-[#1F2937]">SME Excel Package Preview</p>
+              <span className="ml-auto text-[12px] text-[#1F2937]">
                 {ticket.customer.replace(/\s+/g, "_")}_SME_Request_{tab}.csv
               </span>
             </div>
@@ -1538,7 +1538,7 @@ function SmePackagePanel({
               <thead>
                 <tr className="bg-[#FFF7F0] border-b border-border">
                   {["#", "Question", "SME Answer"].map((h) => (
-                    <th key={h} className="text-left px-3 py-1.5 text-[11px] font-bold text-[#C05600]">
+                    <th key={h} className="text-left px-3 py-1.5 text-[12px] font-bold text-[#C05600]">
                       {h}
                     </th>
                   ))}
@@ -1547,9 +1547,9 @@ function SmePackagePanel({
               <tbody>
                 {(tabQueued.length > 0 ? tabQueued : waiting.filter((q) => q.department === tab)).map((q, i) => (
                   <tr key={q.id} className="border-b border-border last:border-0">
-                    <td className="px-3 py-2 text-[11px] text-[#9CA3AF] font-mono">{i + 1}</td>
-                    <td className="px-3 py-2 text-[11px] text-[#1F2937]">{q.original}</td>
-                    <td className="px-3 py-2 text-[11px] text-[#9CA3AF] italic">— to be completed —</td>
+                    <td className="px-3 py-2 text-[12px] text-[#1F2937] font-mono">{i + 1}</td>
+                    <td className="px-3 py-2 text-[12px] text-[#1F2937]">{q.original}</td>
+                    <td className="px-3 py-2 text-[12px] text-[#1F2937] italic">— to be completed —</td>
                   </tr>
                 ))}
               </tbody>
@@ -1558,7 +1558,7 @@ function SmePackagePanel({
               <button
                 onClick={downloadPackage}
                 title="Downloads this department's questions as a CSV file — Excel opens it directly (a real .xlsx export is planned on the backend)"
-                className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold rounded w-full justify-center bg-white border border-border text-[#374151] hover:border-[#F96702]/50 hover:text-[#F96702] transition-colors"
+                className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-semibold rounded w-full justify-center bg-white border border-border text-[#374151] hover:border-[#F96702]/50 hover:text-[#F96702] transition-colors"
               >
                 <Download size={11} /> Download Package (CSV)
               </button>
@@ -1568,20 +1568,20 @@ function SmePackagePanel({
           <div className="flex flex-col">
             <div className="px-3.5 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center gap-1.5">
               <Mail size={12} className="text-[#F96702]" />
-              <p className="text-[11px] font-bold text-[#1F2937]">SME Email Draft — {tab} Team</p>
+              <p className="text-[12px] font-bold text-[#1F2937]">SME Email Draft — {tab} Team</p>
               {tabSent && (
-                <span className="ml-auto flex items-center gap-1 text-[11px] text-green-600 font-medium">
+                <span className="ml-auto flex items-center gap-1 text-[12px] text-green-600 font-medium">
                   <CheckCircle size={10} /> Sent
                 </span>
               )}
             </div>
-            <div className="px-3.5 py-2.5 space-y-1 border-b border-border text-[11px]">
+            <div className="px-3.5 py-2.5 space-y-1 border-b border-border text-[12px]">
               {[
                 ["To", `${tab.toLowerCase()}-team@cloudera.com`],
                 ["Subject", `ETA request — ${ticket.customer} customer form, ${tab} tab`],
               ].map(([l, v]) => (
                 <div key={l} className="flex gap-2">
-                  <span className="text-[#9CA3AF] w-11 shrink-0">{l}:</span>
+                  <span className="text-[#1F2937] w-11 shrink-0">{l}:</span>
                   <span className="text-[#1F2937]">{v}</span>
                 </div>
               ))}
@@ -1592,8 +1592,8 @@ function SmePackagePanel({
               );
               if (sentReq?.sentEmail)
                 return (
-                  <div className="px-3.5 py-3 text-[11px] text-[#374151] leading-relaxed flex-1 whitespace-pre-wrap">
-                    <p className="text-[10px] font-bold text-green-700 uppercase tracking-[0.1em] mb-1.5">
+                  <div className="px-3.5 py-3 text-[12px] text-[#374151] leading-relaxed flex-1 whitespace-pre-wrap">
+                    <p className="text-[11px] font-bold text-green-700 uppercase tracking-[0.1em] mb-1.5">
                       Sent — composed by backend
                     </p>
                     {sentReq.sentEmail.body}
@@ -1601,7 +1601,7 @@ function SmePackagePanel({
                 );
               return null;
             })() ?? (
-            <div className="px-3.5 py-3 text-[11px] text-[#374151] leading-relaxed space-y-2 flex-1">
+            <div className="px-3.5 py-3 text-[12px] text-[#374151] leading-relaxed space-y-2 flex-1">
               <p>Hi {tab} Team,</p>
               <p>
                 We need your input on the <strong>{tab} tab</strong> of the attached Excel for{" "}
@@ -1622,7 +1622,7 @@ function SmePackagePanel({
               <button
                 onClick={sendDept}
                 disabled={tabSent || busy}
-                className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full w-full justify-center tracking-[0.06em] uppercase transition-all ${tabSent || busy ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)]"}`}
+                className={`flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-bold rounded-full w-full justify-center tracking-[0.06em] uppercase transition-all ${tabSent || busy ? "bg-[#E8E6E3] text-[#1F2937] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)]"}`}
               >
                 {busy && !tabSent ? (
                   <>
@@ -1656,7 +1656,7 @@ function SmePackagePanel({
         </span>
         <span className="flex-1" />
         {!allSent && (
-          <p className="text-[11px] text-[#9CA3AF]">
+          <p className="text-[12px] text-[#1F2937]">
             {queued.length} question(s) not sent yet — you can still jump ahead and come back.
           </p>
         )}
@@ -1688,7 +1688,7 @@ function SmePackagePanel({
                 <p className="text-sm font-semibold text-[#1F2937]">
                   Packages registered — open each email draft
                 </p>
-                <p className="text-[11px] text-[#9CA3AF] mt-0.5">
+                <p className="text-[12px] text-[#1F2937] mt-0.5">
                   Browsers open one mail draft per click. Open each department's draft below and
                   attach its downloaded package before sending.
                 </p>
@@ -1699,10 +1699,10 @@ function SmePackagePanel({
                 <div key={d.dept} className="px-5 py-3 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-semibold text-[#1F2937]">{d.dept} Team</p>
-                    <p className="text-[11px] text-[#9CA3AF] truncate">{d.subject}</p>
+                    <p className="text-[12px] text-[#1F2937] truncate">{d.subject}</p>
                   </div>
                   {d.opened ? (
-                    <span className="flex items-center gap-1 text-[11px] text-[#9CA3AF] font-medium whitespace-nowrap">
+                    <span className="flex items-center gap-1 text-[12px] text-[#1F2937] font-medium whitespace-nowrap">
                       Draft opened
                     </span>
                   ) : (
@@ -1713,7 +1713,7 @@ function SmePackagePanel({
                           p ? p.map((x) => (x.dept === d.dept ? { ...x, opened: true } : x)) : p,
                         );
                       }}
-                      className="flex items-center gap-1.5 px-3.5 py-1.5 text-[11px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 text-[12px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                     >
                       <Mail size={10} /> Open draft
                     </button>
@@ -1722,7 +1722,7 @@ function SmePackagePanel({
               ))}
             </div>
             <div className="px-5 py-3 border-t border-border bg-[#FAFAFA] flex items-center gap-2 shrink-0">
-              <p className="text-[11px] text-[#6B7280] flex-1">
+              <p className="text-[12px] text-[#374151] flex-1">
                 {batchDrafts.filter((d) => d.opened).length}/{batchDrafts.length} drafts opened —
                 packages stay registered either way.
               </p>
@@ -1866,7 +1866,7 @@ function EtaPanel({
                   className={`border-b border-border last:border-0 transition-colors ${over ? "bg-red-50/40" : "hover:bg-gray-50/50"}`}
                 >
                   <td className="px-4 py-2.5 text-[13px] font-semibold text-[#1F2937]">{r.department}</td>
-                  <td className="px-4 py-2.5 text-[13px] text-[#6B7280]">{r.assignee}</td>
+                  <td className="px-4 py-2.5 text-[13px] text-[#374151]">{r.assignee}</td>
                   <td className="px-4 py-2.5 text-[13px] font-mono font-bold text-[#1F2937]">
                     {r.questionIds.length}
                   </td>
@@ -1886,7 +1886,7 @@ function EtaPanel({
                               setEtaValue(r.eta ? r.eta.slice(0, 16) : "");
                               setConfirmedBy("");
                             }}
-                            className="px-3 py-1 text-[10px] font-bold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                            className="px-3 py-1 text-[11px] font-bold border border-[rgba(0,0,0,0.15)] rounded-full text-[#374151] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                           >
                             {r.eta ? "Update ETA" : "Record ETA"}
                           </button>
@@ -1899,26 +1899,26 @@ function EtaPanel({
                                   ? "No ETA yet — drafts an ETA-confirmation chaser in your mail app"
                                   : "Drafts a context-aware check-in email in your mail app"
                             }
-                            className={`px-3 py-1 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase whitespace-nowrap transition-all ${over ? "border border-[#FCA5A5]/50 bg-[#FEF2F2] text-[#991B1B] hover:bg-[#FEE2E2]" : "border border-[#F96702]/40 text-[#C05600] hover:bg-[#FFF4EC]"}`}
+                            className={`px-3 py-1 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase whitespace-nowrap transition-all ${over ? "border border-[#FCA5A5]/50 bg-[#FEF2F2] text-[#991B1B] hover:bg-[#FEE2E2]" : "border border-[#F96702]/40 text-[#C05600] hover:bg-[#FFF4EC]"}`}
                           >
                             <Bell size={9} className="inline mr-0.5" /> Nudge
                           </button>
                           <button
                             onClick={() => setRecordFor(r)}
                             title="The SME replied? Upload their returned Excel or paste the answers per question"
-                            className="px-3 py-1 text-[10px] font-bold border border-green-600/40 bg-green-50 rounded-full text-green-700 hover:bg-green-100 tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                            className="px-3 py-1 text-[11px] font-bold border border-green-600/40 bg-green-50 rounded-full text-green-700 hover:bg-green-100 tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                           >
                             <Download size={9} className="inline mr-0.5" /> Record Answers
                           </button>
                         </>
                       )}
                       {r.status === "Returned" && (
-                        <span className="text-[11px] text-green-700 font-medium flex items-center gap-1.5">
+                        <span className="text-[12px] text-green-700 font-medium flex items-center gap-1.5">
                           <CheckCircle size={11} /> {r.returnedAt ? fmtDateTime(r.returnedAt) : "Returned"}
                           <button
                             onClick={() => void undoReturned(r)}
                             disabled={undoingId !== null}
-                            className="text-[10px] font-bold text-[#6B7280] border border-[rgba(0,0,0,0.15)] rounded-full px-2 py-0.5 hover:border-[#F96702]/50 hover:text-[#F96702] uppercase tracking-[0.06em]"
+                            className="text-[11px] font-bold text-[#374151] border border-[rgba(0,0,0,0.15)] rounded-full px-2 py-0.5 hover:border-[#F96702]/50 hover:text-[#F96702] uppercase tracking-[0.06em]"
                           >
                             {undoingId === r.id ? "Undoing…" : "Undo"}
                           </button>
@@ -1968,12 +1968,12 @@ function EtaPanel({
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-xs">
             <h3 className="text-sm font-semibold text-[#1F2937] mb-0.5">Record ETA</h3>
-            <p className="text-[13px] text-[#6B7280] mb-3">
+            <p className="text-[13px] text-[#374151] mb-3">
               Expected return for <strong>{etaModal.department}</strong>
             </p>
             <div className="flex flex-col gap-2.5">
               <div>
-                <label className="text-[11px] font-medium text-[#6B7280] mb-1 block">
+                <label className="text-[12px] font-medium text-[#374151] mb-1 block">
                   ETA Date &amp; Time (UTC)
                 </label>
                 <input
@@ -1984,7 +1984,7 @@ function EtaPanel({
                 />
               </div>
               <div>
-                <label className="text-[11px] font-medium text-[#6B7280] mb-1 block">
+                <label className="text-[12px] font-medium text-[#374151] mb-1 block">
                   Confirmed by (optional)
                 </label>
                 <input
@@ -2103,10 +2103,10 @@ function RecordAnswersModal({
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-[640px] max-h-[88vh] overflow-hidden flex flex-col">
         <div className="px-4 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center justify-between shrink-0">
-          <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide">
+          <p className="text-[12px] font-bold text-[#374151] uppercase tracking-wide">
             Record returned answers — {req.department} · {req.assignee}
           </p>
-          <button onClick={close} className="text-gray-400 hover:text-gray-600">
+          <button onClick={close} className="text-gray-600 hover:text-gray-600">
             <X size={13} />
           </button>
         </div>
@@ -2140,7 +2140,7 @@ function RecordAnswersModal({
             </div>
             <div className="flex-1">
               <p className="text-[13px] font-semibold text-[#1F2937]">Upload the returned Excel</p>
-              <p className="text-[11px] text-[#6B7280] mt-0.5">
+              <p className="text-[12px] text-[#374151] mt-0.5">
                 Answers are read into the fields below for review — or{" "}
                 <button
                   onClick={(e) => {
@@ -2159,7 +2159,7 @@ function RecordAnswersModal({
           {openQs.map((q) => (
             <div key={q.id} className="border border-border rounded-lg p-3 flex flex-col gap-1.5">
               <p className="text-[13px] font-medium text-[#1F2937]">
-                <span className="text-[11px] font-mono text-[#9CA3AF] mr-1.5">#{q.row}</span>
+                <span className="text-[12px] font-mono text-[#1F2937] mr-1.5">#{q.row}</span>
                 {q.original}
               </p>
               <textarea
@@ -2173,7 +2173,7 @@ function RecordAnswersModal({
           ))}
           {openQs.length === 0 && (
             <div className="flex flex-col gap-3">
-              <p className="text-[13px] text-[#9CA3AF] italic">
+              <p className="text-[13px] text-[#1F2937] italic">
                 All questions in this request already have answers.
               </p>
               {/* escape hatch: a request whose questions were all answered
@@ -2181,7 +2181,7 @@ function RecordAnswersModal({
                   new answer, so it could never reach Returned — allow closing
                   it directly instead of deadlocking the workflow */}
               <div className="bg-[#FFF8F1] border border-[#F96702]/20 rounded-lg px-3.5 py-3 flex items-center gap-3">
-                <p className="text-[12px] text-[#6B7280] flex-1">
+                <p className="text-[12px] text-[#374151] flex-1">
                   Nothing left to record here — mark the request as returned so the ticket can move
                   on to final review.
                 </p>
@@ -2199,7 +2199,7 @@ function RecordAnswersModal({
                     actions.addToast("Request marked Returned — it had no open questions left.", "success");
                     close();
                   }}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-[11px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-[12px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                 >
                   <CheckCircle size={10} /> Mark Returned
                 </button>
@@ -2209,7 +2209,7 @@ function RecordAnswersModal({
         </div>
 
         <div className="px-4 py-3 border-t border-border flex items-center gap-2 bg-[#FAFAFA] shrink-0">
-          <p className="text-[11px] text-[#6B7280] flex-1">
+          <p className="text-[12px] text-[#374151] flex-1">
             {filled.length}/{openQs.length} answered — unanswered questions stay Waiting SME
             (partial returns are fine).
           </p>
@@ -2302,22 +2302,22 @@ function NudgeModal({
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-[520px] max-h-[85vh] overflow-hidden flex flex-col">
         <div className="px-4 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center justify-between shrink-0">
-          <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide">
+          <p className="text-[12px] font-bold text-[#374151] uppercase tracking-wide">
             {t.label} — auto-drafted, editable
           </p>
           {variant === "overdue" && (
-            <span className="flex items-center gap-1 text-[11px] text-red-600 font-medium">
+            <span className="flex items-center gap-1 text-[12px] text-red-600 font-medium">
               <AlertTriangle size={10} /> {req.department} tab overdue
             </span>
           )}
         </div>
         <div className="px-4 py-2.5 space-y-2 border-b border-border text-[13px] shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-[#9CA3AF] w-14 shrink-0">To:</span>
+            <span className="text-[#1F2937] w-14 shrink-0">To:</span>
             <span className="text-[#1F2937]">{to}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[#9CA3AF] w-14 shrink-0">Subject:</span>
+            <span className="text-[#1F2937] w-14 shrink-0">Subject:</span>
             <input
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
@@ -2441,15 +2441,15 @@ function FinalPanel({
                 ) : (
                   <div className="w-3 h-3 rounded-full border-2 border-gray-300 shrink-0" />
                 )}
-                <span className={`text-[13px] font-medium flex-1 ${ok ? "text-green-800" : "text-[#9CA3AF]"}`}>
+                <span className={`text-[13px] font-medium flex-1 ${ok ? "text-green-800" : "text-[#1F2937]"}`}>
                   {d} — {ok ? "Complete" : "Awaiting answers"}
                 </span>
-                <span className="text-[11px] text-[#9CA3AF]">{total} question{total === 1 ? "" : "s"}</span>
+                <span className="text-[12px] text-[#1F2937]">{total} question{total === 1 ? "" : "s"}</span>
               </div>
             );
           })}
           {reqs.length === 0 && (
-            <p className="text-[11px] text-[#9CA3AF] pt-1">
+            <p className="text-[12px] text-[#1F2937] pt-1">
               All answers were resolved from approved knowledge — no SME input was needed.
             </p>
           )}
@@ -2478,19 +2478,19 @@ function FinalPanel({
           )}
         </div>
       </Card>
-      <div className="bg-[#FAFAFA] border border-[rgba(0,0,0,0.06)] rounded-lg px-4 py-2.5 flex items-center gap-2 text-[11px] font-semibold">
-        <span className="text-[#6B7280] uppercase tracking-[0.08em]">Three steps:</span>
+      <div className="bg-[#FAFAFA] border border-[rgba(0,0,0,0.06)] rounded-lg px-4 py-2.5 flex items-center gap-2 text-[12px] font-semibold">
+        <span className="text-[#374151] uppercase tracking-[0.08em]">Three steps:</span>
         <span className={reviewed ? "text-green-700" : "text-[#C05600]"}>
           1 · Confirm review {reviewed && "✓"}
         </span>
-        <ChevronRight size={10} className="text-[#C0BEBA]" />
-        <span className={exported ? "text-green-700" : reviewed ? "text-[#C05600]" : "text-[#C0BEBA]"}>
+        <ChevronRight size={10} className="text-[#1F2937]" />
+        <span className={exported ? "text-green-700" : reviewed ? "text-[#C05600]" : "text-[#1F2937]"}>
           2 · Export package {exported && "✓"}
         </span>
-        <ChevronRight size={10} className="text-[#C0BEBA]" />
-        <span className={exported ? "text-[#C05600]" : "text-[#C0BEBA]"}>3 · Approve ticket</span>
+        <ChevronRight size={10} className="text-[#1F2937]" />
+        <span className={exported ? "text-[#C05600]" : "text-[#1F2937]"}>3 · Approve ticket</span>
         <span className="flex-1" />
-        <span className="text-[#9CA3AF] font-normal normal-case">
+        <span className="text-[#1F2937] font-normal normal-case">
           each step unlocks the next — hover a button for details
         </span>
       </div>
@@ -2522,7 +2522,7 @@ function FinalPanel({
               ? "Blocked: some departments still have unanswered questions (see checklist above)"
               : "Step 1 — confirm you have reviewed every answer; this unlocks the export"
           }
-          className={`flex items-center gap-1.5 px-5 py-2 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!allComplete ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : reviewed ? "bg-green-600 text-white" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.3)]"}`}
+          className={`flex items-center gap-1.5 px-5 py-2 text-[12px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!allComplete ? "bg-[#E8E6E3] text-[#1F2937] cursor-not-allowed" : reviewed ? "bg-green-600 text-white" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.3)]"}`}
         >
           {reviewed ? (
             <>
@@ -2542,7 +2542,7 @@ function FinalPanel({
               : "Step 2 — downloads the completed answer package for the customer"
           }
           onClick={() => setExportModal(true)}
-          className={`flex items-center gap-1.5 px-5 py-2 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!reviewed || exporting ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : exported ? "bg-green-600 text-white" : "border border-[rgba(0,0,0,0.18)] text-[#374151] hover:border-[#F96702]/60 hover:text-[#F96702]"}`}
+          className={`flex items-center gap-1.5 px-5 py-2 text-[12px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!reviewed || exporting ? "bg-[#E8E6E3] text-[#1F2937] cursor-not-allowed" : exported ? "bg-green-600 text-white" : "border border-[rgba(0,0,0,0.18)] text-[#374151] hover:border-[#F96702]/60 hover:text-[#F96702]"}`}
         >
           {exporting ? (
             <>
@@ -2573,7 +2573,7 @@ function FinalPanel({
             actions.logActivity("Approved final response — ticket ready to send", ticket.id);
             actions.addToast("Ticket approved. Use Mark Sent & Close in the header to finish.", "success");
           }}
-          className={`flex items-center gap-1.5 px-5 py-2 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!exported ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#0A0A0A] text-white hover:bg-[#222]"}`}
+          className={`flex items-center gap-1.5 px-5 py-2 text-[12px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${!exported ? "bg-[#E8E6E3] text-[#1F2937] cursor-not-allowed" : "bg-[#0A0A0A] text-white hover:bg-[#222]"}`}
         >
           <RefreshCw size={11} /> 3 · Approve Ticket
         </button>
@@ -2583,7 +2583,7 @@ function FinalPanel({
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-xs">
             <h3 className="text-sm font-semibold text-[#1F2937] mb-1">Confirm Export</h3>
-            <p className="text-[13px] text-[#6B7280] mb-4">
+            <p className="text-[13px] text-[#374151] mb-4">
               Export the completed response package for {ticket.customer} ({ticket.id})?
             </p>
             <div className="bg-[#F7F8FA] rounded-md p-3 border border-border mb-4 space-y-1 text-[13px]">
@@ -2613,7 +2613,7 @@ function DonePanel({ qs, actions }: { qs: MvpQuestion[]; actions: AppActions }) 
   return (
     <Card title={`Questions — ${qs.length} answered`}>
       {qs.length === 0 ? (
-        <p className="px-4 py-5 text-[13px] text-[#9CA3AF] italic">No question records for this ticket.</p>
+        <p className="px-4 py-5 text-[13px] text-[#1F2937] italic">No question records for this ticket.</p>
       ) : (
         <div className="overflow-x-auto"><table className="w-full">
           <thead>
@@ -2632,13 +2632,13 @@ function DonePanel({ qs, actions }: { qs: MvpQuestion[]; actions: AppActions }) 
                 onClick={() => setOpenId(q.id)}
                 className="border-b border-border last:border-0 cursor-pointer hover:bg-gray-50/60"
               >
-                <td className="px-4 py-2.5 text-[11px] font-mono text-[#9CA3AF]">{q.row}</td>
+                <td className="px-4 py-2.5 text-[12px] font-mono text-[#1F2937]">{q.row}</td>
                 <td className="px-4 py-2.5 text-[13px] text-[#1F2937] max-w-[320px]">
                   <p className="line-clamp-1">{q.original}</p>
                 </td>
                 <td className="px-4 py-2.5 text-[13px] text-[#374151]">{q.department}</td>
                 <td className="px-4 py-2.5"><Pill value={q.status} /></td>
-                <td className="px-4 py-2.5 text-[12px] text-[#6B7280] max-w-[240px]">
+                <td className="px-4 py-2.5 text-[12px] text-[#374151] max-w-[240px]">
                   <p className="line-clamp-1">{q.finalAnswer?.text ?? "—"}</p>
                 </td>
               </tr>
@@ -2651,11 +2651,11 @@ function DonePanel({ qs, actions }: { qs: MvpQuestion[]; actions: AppActions }) 
           <div className="flex-1 bg-black/30" onClick={() => setOpenId(null)} />
           <div className="w-full max-w-[400px] bg-white h-full shadow-[-8px_0_32px_rgba(0,0,0,0.12)] flex flex-col">
             <div className="px-5 py-3.5 border-b border-border flex items-center gap-2">
-              <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide flex-1">
+              <p className="text-[12px] font-bold text-[#374151] uppercase tracking-wide flex-1">
                 Question #{open.row}
               </p>
               <Pill value={open.status} />
-              <button onClick={() => setOpenId(null)} className="text-gray-400 hover:text-gray-600 ml-1">
+              <button onClick={() => setOpenId(null)} className="text-gray-600 hover:text-gray-600 ml-1">
                 <X size={14} />
               </button>
             </div>
@@ -2666,7 +2666,7 @@ function DonePanel({ qs, actions }: { qs: MvpQuestion[]; actions: AppActions }) 
                 {open.finalAnswer?.text ?? "No final answer recorded."}
               </div>
               {open.finalAnswer && (
-                <p className="text-[11px] text-[#9CA3AF]">Source: {open.finalAnswer.sourceType}</p>
+                <p className="text-[12px] text-[#1F2937]">Source: {open.finalAnswer.sourceType}</p>
               )}
             </div>
             {open.finalAnswer && (

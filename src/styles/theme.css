@@ -1,9 +1,11 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --font-size: 14px;
+  /* Accessibility baseline: improve readability without changing the
+     responsive layout or the existing heading hierarchy. */
+  --font-size: 15px;
   --background: #F5F4F1;
-  --foreground: #1F2937;
+  --foreground: #111827;
   --card: #ffffff;
   --card-foreground: #1F2937;
   --popover: #ffffff;
@@ -13,7 +15,7 @@
   --secondary: #FFF1E6;
   --secondary-foreground: #D95400;
   --muted: #F1F3F6;
-  --muted-foreground: #6B7280;
+  --muted-foreground: #374151;
   --accent: #FFF1E6;
   --accent-foreground: #D95400;
   --destructive: #DC2626;
@@ -79,6 +81,11 @@
 }
 
 @theme inline {
+  /* Recurring supporting text should render at roughly 12–14px. */
+  --text-xs: 0.8rem;
+  --text-xs--line-height: 1.1rem;
+  --text-sm: 0.933rem;
+  --text-sm--line-height: 1.35rem;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

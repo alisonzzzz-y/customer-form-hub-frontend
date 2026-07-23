@@ -90,7 +90,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
   const STATUS_COLORS: Record<string, string> = {
     New: "#4338CA", "AI Processing": "#6366F1", "Intake Review": "#F59E0B",
     "In Progress": "#1F2937", "Waiting SME": "#EAB308", "Ready for Review": "#10B981",
-    Approved: "#16A34A", Sent: "#16A34A", Closed: "#9CA3AF",
+    Approved: "#16A34A", Sent: "#16A34A", Closed: "#4B5563",
   };
   const statusData = Object.entries(
     state.tickets
@@ -277,7 +277,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
     w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
       body{font-family:Inter,system-ui,sans-serif;color:#1F2937;padding:36px;max-width:720px;margin:0 auto}
       h1{font-size:20px;border-left:4px solid #F96702;padding-left:12px}
-      .meta{color:#6B7280;font-size:12px;margin-bottom:24px}
+      .meta{color:#374151;font-size:12px;margin-bottom:24px}
       table{border-collapse:collapse;width:100%;margin-bottom:24px}
       th{background:#F96702;color:#fff;text-align:left;padding:8px 12px;font-size:11px;text-transform:uppercase}
       td{border-bottom:1px solid #E5E7EB;padding:8px 12px;font-size:13px}
@@ -311,7 +311,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
         <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0" />
         <div>
           <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight">Reports</h1>
-          <p className="text-sm text-[#6B7280] mt-0.5">
+          <p className="text-sm text-[#374151] mt-0.5">
             Operational insight for managers — metrics first, AI narrative second
           </p>
         </div>
@@ -328,7 +328,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
                     type="category"
                     dataKey="name"
                     width={150}
-                    tick={{ fontSize: 10, fill: "#6B7280" }}
+                    tick={{ fontSize: 10, fill: "#374151" }}
                     axisLine={false}
                     tickLine={false}
                   />
@@ -342,7 +342,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
               </ResponsiveContainer>
             </div>
             {progressOverflow > 0 && (
-              <p className="px-4 pb-2.5 text-[11px] text-[#9CA3AF]">
+              <p className="px-4 pb-2.5 text-[12px] text-[#1F2937]">
                 Showing the 10 most-resolved of {openProgress.length} open tickets — see the
                 Tickets module for the full list.
               </p>
@@ -371,7 +371,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
             </div>
             <div className="px-3 pb-2.5 flex flex-wrap gap-x-3 gap-y-1">
               {statusData.map((d) => (
-                <span key={d.name} className="flex items-center gap-1 text-[10px] text-[#6B7280]">
+                <span key={d.name} className="flex items-center gap-1 text-[11px] text-[#374151]">
                   <span
                     className="w-2 h-2 rounded-full"
                     style={{ background: STATUS_COLORS[d.name] ?? "#D8D5D0" }}
@@ -386,8 +386,8 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={deptData} margin={{ top: 8, right: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EEECE9" vertical={false} />
-                  <XAxis dataKey="dept" tick={{ fontSize: 10, fill: "#6B7280" }} axisLine={false} tickLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "#6B7280" }} axisLine={false} tickLine={false} width={24} />
+                  <XAxis dataKey="dept" tick={{ fontSize: 10, fill: "#374151" }} axisLine={false} tickLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "#374151" }} axisLine={false} tickLine={false} width={24} />
                   <ChartTooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
                   <Bar dataKey="Resolved" stackId="q" fill="#16A34A" isAnimationActive={false} />
                   <Bar dataKey="With SME" stackId="q" fill="#EAB308" isAnimationActive={false} />
@@ -397,7 +397,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
             </div>
             <div className="px-3 pb-2.5 flex gap-3">
               {[["Resolved", "#16A34A"], ["With SME", "#EAB308"], ["Open", "#F96702"]].map(([l, c]) => (
-                <span key={l} className="flex items-center gap-1 text-[10px] text-[#6B7280]">
+                <span key={l} className="flex items-center gap-1 text-[11px] text-[#374151]">
                   <span className="w-2 h-2 rounded-full" style={{ background: c }} /> {l}
                 </span>
               ))}
@@ -444,7 +444,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
                   <p className={`text-[22px] font-black tracking-tight leading-none ${m.accent ? "text-red-600" : "text-[#0A0A0A]"}`}>
                     {m.value}
                   </p>
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#B8B5B0] mt-1.5">{m.label}</p>
+                  <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#1F2937] mt-1.5">{m.label}</p>
                 </div>
               ))}
             </div>
@@ -482,9 +482,9 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
                     className="border-b border-border last:border-0 cursor-pointer hover:bg-gray-50/60 transition-colors"
                   >
                     <td className="px-4 py-2.5 text-[13px] font-semibold text-[#1F2937]">{r.title}</td>
-                    <td className="px-4 py-2.5 text-[13px] text-[#6B7280]">{r.type}</td>
-                    <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">{r.createdBy}</td>
-                    <td className="px-4 py-2.5 text-[13px] text-[#6B7280] whitespace-nowrap">{fmtDate(r.createdAt)}</td>
+                    <td className="px-4 py-2.5 text-[13px] text-[#374151]">{r.type}</td>
+                    <td className="px-4 py-2.5 text-[13px] text-[#374151] whitespace-nowrap">{r.createdBy}</td>
+                    <td className="px-4 py-2.5 text-[13px] text-[#374151] whitespace-nowrap">{fmtDate(r.createdAt)}</td>
                     <td className="px-4 py-2.5"><Pill value={r.status} /></td>
                     <td className="px-4 py-2.5">
                       <button
@@ -492,7 +492,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
                           e.stopPropagation();
                           setOpenReport(r);
                         }}
-                        className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.06em] uppercase transition-all"
+                        className="flex items-center gap-1 px-3 py-1 text-[11px] font-bold border border-[rgba(0,0,0,0.15)] rounded-full text-[#374151] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.06em] uppercase transition-all"
                       >
                         <FileText size={9} /> Open
                       </button>
@@ -509,7 +509,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-[640px] max-h-[85vh] overflow-hidden flex flex-col">
             <div className="px-4 py-2.5 bg-[#F96702] flex items-center gap-2 shrink-0">
-              <p className="text-[11px] font-bold text-white uppercase tracking-[0.08em] flex-1">
+              <p className="text-[12px] font-bold text-white uppercase tracking-[0.08em] flex-1">
                 {openReport.title}
               </p>
               <button onClick={() => setOpenReport(null)} className="text-white/80 hover:text-white">
@@ -517,7 +517,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
               </button>
             </div>
             <div className="flex-1 overflow-auto p-5 flex flex-col gap-4">
-              <p className="text-[12px] text-[#6B7280]">
+              <p className="text-[12px] text-[#374151]">
                 {openReport.type} report · generated by {openReport.createdBy} ·{" "}
                 {fmtDate(openReport.createdAt)}
               </p>
@@ -527,14 +527,14 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
                     <p className="text-[20px] font-black tracking-tight leading-none text-[#0A0A0A]">
                       {m.value}
                     </p>
-                    <p className="text-[10px] font-black uppercase tracking-[0.1em] text-[#B8B5B0] mt-1.5">
+                    <p className="text-[11px] font-black uppercase tracking-[0.1em] text-[#1F2937] mt-1.5">
                       {m.label}
                     </p>
                   </div>
                 ))}
               </div>
               <div className="bg-[#FFF7F0] border border-[#F96702]/20 rounded-lg p-4">
-                <p className="text-[11px] font-bold text-[#C05600] uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                <p className="text-[12px] font-bold text-[#C05600] uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
                   <Sparkles size={11} /> AI Executive Summary
                 </p>
                 <p className="text-[13px] text-[#374151] leading-relaxed">{openReport.summary}</p>

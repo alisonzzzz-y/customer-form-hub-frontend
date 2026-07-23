@@ -38,7 +38,7 @@ export function NotificationsPage({ state, actions }: { state: AppState; actions
           <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0" />
           <div>
             <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight">Notifications</h1>
-            <p className="text-sm text-[#6B7280] mt-0.5">
+            <p className="text-sm text-[#374151] mt-0.5">
               SME replies, overdue ETAs, AI processing and knowledge reviews in one place
             </p>
           </div>
@@ -48,7 +48,7 @@ export function NotificationsPage({ state, actions }: { state: AppState; actions
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-3.5 py-1.5 text-[11px] font-bold rounded-full border transition-all ${filter === f ? "bg-[#F96702] text-white border-transparent" : "border-[rgba(0,0,0,0.15)] text-[#6B7280] hover:border-[#F96702]/50"}`}
+              className={`px-3.5 py-1.5 text-[12px] font-bold rounded-full border transition-all ${filter === f ? "bg-[#F96702] text-white border-transparent" : "border-[rgba(0,0,0,0.15)] text-[#374151] hover:border-[#F96702]/50"}`}
             >
               {f}
               {f === "Unread" && unread > 0 && ` (${unread})`}
@@ -60,7 +60,7 @@ export function NotificationsPage({ state, actions }: { state: AppState; actions
                 actions.setNotifications((p) => p.map((n) => ({ ...n, read: true })));
                 actions.addToast("All notifications marked as read.", "info");
               }}
-              className="flex items-center gap-1 px-3.5 py-1.5 text-[11px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
+              className="flex items-center gap-1 px-3.5 py-1.5 text-[12px] font-semibold border border-[rgba(0,0,0,0.15)] rounded-full text-[#374151] hover:border-[#F96702]/50 hover:text-[#F96702] transition-all"
             >
               <CheckCheck size={11} /> Mark all read
             </button>
@@ -94,8 +94,8 @@ export function NotificationsPage({ state, actions }: { state: AppState; actions
                           </p>
                           {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-[#F96702] shrink-0" />}
                         </div>
-                        <p className="text-[12px] text-[#6B7280] mt-0.5">{n.content}</p>
-                        <p className="text-[11px] text-[#9CA3AF] mt-1">{fmtDateTime(n.createdAt)}</p>
+                        <p className="text-[12px] text-[#374151] mt-0.5">{n.content}</p>
+                        <p className="text-[12px] text-[#1F2937] mt-1">{fmtDateTime(n.createdAt)}</p>
                       </div>
                     </button>
                   );

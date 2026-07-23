@@ -321,7 +321,7 @@ export default function AppShell() {
           <p className="text-[#0A0A0A] text-[13px] font-bold leading-tight tracking-[-0.01em]">
             Customer Forms Hub
           </p>
-          <p className="text-[#9CA3AF] text-[11px] tracking-[0.04em] uppercase font-medium">
+          <p className="text-[#1F2937] text-[12px] tracking-[0.04em] uppercase font-medium">
             Cloudera GOM
           </p>
         </div>
@@ -338,13 +338,13 @@ export default function AppShell() {
                 setKbFocusEntry(null);
                 setMobileNav(false);
               }}
-              className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[13px] w-full text-left transition-all ${active ? "bg-[#F96702] text-white font-bold shadow-[0_2px_8px_rgba(249,103,2,0.3)]" : "text-[#6B7280] hover:text-[#111111] hover:bg-[#F5F3F0]"}`}
+              className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[13px] w-full text-left transition-all ${active ? "bg-[#F96702] text-white font-bold shadow-[0_2px_8px_rgba(249,103,2,0.3)]" : "text-[#374151] hover:text-[#374151] hover:bg-[#F5F3F0]"}`}
             >
               <Icon size={15} />
               <span className="flex-1">{label}</span>
               {id === "notifications" && unread > 0 && (
                 <span
-                  className={`text-[10px] font-bold rounded-full px-1.5 py-px ${active ? "bg-white text-[#F96702]" : "bg-[#F96702] text-white"}`}
+                  className={`text-[11px] font-bold rounded-full px-1.5 py-px ${active ? "bg-white text-[#F96702]" : "bg-[#F96702] text-white"}`}
                 >
                   {unread}
                 </span>
@@ -353,11 +353,11 @@ export default function AppShell() {
           );
         })}
       </nav>
-      <div className="px-4 py-3 border-t border-[rgba(0,0,0,0.06)] shrink-0 flex items-center gap-1.5 text-[10px] font-medium">
+      <div className="px-4 py-3 border-t border-[rgba(0,0,0,0.06)] shrink-0 flex items-center gap-1.5 text-[11px] font-medium">
         <span
           className={`w-1.5 h-1.5 rounded-full ${backendLive ? "bg-green-500" : "bg-[#D8D5D0]"}`}
         />
-        <span className={backendLive ? "text-green-700" : "text-[#B8B5B0]"}>
+        <span className={backendLive ? "text-green-700" : "text-[#1F2937]"}>
           {backendLive
             ? "Backend live — real AI parsing & retrieval"
             : "Backend offline — simulated data"}
@@ -394,12 +394,12 @@ export default function AppShell() {
           <button
             aria-label="Open menu"
             onClick={() => setMobileNav(true)}
-            className="lg:hidden w-9 h-9 rounded-full border border-[rgba(0,0,0,0.1)] flex items-center justify-center text-[#6B7280] hover:text-[#F96702] shrink-0"
+            className="lg:hidden w-9 h-9 rounded-full border border-[rgba(0,0,0,0.1)] flex items-center justify-center text-[#374151] hover:text-[#F96702] shrink-0"
           >
             <Menu size={16} />
           </button>
           <div className="relative flex-1 max-w-md">
-            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F2937]" />
             <input
               value={globalQuery}
               onChange={(e) => setGlobalQuery(e.target.value)}
@@ -419,11 +419,11 @@ export default function AppShell() {
             )}
             <button
               onClick={() => setModule("notifications")}
-              className="relative w-9 h-9 rounded-full border border-[rgba(0,0,0,0.1)] flex items-center justify-center text-[#6B7280] hover:text-[#F96702] hover:border-[#F96702]/40 transition-all"
+              className="relative w-9 h-9 rounded-full border border-[rgba(0,0,0,0.1)] flex items-center justify-center text-[#374151] hover:text-[#F96702] hover:border-[#F96702]/40 transition-all"
             >
               <Bell size={15} />
               {unread > 0 && (
-                <span className="absolute -top-1 -right-1 bg-[#F96702] text-white text-[9px] font-bold rounded-full min-w-[14px] h-3.5 px-1 flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 bg-[#F96702] text-white text-[11px] font-bold rounded-full min-w-[14px] h-3.5 px-1 flex items-center justify-center">
                   {unread}
                 </span>
               )}
@@ -437,18 +437,18 @@ export default function AppShell() {
                   <User size={13} className="text-[#F96702]" />
                 </span>
                 <span className="text-left hidden sm:block">
-                  <span className="block text-[11px] font-semibold text-[#0A0A0A] leading-tight">
+                  <span className="block text-[12px] font-semibold text-[#0A0A0A] leading-tight">
                     {currentUser}
                   </span>
-                  <span className="block text-[9.5px] text-[#9CA3AF] uppercase tracking-[0.08em] font-bold leading-tight">
+                  <span className="block text-[11px] text-[#1F2937] uppercase tracking-[0.08em] font-bold leading-tight">
                     {role}
                   </span>
                 </span>
-                <ChevronDown size={11} className="text-[#9CA3AF]" />
+                <ChevronDown size={11} className="text-[#1F2937]" />
               </button>
               {roleMenu && (
                 <div className="absolute right-0 mt-1.5 w-44 bg-white rounded-xl border border-[rgba(0,0,0,0.08)] shadow-[0_8px_24px_rgba(0,0,0,0.12)] py-1.5 z-50">
-                  <p className="px-3 py-1 text-[10px] font-black text-[#ABABAB] uppercase tracking-[0.12em]">
+                  <p className="px-3 py-1 text-[11px] font-black text-[#1F2937] uppercase tracking-[0.12em]">
                     Switch role (demo)
                   </p>
                   {(["Analyst", "SME", "Manager"] as Role[]).map((r) => (
@@ -482,7 +482,7 @@ export default function AppShell() {
             </p>
             <button
               onClick={() => void pingBackend()}
-              className="text-[11px] font-bold text-[#92400E] border border-[#F59E0B]/40 rounded-full px-3 py-1 hover:bg-[#FDE68A]/60 whitespace-nowrap transition-colors"
+              className="text-[12px] font-bold text-[#92400E] border border-[#F59E0B]/40 rounded-full px-3 py-1 hover:bg-[#FDE68A]/60 whitespace-nowrap transition-colors"
             >
               Retry now
             </button>

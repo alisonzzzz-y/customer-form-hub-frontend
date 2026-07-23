@@ -48,7 +48,7 @@ export function TicketDetailPage({
       <div className="px-7 pt-5 pb-0 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0">
         <button
           onClick={() => actions.go("tickets")}
-          className="flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase text-[#ABABAB] hover:text-[#F96702] transition-colors mb-2"
+          className="flex items-center gap-1.5 text-[12px] font-semibold tracking-[0.06em] uppercase text-[#1F2937] hover:text-[#F96702] transition-colors mb-2"
         >
           <ArrowLeft size={11} /> Tickets
         </button>
@@ -59,7 +59,7 @@ export function TicketDetailPage({
               <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight leading-snug">
                 {ticket.id} · {ticket.customer}
               </h1>
-              <p className="text-sm text-[#6B7280] mt-0.5">
+              <p className="text-sm text-[#374151] mt-0.5">
                 Due {fmtDate(ticket.due)} · NDA: {ticket.nda} · Owner {ticket.owner} · {ticket.sorId}
               </p>
             </div>
@@ -111,11 +111,11 @@ export function TicketDetailPage({
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-3.5 py-2 text-[12px] font-semibold border-b-2 transition-colors ${tab === t ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
+              className={`px-3.5 py-2 text-[12px] font-semibold border-b-2 transition-colors ${tab === t ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#374151] hover:text-[#1F2937]"}`}
             >
               {t}
               {t === "Workflow" && qs.length > 0 && (
-                <span className="ml-1 text-[10px] font-bold text-[#9CA3AF]">{qs.length}</span>
+                <span className="ml-1 text-[11px] font-bold text-[#1F2937]">{qs.length}</span>
               )}
             </button>
           ))}
@@ -186,13 +186,13 @@ function OverviewTab({
             ["Due", fmtDate(ticket.due)],
           ].map(([l, v]) => (
             <div key={l} className="flex justify-between gap-3">
-              <span className="text-[#9CA3AF]">{l}</span>
+              <span className="text-[#1F2937]">{l}</span>
               <span className="font-medium text-[#1F2937] text-right">{v}</span>
             </div>
           ))}
           <div className="pt-2 border-t border-border">
             <div className="flex justify-between mb-1">
-              <span className="text-[#9CA3AF]">Progress</span>
+              <span className="text-[#1F2937]">Progress</span>
               <span className="font-bold text-[#C05600]">{progress}%</span>
             </div>
             <div className="h-1.5 bg-[#F5F3F0] rounded-full overflow-hidden">
@@ -208,7 +208,7 @@ function OverviewTab({
       <div className="flex flex-col gap-4">
         <Card title="Question Completion by Department">
           {deptStats.length === 0 ? (
-            <p className="px-4 py-4 text-[13px] text-[#9CA3AF] italic">
+            <p className="px-4 py-4 text-[13px] text-[#1F2937] italic">
               No questions extracted yet — confirm intake in the Workflow tab.
             </p>
           ) : (
@@ -216,11 +216,11 @@ function OverviewTab({
               {deptStats.map((s) => (
                 <div key={s.dept} className="px-4 py-2.5 flex items-center gap-3">
                   <span className="text-[13px] font-semibold text-[#1F2937] flex-1">{s.dept}</span>
-                  <span className="text-[11px] text-[#6B7280]">
+                  <span className="text-[12px] text-[#374151]">
                     {s.ready}/{s.total} ready
                   </span>
                   {s.waiting > 0 && (
-                    <span className="text-[10px] font-bold text-[#854D0E] bg-[#FEFCE8] border border-[#FDE68A] rounded-full px-2 py-0.5">
+                    <span className="text-[11px] font-bold text-[#854D0E] bg-[#FEFCE8] border border-[#FDE68A] rounded-full px-2 py-0.5">
                       {s.waiting} with SME
                     </span>
                   )}
@@ -239,7 +239,7 @@ function OverviewTab({
               <strong>{suggestions}</strong> suggested answers generated (
               {qs.length ? Math.round((suggestions / qs.length) * 100) : 0}% coverage)
             </p>
-            <p className="text-[11px] text-[#9CA3AF]">
+            <p className="text-[12px] text-[#1F2937]">
               AI suggests. Humans decide — every suggestion needs review before approval.
             </p>
           </div>
@@ -248,7 +248,7 @@ function OverviewTab({
 
       <Card title="SME ETA Tracker (this ticket)">
         {smeReqs.length === 0 ? (
-          <p className="px-4 py-4 text-[13px] text-[#9CA3AF] italic">No SME requests yet.</p>
+          <p className="px-4 py-4 text-[13px] text-[#1F2937] italic">No SME requests yet.</p>
         ) : (
           <div className="divide-y divide-border">
             {smeReqs.map((r) => {
@@ -261,7 +261,7 @@ function OverviewTab({
                     </span>
                     <Pill value={over ? "Overdue" : r.status} />
                   </div>
-                  <p className="text-[11px] text-[#6B7280] mt-1">
+                  <p className="text-[12px] text-[#374151] mt-1">
                     {r.questionIds.length} question{r.questionIds.length === 1 ? "" : "s"} · ETA{" "}
                     {r.eta ? fmtDateTime(r.eta) : "not set"}
                   </p>
@@ -291,7 +291,7 @@ function FilesTab({
     <Card title="Files">
       <div className="divide-y divide-border">
         {ticket.files.length === 0 && (
-          <p className="px-4 py-5 text-[13px] text-[#9CA3AF] italic">No files uploaded yet.</p>
+          <p className="px-4 py-5 text-[13px] text-[#1F2937] italic">No files uploaded yet.</p>
         )}
         {ticket.files.map((f) => (
           <div key={f.name} className="px-4 py-3 flex items-center gap-3">
@@ -300,7 +300,7 @@ function FilesTab({
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[13px] font-semibold text-[#1F2937] truncate">{f.name}</p>
-              <p className="text-[11px] text-[#9CA3AF]">
+              <p className="text-[12px] text-[#1F2937]">
                 {f.kind} · {f.size} · uploaded {fmtDate(f.uploaded)}
               </p>
             </div>
@@ -309,7 +309,7 @@ function FilesTab({
         ))}
       </div>
       <div className="px-4 py-3 border-t border-border flex flex-col gap-2">
-        <p className="text-[11px] text-[#9CA3AF] flex items-center gap-1">
+        <p className="text-[12px] text-[#1F2937] flex items-center gap-1">
           <Brain size={10} /> Question extraction runs automatically when intake is confirmed —
           no manual processing step.
         </p>
@@ -358,7 +358,7 @@ function UploadSupporting({ actions, ticketId }: { actions: AppActions; ticketId
       />
       <button
         onClick={() => inputRef.current?.click()}
-        className="flex items-center justify-center gap-1.5 py-2 w-full border border-dashed border-border rounded-md text-[11px] text-[#6B7280] hover:border-[#F96702]/40 hover:text-[#F96702]"
+        className="flex items-center justify-center gap-1.5 py-2 w-full border border-dashed border-border rounded-md text-[12px] text-[#374151] hover:border-[#F96702]/40 hover:text-[#F96702]"
       >
         <Upload size={11} /> Upload supporting document
       </button>
@@ -403,7 +403,7 @@ function TimelineTab({ state, ticketId }: { state: AppState; ticketId: string })
                 )}
               </div>
               <p
-                className={`text-[13px] pb-4 ${active ? "font-bold text-[#C05600]" : done ? "font-medium text-[#374151]" : "text-[#C0BEBA]"}`}
+                className={`text-[13px] pb-4 ${active ? "font-bold text-[#C05600]" : done ? "font-medium text-[#374151]" : "text-[#1F2937]"}`}
               >
                 {m}
               </p>
@@ -420,7 +420,7 @@ function ActivityTab({ state, ticketId }: { state: AppState; ticketId: string })
   return (
     <Card title="Activity Log">
       {events.length === 0 ? (
-        <p className="px-4 py-5 text-[13px] text-[#9CA3AF] italic">No activity recorded yet.</p>
+        <p className="px-4 py-5 text-[13px] text-[#1F2937] italic">No activity recorded yet.</p>
       ) : (
         <div className="divide-y divide-border">
           {events.map((a) => (
@@ -432,7 +432,7 @@ function ActivityTab({ state, ticketId }: { state: AppState; ticketId: string })
                 <p className="text-[13px] text-[#374151]">
                   <span className="font-semibold">{a.actor}</span> {a.action}
                 </p>
-                <p className="text-[11px] text-[#9CA3AF] mt-0.5">{fmtDateTime(a.at)}</p>
+                <p className="text-[12px] text-[#1F2937] mt-0.5">{fmtDateTime(a.at)}</p>
               </div>
             </div>
           ))}
