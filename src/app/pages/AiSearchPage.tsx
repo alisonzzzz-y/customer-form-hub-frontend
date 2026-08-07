@@ -5,17 +5,13 @@ import { AppActions, AppState } from "../AppShell";
 import { mapSharing, ragSearch } from "../services/backend";
 import { Card, ConfidenceBadge, EmptyState, SharingBadge } from "../components/ui";
 
-// PRD §12: standalone, citation-first lookup over APPROVED knowledge only.
-// Shows "no answer" rather than inventing content (AIS-06).
-
 type ScoredEntry = { entry: MvpKnowledgeEntry; confidence: number };
 
 type SearchOutcome =
   | { kind: "hit"; entry: MvpKnowledgeEntry; confidence: number; related: ScoredEntry[] }
   | { kind: "miss" };
 
-// Clickable starters so first-time users see what kind of question works —
-// each one has matching approved knowledge in the seeded/live KB.
+// Example searches backed by approved knowledge entries.
 const SAMPLE_QUESTIONS = [
   "Do we hold ISO 27001 certification?",
   "How is customer data encrypted in transit and at rest?",
@@ -54,7 +50,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
       try {
         localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
       } catch {
-        // storage full/blocked — history is a convenience, not a requirement
+        // Search history is optional.
       }
       return next;
     });
@@ -65,7 +61,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
     try {
       localStorage.removeItem(HISTORY_KEY);
     } catch {
-      // ignore
+      // Search history is optional.
     }
   };
 
@@ -77,10 +73,10 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
     setResult(null);
     remember(text);
 
-    // Live semantic search first (POST /api/knowledge-base/search)
+    // Use live search when the backend is available.
     const live = await ragSearch(text);
     if (live !== null) {
-      const usable = live; // backend applies its own similarity threshold
+      const usable = live;
       if (usable.length === 0) {
         setResult({ kind: "miss" });
       } else {
@@ -109,7 +105,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
       return;
     }
 
-    // Fallback: simulated retrieval over seeded approved entries (AIS-01, KB-05)
+    // Use local approved entries when the backend is unavailable.
     setTimeout(() => {
       const approved = state.knowledge.filter((k) => k.status === "Approved");
       const ranked = approved
@@ -256,8 +252,7 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
                   <div className="mx-4 mb-3 bg-[#FEF2F2] border border-[#FCA5A5]/50 rounded-md px-3 py-2 flex items-start gap-2">
                     <Lock size={11} className="text-[#991B1B] shrink-0 mt-0.5" />
                     <p className="text-[12px] text-[#991B1B]">
-                      This answer is NDA-restricted. Confirm the customer NDA before sharing
-                      (AIS-05).
+                      This answer is NDA-restricted. Confirm the customer NDA before sharing.
                     </p>
                   </div>
                 )}
@@ -291,8 +286,6 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
                 </div>
               </div>
 
-              {/* Matches 2 and 3 as full answers — retrieval returns top 3 and
-                  users compare them, so the content must be readable in place */}
               {result.related.map(({ entry: k, confidence }, i) => (
                 <div
                   key={k.id}

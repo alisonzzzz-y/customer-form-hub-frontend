@@ -12,9 +12,6 @@ import { Card, EmptyState, Pill, Th } from "../components/ui";
 import { useEffect, useState } from "react";
 import { fetchDashboardStats, type DashboardStats } from "../services/backend";
 
-// PRD §6: what needs attention today, which tickets are blocked, which SME
-// responses are overdue. Metric cards deep-link into filtered Tickets (DB-04).
-
 export function DashboardPage({
   state,
   actions,
@@ -24,9 +21,7 @@ export function DashboardPage({
 }) {
   const { tickets, smeRequests, activity, knowledge, role, currentUser } =
     state;
-  // Live aggregate metrics from the backend (whole-database truth, not just
-  // this session). Null until loaded, or if the backend is unreachable —
-  // the cards simply hide in that case.
+  // Hide live metrics when the backend is unavailable.
   const [stats, setStats] = useState<DashboardStats | null>(null);
   useEffect(() => {
     let alive = true;
@@ -38,7 +33,6 @@ export function DashboardPage({
     };
   }, []);
 
-  // DB-06: Analyst sees own tickets first; Manager sees team level
   const scoped =
     role === "Manager"
       ? tickets
@@ -85,7 +79,7 @@ export function DashboardPage({
     },
   ];
 
-  // DB-02: priority = overdue first, then due date
+  // Show overdue tickets first, then sort by due date.
   const priority = [...open].sort((a, b) => {
     const ao = isOverdueTicket(a) ? 0 : 1;
     const bo = isOverdueTicket(b) ? 0 : 1;
@@ -93,7 +87,6 @@ export function DashboardPage({
     return a.due.localeCompare(b.due);
   });
 
-  // DB-03: one row per active SME request, linked to its ticket, overdue first
   const activeSme = smeRequests
     .filter((r) => !["Returned", "Closed"].includes(r.status))
     .map((r) => ({
@@ -134,7 +127,6 @@ export function DashboardPage({
       </div>
 
       <div className="flex-1 overflow-auto px-4 sm:px-8 py-7 flex flex-col gap-5">
-        {/* DB-01 metric cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {metrics.map((m) => (
             <button
@@ -154,7 +146,6 @@ export function DashboardPage({
           ))}
         </div>
 
-        {/* Live AI metrics from the backend */}
         {stats && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Card title="AI Coverage" className="overflow-hidden">
@@ -204,7 +195,6 @@ export function DashboardPage({
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-          {/* DB-02 priority list */}
           <Card
             title="My Priority Tickets"
             className="lg:col-span-3 overflow-hidden"
@@ -264,7 +254,6 @@ export function DashboardPage({
             )}
           </Card>
 
-          {/* DB-03 SME ETA Tracker — rows link to their ticket */}
           <Card
             title="SME ETA Tracker"
             className="lg:col-span-2 overflow-hidden"
@@ -313,7 +302,6 @@ export function DashboardPage({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-          {/* DB-05 recent activity */}
           <Card
             title="Recent Activity"
             className="lg:col-span-3 overflow-hidden"
@@ -353,7 +341,6 @@ export function DashboardPage({
             )}
           </Card>
 
-          {/* Knowledge pending review */}
           <Card
             title="Knowledge Pending Review"
             className="lg:col-span-2 overflow-hidden"
@@ -394,7 +381,6 @@ export function DashboardPage({
   );
 }
 
-// Minimal dependency-free donut. r=16 → circumference ≈ 100.53, driven by a 0-100 percentage.
 function DonutChart({ percent }: { percent: number }) {
   const r = 16;
   const c = 2 * Math.PI * r;

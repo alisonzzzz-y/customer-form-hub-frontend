@@ -1,5 +1,4 @@
-// Seeded demo data for the MVP shell (PRD §16, NFR-07). Purely local —
-// anything loaded from the live backend appears alongside these.
+// Local demo data used when the backend is unavailable.
 
 import {
   MvpActivity,
@@ -345,7 +344,7 @@ export const SEED_QUESTIONS: MvpQuestion[] = [
     duplicateOf: 2,
     sharingStatus: "Internal",
   },
-  // TK-1024 — Globex has NO NDA in place: demonstrates the NDA block (AI-08)
+  // This ticket demonstrates the missing-NDA warning.
   {
     id: 10,
     ticketId: "TK-1024",
@@ -392,7 +391,7 @@ export const SEED_QUESTIONS: MvpQuestion[] = [
     confidence: 0.55,
     sharingStatus: "Internal",
   },
-  // TK-1019 — Initech: SME packages already sent, tracking ETAs
+  // This ticket has open SME requests.
   {
     id: 20,
     ticketId: "TK-1019",
@@ -435,7 +434,7 @@ export const SEED_QUESTIONS: MvpQuestion[] = [
     },
     sharingStatus: "Public",
   },
-  // TK-1022 — Acme: everything answered from knowledge, ready for final review
+  // This ticket is ready for final review.
   {
     id: 30,
     ticketId: "TK-1022",

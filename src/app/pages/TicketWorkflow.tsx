@@ -61,10 +61,7 @@ import { ClarificationEmailModal } from "./NewRequestFlow";
 import { attachSuggestions, extractQuestionsFor, smeAnswerFor } from "../services/simulation";
 import { Card, ConfidenceBadge, Pill, SharingBadge, Th, openMailDraft } from "../components/ui";
 
-// Guided per-ticket workflow, ported from the original prototype:
-// Intake → Grouping → Answer Review → SME Package → ETA Tracking → Final Review.
-// Routing a question to SME only queues it; requests are sent per department
-// from the SME Package stage.
+// Manages the ticket workflow from intake to completion.
 
 const STAGES: { id: TicketStage; label: string }[] = [
   { id: "intake", label: "Intake" },
@@ -142,8 +139,6 @@ function StageStepper({ stage }: { stage: TicketStage }) {
     </div>
   );
 }
-
-// ─── Stage: Intake (same full-page check whether extraction was complete) ────
 
 const MISSING_LABELS: Record<string, string> = {
   customer: "Customer name — which account is this request for?",
@@ -278,22 +273,18 @@ function IntakePanel({
     patch({ status: "AI Processing" });
     actions.logActivity("Confirmed intake complete — AI analysis started", ticket.id);
 
-    // sync the ticket to the backend now that the fields are final
     let backendId = ticket.backendId ?? null;
     if (!backendId) {
       backendId = await createBackendTicket({ ...ticket });
       if (backendId) patch({ backendId });
     }
 
-    // real file → backend parse + LLM classification; otherwise simulation
     const base = Math.max(0, ...state.questions.map((q) => q.id));
     const file = pendingForms.get(ticket.id);
     let newQs: MvpQuestion[] = [];
     let live = false;
     if (file) {
-      // A real file NEVER falls back to demo questions (F-01): every failure
-      // mode stops here with its own message, and the file stays attached so
-      // "Next: Analyse Form" doubles as the retry button.
+      // Keep the file attached so the user can retry after a parsing failure.
       const parsed = await parseQuestionnaire(file, backendId);
       const fail = (message: string, log: string) => {
         setProcessing(false);
@@ -337,7 +328,6 @@ function IntakePanel({
         confidence: null,
       }));
     } else {
-      // No form attached — the explicitly simulated demo path.
       newQs = extractQuestionsFor(ticket.id, base);
       actions.addToast("No form attached — using simulated demo questions.", "info");
     }
@@ -369,7 +359,7 @@ function IntakePanel({
         `${newQs.length} questions ${live ? "parsed from the uploaded form" : "extracted"} — review the department grouping.`,
         "success",
       );
-    }, live ? 0 : 1400); // live path: no artificial delay (F-06)
+    }, live ? 0 : 1400);
   };
 
   if (processing)
@@ -504,8 +494,6 @@ function ProcessingCard({ text }: { text: string }) {
   );
 }
 
-// ─── Stage: Grouping (adjust AI department classification, per-dept tabs) ───
-
 function GroupingPanel({
   ticket,
   qs,
@@ -520,7 +508,6 @@ function GroupingPanel({
   const [customFor, setCustomFor] = useState<number | null>(null);
   const [customName, setCustomName] = useState("");
 
-  // standard question departments first, then any custom ones already assigned
   const customs = [...new Set(qs.map((q) => q.department))].filter(
     (d) => !QUESTION_DEPARTMENTS.includes(d),
   );
@@ -542,8 +529,7 @@ function GroupingPanel({
     actions.logActivity("Confirmed department grouping — matching approved knowledge", ticket.id);
     const pending = qs.filter((q) => !q.finalAnswer && q.status !== "SME Queued");
 
-    // Live RAG retrieval in batches of 5 (free-tier backend + one embedding
-    // call per question — unbounded concurrency risks timeouts, PR #3 review)
+    // Search in small batches to avoid backend timeouts.
     let updates: Map<number, MvpQuestion> | null = null;
     const resultMap = await ragSearchAll(
       pending.map((q) => ({ id: q.id, text: q.normalised || q.original })),
@@ -573,7 +559,7 @@ function GroupingPanel({
         ticket.id,
       );
       actions.addToast("Knowledge matches ready — review each answer.", "success");
-    }, updates ? 0 : 1200); // live path: no artificial delay (F-06)
+    }, updates ? 0 : 1200);
   };
 
   if (processing)
@@ -588,8 +574,6 @@ function GroupingPanel({
         </span>
       }
     >
-      {/* AI parks questions it cannot route as TBD — make the required action
-          unmissable before the analyst confirms the grouping */}
       {qs.some((q) => q.department === TBD_DEPARTMENT) && (
         <div className="bg-[#FEF3C7] border-b border-[#F59E0B]/30 px-4 py-2.5 flex items-center gap-2">
           <AlertTriangle size={13} className="text-[#92400E] shrink-0" />
@@ -599,7 +583,6 @@ function GroupingPanel({
           </p>
         </div>
       )}
-      {/* department tabs: jump between groups instead of scrolling one long list */}
       <div className="flex border-b border-border overflow-x-auto">
         {depts.map((d) => (
           <button
@@ -700,8 +683,6 @@ function GroupingPanel({
   );
 }
 
-// ─── Stage: Answer Review (per-department tabs, card-by-card) ───────────────
-
 function ReviewPanel({
   ticket,
   qs,
@@ -718,8 +699,6 @@ function ReviewPanel({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saveToKb, setSaveToKb] = useState(false);
-  // open by default — hiding the other top-3 matches behind a collapsed bar
-  // made users think only one match existed
   const [showAlternatives, setShowAlternatives] = useState(true);
 
   const customs = [...new Set(qs.map((x) => x.department))].filter((d) => !QUESTION_DEPARTMENTS.includes(d));
@@ -742,12 +721,9 @@ function ReviewPanel({
   const select = (id: number) => {
     setSelectedId(id);
     setEditing(false);
-    // every card starts with its top-3 matches expanded — collapsing is a
-    // per-card choice, not the default (users missed the other matches)
     setShowAlternatives(true);
   };
 
-  // after an action: next unresolved question, preferring the current tab
   const advance = () => {
     const next =
       visible.find((x) => x.id !== q?.id && !RESOLVED.includes(x.status)) ??
@@ -756,7 +732,6 @@ function ReviewPanel({
     else setEditing(false);
   };
 
-  // explicit Next: following question in the current tab, wrapping around
   const nextQuestion = () => {
     if (!q || visible.length === 0) return;
     const idx = visible.findIndex((x) => x.id === q.id);
@@ -800,7 +775,6 @@ function ReviewPanel({
     }
   };
 
-  // swap an alternative KB match into the primary suggestion slot
   const useAlternative = (altIndex: number) => {
     if (!q?.alternatives) return;
     const alt = q.alternatives[altIndex];
@@ -851,7 +825,6 @@ function ReviewPanel({
         </span>
       </div>
       <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100vh-330px)]">
-        {/* department tabs */}
         <div className="flex border-b border-border overflow-x-auto shrink-0">
           {["All", ...depts].map((d) => {
             const count = d === "All" ? qs.length : qs.filter((x) => x.department === d).length;
@@ -871,8 +844,6 @@ function ReviewPanel({
                 <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${deptTab === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
                   {count}
                 </span>
-                {/* neutral "nothing left here" marker — a green check reads as
-                    "all approved", but routed-to-SME questions land here too */}
                 {done && (
                   <span
                     title="No questions left to review in this department — each one is approved or routed to an SME"
@@ -886,7 +857,6 @@ function ReviewPanel({
           })}
         </div>
         <div className="flex flex-col md:flex-row flex-1 min-h-0">
-          {/* Question list: sidebar on desktop, compact strip above the card on mobile */}
           <div className="w-full md:w-72 max-h-40 md:max-h-none border-b md:border-b-0 md:border-r border-[rgba(0,0,0,0.06)] overflow-y-auto shrink-0 bg-[#FAFAF9]">
             {visible.map((item) => (
               <button
@@ -902,7 +872,6 @@ function ReviewPanel({
               </button>
             ))}
           </div>
-          {/* Answer card: content scrolls, the action bar below stays visible */}
           <div className="flex-1 flex flex-col min-w-0">
             <div className="flex-1 md:overflow-y-auto p-6 flex flex-col gap-4 [&>*]:shrink-0">
             <div className="flex items-start justify-between gap-4 pb-4 border-b border-[rgba(0,0,0,0.06)]">
@@ -1000,7 +969,6 @@ function ReviewPanel({
                   </div>
                 </div>
 
-                {/* Other matches above the 0.35 similarity threshold (top 3 total) */}
                 {(q.alternatives?.length ?? 0) > 0 && (
                   <div className="border border-border rounded-xl overflow-hidden">
                     <button
@@ -1055,7 +1023,6 @@ function ReviewPanel({
             )}
 
             </div>
-            {/* pinned action bar — always visible next to the stage Next button */}
             <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-t border-[rgba(0,0,0,0.06)] bg-[#FAFAFA] shrink-0">
               {editing ? (
                 <>
@@ -1215,8 +1182,6 @@ function ReviewPanel({
   );
 }
 
-// ─── Stage: SME Package (per-department Excel + email, send in bulk) ─────────
-
 function SmePackagePanel({
   ticket,
   qs,
@@ -1242,11 +1207,8 @@ function SmePackagePanel({
   const allSent = queued.length === 0;
   const unsentDepts = depts.filter((d) => queued.some((q) => q.department === d));
   const [selected, setSelected] = useState<string[]>([]);
-  // Sending needs several slow backend round-trips; buttons must lock while in
-  // flight or double-clicks create real duplicate requests in the shared DB.
+  // Disable controls while requests are being created.
   const [busy, setBusy] = useState(false);
-  // After a batch send: one mail draft per department, opened one click at a
-  // time (browsers allow a single mailto per user gesture).
   const [batchDrafts, setBatchDrafts] = useState<
     { dept: string; to: string; subject: string; body: string; opened: boolean }[] | null
   >(null);
@@ -1277,7 +1239,7 @@ function SmePackagePanel({
       "#,Question,SME Answer",
       ...rows.map((q, i) => `${i + 1},${esc(q.original)},`),
     ].join("\r\n");
-    // BOM so Excel detects UTF-8
+    // Add a BOM so Excel detects UTF-8.
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1292,8 +1254,7 @@ function SmePackagePanel({
       (q) => q.ticketId === ticket.id && q.status === "SME Queued" && q.department === dept,
     );
     if (deptQueued.length === 0) return;
-    // Idempotency: never open a second request for a department that already
-    // has one un-returned — duplicates persist in the shared backend DB.
+    // Do not create a duplicate open request for the same department.
     const open = state.smeRequests.find(
       (r) => r.ticketId === ticket.id && r.department === dept && r.status !== "Returned",
     );
@@ -1411,7 +1372,7 @@ function SmePackagePanel({
           sent.length > 0 ? "info" : "warning",
         );
       }
-      // browsers allow one mailto per click — hand the drafts over one by one
+      // Open one email draft per click.
       if (drafts.length > 0) setBatchDrafts(drafts);
     } finally {
       setBusy(false);
@@ -1424,7 +1385,6 @@ function SmePackagePanel({
     try {
       const req = await sendOne(tab);
       if (!req) return;
-      // The system never sends email itself — open the draft in the mail app.
       const d = draftFor(tab, req);
       openMailDraft(d.to, d.subject, d.body);
       actions.addToast(
@@ -1525,7 +1485,6 @@ function SmePackagePanel({
           })}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
-          {/* Excel preview */}
           <div className="flex flex-col">
             <div className="px-3.5 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center gap-1.5">
               <FileSpreadsheet size={12} className="text-green-600" />
@@ -1564,7 +1523,6 @@ function SmePackagePanel({
               </button>
             </div>
           </div>
-          {/* Email draft */}
           <div className="flex flex-col">
             <div className="px-3.5 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center gap-1.5">
               <Mail size={12} className="text-[#F96702]" />
@@ -1677,8 +1635,6 @@ function SmePackagePanel({
         </span>
       </div>
 
-      {/* Batch send hands over one mail draft per department — a browser can
-          only open a single mailto per user click */}
       {batchDrafts && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-[560px] max-h-[80vh] overflow-hidden flex flex-col">
@@ -1734,8 +1690,6 @@ function SmePackagePanel({
     </div>
   );
 }
-
-// ─── Stage: ETA Tracking ─────────────────────────────────────────────────────
 
 function EtaPanel({
   ticket,
@@ -2019,10 +1973,7 @@ function EtaPanel({
   );
 }
 
-// The SME replied by email with the completed Excel — this is where those
-// answers enter the system. Upload the returned file (parsed automatically;
-// real parsing needs a backend endpoint, see NOTES_FOR_ALISON) or paste each
-// answer by hand. Partial returns are allowed.
+// Record answers returned by the SME.
 function RecordAnswersModal({
   ticket,
   req,
@@ -2084,9 +2035,7 @@ function RecordAnswersModal({
       actions.setSmeRequests((p) =>
         p.map((x) => (x.id === req.id ? { ...x, status: "In Progress" } : x)),
       );
-      // "In Progress" is a frontend-only state — the backend vocabulary is
-      // Waiting for ETA / ETA Confirmed / Overdue / Returned, so its status
-      // stays untouched on partial returns (per-question answers sync above).
+      // Leave the backend request open until every answer is returned.
       actions.logActivity(
         `Recorded ${filled.length}/${openQs.length} returned ${req.department} SME answer(s) — partial return`,
         ticket.id,
@@ -2112,7 +2061,6 @@ function RecordAnswersModal({
         </div>
 
         <div className="flex-1 overflow-auto p-4 flex flex-col gap-3">
-          {/* upload the returned Excel */}
           <input
             ref={fileRef}
             type="file"
@@ -2176,10 +2124,6 @@ function RecordAnswersModal({
               <p className="text-[13px] text-[#9CA3AF] italic">
                 All questions in this request already have answers.
               </p>
-              {/* escape hatch: a request whose questions were all answered
-                  elsewhere (e.g. via a duplicate request) can never collect a
-                  new answer, so it could never reach Returned — allow closing
-                  it directly instead of deadlocking the workflow */}
               <div className="bg-[#FFF8F1] border border-[#F96702]/20 rounded-lg px-3.5 py-3 flex items-center gap-3">
                 <p className="text-[12px] text-[#6B7280] flex-1">
                   Nothing left to record here — mark the request as returned so the ticket can move
@@ -2225,9 +2169,7 @@ function RecordAnswersModal({
   );
 }
 
-// Context-aware nudge: the template matches the SME request's actual state
-// (no ETA yet / due soon / overdue / general check-in). Editable, then opens
-// a draft in the analyst's mail client.
+// Draft a reminder based on the current SME request status.
 function NudgeModal({
   ticket,
   req,
@@ -2350,8 +2292,6 @@ function NudgeModal({
     </div>
   );
 }
-
-// ─── Stage: Final Review & Export ────────────────────────────────────────────
 
 function FinalPanel({
   ticket,
@@ -2604,8 +2544,6 @@ function FinalPanel({
     </div>
   );
 }
-
-// ─── Stage: Done (read-only question record) ─────────────────────────────────
 
 function DonePanel({ qs, actions }: { qs: MvpQuestion[]; actions: AppActions }) {
   const [openId, setOpenId] = useState<number | null>(null);

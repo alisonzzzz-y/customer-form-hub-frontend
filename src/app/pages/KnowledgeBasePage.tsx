@@ -6,10 +6,6 @@ import { AppActions, AppState } from "../AppShell";
 import { upsertBackendKnowledge } from "../services/backend";
 import { EmptyState, Pill, SharingBadge, Th } from "../components/ui";
 
-// PRD §11: entries with metadata, department browsing (not "collections" in
-// the UI), and a Pending Review approval queue (§11.2). Archive, never delete
-// (NFR-02, Appendix B).
-
 export function KnowledgeBasePage({
   state,
   actions,
@@ -31,7 +27,6 @@ export function KnowledgeBasePage({
   const [detailId, setDetailId] = useState<number | null>(null);
   const [editorFor, setEditorFor] = useState<null | "new" | number>(null);
 
-  // deep link from dashboard / drawers
   useEffect(() => {
     if (focusEntry !== null) setDetailId(focusEntry);
   }, [focusEntry]);
@@ -60,7 +55,7 @@ export function KnowledgeBasePage({
           : k,
       ),
     );
-    // best-effort write-back so live backend data stays in sync
+    // Keep live backend data in sync when possible.
     if (updated)
       void upsertBackendKnowledge(
         { ...updated, status, lastUpdated: new Date().toISOString().slice(0, 10) },
@@ -71,7 +66,6 @@ export function KnowledgeBasePage({
 
   return (
     <div className="flex-1 flex overflow-hidden">
-      {/* Department browser (KB-02) */}
       <aside className="w-48 bg-white border-r border-[rgba(0,0,0,0.06)] shrink-0 overflow-y-auto py-4 px-3 hidden md:block">
         <p className="text-[10px] font-black text-[#ABABAB] uppercase tracking-[0.14em] px-3 pb-2">
           Browse
@@ -88,8 +82,7 @@ export function KnowledgeBasePage({
         <p className="text-[10px] font-black text-[#ABABAB] uppercase tracking-[0.14em] px-3 pt-4 pb-2">
           Departments
         </p>
-        {/* derive from the entries themselves — live data uses labels (e.g.
-            InfoSec, Compliance) outside the PRD list */}
+        {/* Include departments returned by the backend. */}
         {[
           ...DEPARTMENTS.filter((d) => knowledge.some((k) => k.department === d)),
           ...[...new Set(knowledge.map((k) => k.department))].filter(
@@ -227,7 +220,6 @@ export function KnowledgeBasePage({
         </div>
       </div>
 
-      {/* Entry detail drawer (§11.1) */}
       {detail && (
         <div className="fixed inset-0 z-50 flex">
           <div className="flex-1 bg-black/30" onClick={() => setDetailId(null)} />
@@ -376,7 +368,7 @@ function EntryEditor({
       actions.logActivity(`Edited knowledge entry “${title.trim()}”`);
       actions.addToast("Entry updated.", "success");
     } else {
-      // KB-06: new manual entries start as Pending Review
+      // New entries require approval before they can be used.
       const entry = {
         id: Math.max(...state.knowledge.map((k) => k.id)) + 1,
         title: title.trim(),
@@ -454,8 +446,7 @@ function EntryEditor({
         </div>
         {!existing && (
           <p className="text-[11px] text-[#854D0E] bg-[#FEFCE8] border border-[#FDE68A] rounded-md px-2.5 py-1.5 mt-2.5">
-            New entries start in Pending Review — they only feed AI retrieval after approval
-            (KB-05, §11.2).
+            New entries can be used by AI retrieval after they are approved.
           </p>
         )}
         <div className="flex justify-end gap-2 mt-4">

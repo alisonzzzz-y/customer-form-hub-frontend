@@ -23,10 +23,6 @@ import {
 import { AppActions, AppState } from "../AppShell";
 import { Card, EmptyState, FilterSelect, Pill, Th } from "../components/ui";
 
-// PRD §13: manager-oriented operational summaries. Metrics before AI
-// narrative; generated reports persist as records (RP-08); export JSON as the
-// minimum viable export (RP-09).
-
 const RANGES = ["This week", "This month", "Last 30 days", "All time"];
 
 function escapeHtml(value: string): string {
@@ -70,7 +66,6 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
 
   const companies = [...new Set(state.tickets.map((t) => t.customer))];
 
-  // ── Visual overview data (user feedback: graphical progress of multiple tickets) ──
   const RESOLVED = ["Approved", "Ready", "SME Complete"];
   const openProgress = state.tickets
     .filter((t) => !["Closed", "Archived", "Sent"].includes(t.status))
@@ -82,8 +77,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
       return { name: `${t.id} · ${t.customer}`, progress: pct, remaining: 100 - pct };
     })
     .sort((a, b) => b.progress - a.progress);
-  // Cap the chart at 10 rows — every open ticket in one bar list stretched
-  // the page endlessly; the full picture lives in the Tickets module.
+  // Limit the chart to ten tickets so it remains readable.
   const progressData = openProgress.slice(0, 10);
   const progressOverflow = openProgress.length - progressData.length;
 
@@ -240,7 +234,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
     setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
-  // Excel-friendly CSV of the metrics + summary
+  // Export the report as a CSV file that Excel can open.
   const exportExcel = (r: MvpReport) => {
     const rows = [
       ["Report", r.title],
@@ -260,7 +254,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
     actions.addToast("Report exported for Excel (.csv).", "info");
   };
 
-  // Print-friendly window — save as PDF from the browser dialog
+  // Open a printable report that can be saved as a PDF.
   const exportPdf = (r: MvpReport) => {
     const w = window.open("", "_blank", "width=840,height=640");
     if (!w) return;
@@ -317,7 +311,6 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
         </div>
       </div>
       <div className="flex-1 overflow-auto px-4 sm:px-8 py-7 flex flex-col gap-5">
-        {/* Visual overview — live charts over the current workload */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           <Card title="Ticket Progress — open tickets" className="lg:col-span-2">
             <div className="px-2 py-2" style={{ height: Math.max(180, progressData.length * 34 + 40) }}>

@@ -1,6 +1,4 @@
-// Full mock of Alison's backend contracts for local frontend
-// integration testing. Same request/response shapes as the Spring controllers;
-// in-memory state, restart = reset.
+// In-memory backend used for local frontend tests.
 import http from "node:http";
 
 const PORT = Number(process.env.MOCK_PORT ?? 8080);

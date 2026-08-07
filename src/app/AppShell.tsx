@@ -44,8 +44,7 @@ import { KnowledgeBasePage } from "./pages/KnowledgeBasePage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 
-// Application shell (PRD §4/§5): module navigation, top bar, global state. Sidebar lists modules, never workflow
-// steps; ticket statuses are filters inside Tickets.
+// Main navigation and shared application state.
 
 const NAV: { id: ModuleId; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -57,8 +56,7 @@ const NAV: { id: ModuleId; label: string; icon: React.ElementType }[] = [
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
-// Production/live sessions show only persistent records once hydration
-// succeeds. The E2E/demo harness opts back into the mixed seed dataset.
+// Demo data is only included when explicitly enabled.
 const INCLUDE_DEMO_DATA = import.meta.env.VITE_INCLUDE_DEMO_DATA === "true";
 const SEED_TICKET_IDS = new Set(SEED_TICKETS.map((t) => t.id));
 const SEED_QUESTION_IDS = new Set(SEED_QUESTIONS.map((q) => q.id));
@@ -106,11 +104,7 @@ export default function AppShell() {
   const [globalQuery, setGlobalQuery] = useState("");
   const [backendLive, setBackendLive] = useState<boolean | null>(null);
 
-  // Hydrate from the backend when it is reachable: existing tickets (with
-  // their questions, SME requests and answers) and the live knowledge base
-  // appear alongside the local demo seeds. Runs until it SUCCEEDS once —
-  // marking it done before the data actually arrived stranded sessions whose
-  // first hydration failed mid-flight (F-09).
+  // Load live data once the backend becomes available.
   const hydratedRef = useRef(false);
   const hydratingRef = useRef(false);
   const hydrate = async () => {
@@ -126,9 +120,7 @@ export default function AppShell() {
         ),
         loadBackendKnowledge(),
       ]);
-      // Only a COMPLETE load counts as done: partial results (some ticket
-      // detail fetches failed) stay un-hydrated so the next live flip or
-      // "Retry now" completes the missing tickets (PR #6 review).
+      // Retry later if any ticket details failed to load.
       if (world !== null && world.complete) hydratedRef.current = true;
       if (world !== null && !world.complete)
         addToast("Some tickets could not be fully loaded — will retry on reconnect.", "warning");
@@ -189,15 +181,12 @@ export default function AppShell() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     onBackendStatus(setBackendLive);
-    // Fire-and-forget syncs must not fail silently (F-08): surface lost
-    // writes so the user knows a change may not have reached the database.
+    // Tell the user when a background save fails.
     onWriteFailure((detail) =>
       addToast(`A change could not be saved (${detail}) — it may be lost on refresh.`, "warning"),
     );
     void (async () => {
-      // The hosted backend cold-starts in 30-60s after idling; a single failed
-      // probe must not strand the session on demo seeds. Retry with backoff
-      // and tell the user which world they are looking at.
+      // Retry while the hosted backend starts.
       let live = await pingBackend();
       for (const delay of [2000, 4000, 8000, 16000, 30000]) {
         if (live) break;
@@ -206,10 +195,7 @@ export default function AppShell() {
       }
       if (!live) {
         addToast("Backend unreachable — showing local demo data only.", "warning");
-        // Keep probing every 30s: without this, an idle session never makes
-        // another backend call and the offline banner's "appears
-        // automatically" promise would be a lie (cold starts can outlast the
-        // backoff window above).
+        // Keep checking so live data can appear after a slow startup.
         pollRef.current = setInterval(() => {
           void pingBackend().then((ok) => {
             if (ok && pollRef.current) {
@@ -228,9 +214,7 @@ export default function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Late recovery: any successful backend call flips the status to live even
-  // after the startup retries gave up — hydrate then too, so the offline
-  // banner's "appears automatically" promise actually holds.
+  // Load live data if the backend recovers later.
   useEffect(() => {
     if (backendLive) void hydrate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -287,7 +271,6 @@ export default function AppShell() {
         setNewTicketOpen(true);
       },
     }),
-    // state setters are stable; only recreated intentionally
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -308,8 +291,6 @@ export default function AppShell() {
     actions.openTicketsFiltered({ query: globalQuery.trim() });
   };
 
-  // Shared between the static sidebar (desktop) and the slide-over drawer
-  // (mobile) — navigation also closes the drawer.
   const sidebarContent = (
     <>
       <div className="h-[3px] bg-[#F96702] w-full shrink-0" />
@@ -371,7 +352,6 @@ export default function AppShell() {
       className="h-screen w-screen flex overflow-hidden bg-[#F5F4F1]"
       style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
     >
-      {/* Sidebar (GL-01): static on desktop, slide-over drawer on mobile */}
       <aside className="w-64 bg-white hidden lg:flex flex-col shrink-0 h-full overflow-y-auto border-r border-[rgba(0,0,0,0.06)]">
         {sidebarContent}
       </aside>
@@ -389,7 +369,6 @@ export default function AppShell() {
       )}
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* Top bar (GL-02/03/04) */}
         <header className="h-14 bg-white border-b border-[rgba(0,0,0,0.06)] flex items-center gap-2.5 sm:gap-4 px-3 sm:px-6 shrink-0">
           <button
             aria-label="Open menu"
@@ -471,8 +450,6 @@ export default function AppShell() {
           </div>
         </header>
 
-        {/* Persistent banner — the sidebar dot alone is too easy to miss, and
-            a "you are looking at demo data" mistake wastes a whole session */}
         {backendLive === false && (
           <div className="bg-[#FEF3C7] border-b border-[#F59E0B]/30 px-6 py-2 flex items-center gap-2 shrink-0">
             <AlertTriangle size={13} className="text-[#92400E] shrink-0" />

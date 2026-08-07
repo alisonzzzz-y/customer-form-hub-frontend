@@ -21,7 +21,7 @@ await page.waitForSelector("text=Good morning, Sarah");
 if (!(await page.isVisible("text=SME ETA Tracker"))) errors.push("Dashboard: SME tracker missing");
 if (!(await page.isVisible("text=Knowledge Pending Review"))) errors.push("Dashboard: pending review card missing");
 
-// DB-04: metric card deep-links to filtered tickets
+// Check that a metric card opens the filtered ticket list.
 await page.click('button:has-text("Waiting SME") >> nth=0');
 await page.waitForSelector('h1:has-text("Tickets")');
 const statusVal = await page.inputValue("select >> nth=0");

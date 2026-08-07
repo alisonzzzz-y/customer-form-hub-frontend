@@ -15,10 +15,7 @@ import { AppActions, AppState } from "../AppShell";
 import { openMailDraft } from "../components/ui";
 import { SAMPLE_AE_EMAIL, parseIntakeEmail } from "../services/simulation";
 
-// New Request: paste the AE email (+ optionally attach the customer form).
-// Extraction creates the request immediately and always lands on the same
-// full-page Intake Check (Workflow tab) — found fields are green and editable,
-// missing ones are flagged and filled manually or clarified with the AE.
+// Create a ticket from pasted request details.
 
 export function NewRequestFlow({
   state,
@@ -90,8 +87,8 @@ export function NewRequestFlow({
       );
       setExtracting(false);
       close();
-      actions.openTicket(id); // always the same full-page intake check
-    }, 0); // extraction is synchronous client-side work — no theatrical delay (F-06)
+      actions.openTicket(id);
+    }, 0);
   };
 
   return (
@@ -140,7 +137,6 @@ export function NewRequestFlow({
               e.target.value = "";
             }}
           />
-          {/* Customer form drop zone */}
           <div
             onClick={() => fileRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
@@ -213,9 +209,7 @@ export function NewRequestFlow({
   );
 }
 
-// Auto-drafted clarification email asking only for the missing intake fields.
-// Fully editable before sending; when the AE replies, the analyst fills the
-// intake fields manually (no simulation shortcut).
+// Draft an editable email asking for missing request details.
 export function ClarificationEmailModal({
   customer,
   ae,

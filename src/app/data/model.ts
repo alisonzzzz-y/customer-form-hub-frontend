@@ -1,9 +1,4 @@
-// Domain model, vocabulary and shared helpers for the MVP app.
-// All dates are UTC. Overdue logic for seeded demo data is anchored to a
-// fixed demo "now" (MOCK_NOW) so the story stays deterministic; live-synced
-// records use the real clock.
-
-// Toast message shape (previously in the legacy app's types.ts)
+// Shared data types and date helpers.
 export type ToastMsg = {
   id: number;
   message: string;
@@ -24,7 +19,6 @@ export type ModuleId =
   | "notifications"
   | "settings";
 
-// PRD §5.1 Global Status Tags
 export type TicketStatus =
   | "New"
   | "AI Processing"
@@ -49,8 +43,6 @@ export type QuestionStatus =
   | "Approved"
   | "Rejected";
 
-// Guided workflow stage inside a ticket (mirrors the original prototype flow:
-// intake → grouping → answer review → SME package → ETA tracking → final)
 export type TicketStage =
   | "intake"
   | "grouping"
@@ -80,10 +72,7 @@ export type SharingStatus = "Public" | "Internal" | "NDA Required";
 export type NdaStatus = "In Place" | "Missing" | "Unknown";
 export type Urgency = "High" | "Medium" | "Low";
 
-// Unified department vocabulary: union of the PRD §4 list and the backend
-// LLM classifier's fixed set (QuestionClassifierService). "Security" was
-// merged into "InfoSec" — the backend classifier, KB seeds, and live DB rows
-// all use InfoSec. Keep in sync with the classifier prompt on the backend.
+// Keep this list in sync with the backend classifier.
 export const DEPARTMENTS = [
   "InfoSec",
   "Legal",
@@ -95,15 +84,10 @@ export const DEPARTMENTS = [
   "General",
 ];
 
-// The backend classifier buckets unroutable questions as "General". Questions
-// show that as "TBD" so analysts can see the AI did not pick a department and
-// must assign one themselves. "General" remains a real Knowledge Base
-// category (company-overview content) — the rename applies to questions only.
+// Use TBD when the classifier cannot assign a question.
 export const TBD_DEPARTMENT = "TBD";
 
-// Departments a QUESTION can be assigned to: no "General" — a question must
-// end up with a real owning team, or stay parked as TBD until the analyst
-// decides. TBD questions cannot be routed to an SME.
+// Questions must have an owning team before they can be sent to an SME.
 export const QUESTION_DEPARTMENTS = [
   ...DEPARTMENTS.filter((d) => d !== "General"),
   TBD_DEPARTMENT,
@@ -120,8 +104,8 @@ export type MvpFile = {
 
 export type MvpTicket = {
   id: string;
-  backendId?: number; // id in Alison's backend once synced
-  // intake fields the email extraction could not find (cleared as the analyst fills them)
+  backendId?: number;
+  // Fields that still need to be completed.
   intakeMissing?: string[];
   customer: string;
   sorId: string;
@@ -154,7 +138,7 @@ export type MvpQuestion = {
   status: QuestionStatus;
   confidence: number | null; // null = no knowledge match
   suggested?: { text: string; knowledgeId: number; reasoning: string; sourceTitle?: string };
-  // further KB matches above the backend's 0.35 threshold (top 3 total)
+  // Other matching knowledge entries.
   alternatives?: {
     text: string;
     knowledgeId: number;
@@ -232,11 +216,8 @@ export type MvpReport = {
   status: "Ready" | "Archived";
 };
 
-// Files attached in the New Request modal, waiting for AI analysis at intake
-// confirmation (keyed by local ticket id). Kept outside React state on purpose.
+// Files waiting to be analysed, grouped by ticket ID.
 export const pendingForms = new Map<string, File>();
-
-// ─── Shared helpers ───────────────────────────────────────────────────────────
 
 export function fmtDate(iso: string | undefined | null): string {
   if (!iso) return "—";
@@ -289,13 +270,9 @@ export function isOverdueSmeRequest(r: MvpSmeRequest): boolean {
   );
 }
 
-// Similarity score at/above which a suggestion is auto-marked "Suggested"
-// (below it: "Needs Review"). Calibrated for text-embedding-3-small, whose
-// near-perfect matches score ~0.75–0.85 (PR #3/#4 reviews). Display banding
-// in confidenceBand below is intentionally separate (PRD §9.1).
+// Suggestions below this score require review.
 export const SUGGESTED_THRESHOLD = 0.6;
 
-// PRD §9.1 confidence bands
 export function confidenceBand(c: number | null): "high" | "medium" | "low" | "none" {
   if (c === null) return "none";
   if (c >= 0.9) return "high";

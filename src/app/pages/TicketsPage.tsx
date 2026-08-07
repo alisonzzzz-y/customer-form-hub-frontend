@@ -1,6 +1,5 @@
 import { Inbox, Plus, Search, X } from "lucide-react";
 import {
-  DEPARTMENTS,
   fmtDate,
   fmtDateTime,
   isDueToday,
@@ -16,13 +15,9 @@ import {
   UrgencyDot,
 } from "../components/ui";
 
-// PRD §7: statuses are FILTERS here, never separate sidebar pages (TK-02,
-// Appendix B). Archived stays searchable behind its filter (TK-06).
-
 export type TicketFilters = {
   query: string;
   status: string;
-  department: string;
   nda: string;
   urgency: string;
   due: string; // All | Overdue | Due today
@@ -32,7 +27,6 @@ export type TicketFilters = {
 export const EMPTY_FILTERS: TicketFilters = {
   query: "",
   status: "All",
-  department: "All",
   nda: "All",
   urgency: "All",
   due: "All",
@@ -86,18 +80,6 @@ export function TicketsPage({
         return false;
       if (filters.due === "Overdue" && !isOverdueTicket(t)) return false;
       if (filters.due === "Due today" && !isDueToday(t)) return false;
-      // TK-03: department filter based on outstanding questions / SME requests
-      if (filters.department !== "All") {
-        const hasDept =
-          questions.some(
-            (qu) =>
-              qu.ticketId === t.id && qu.department === filters.department,
-          ) ||
-          smeRequests.some(
-            (r) => r.ticketId === t.id && r.department === filters.department,
-          );
-        if (!hasDept) return false;
-      }
       if (q) {
         const hay = [t.id, t.customer, t.sorId, t.owner, t.notes ?? ""]
           .join(" ")
@@ -109,7 +91,7 @@ export function TicketsPage({
       }
       return true;
     })
-    // TK-05: urgency + due date default sort, overdue first
+    // Show overdue and high-priority tickets first.
     .sort((a, b) => {
       const ao = isOverdueTicket(a) ? 0 : 1;
       const bo = isOverdueTicket(b) ? 0 : 1;
@@ -148,7 +130,6 @@ export function TicketsPage({
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                // design system §7.2: demo helper that simulates SOR ingestion
                 const num =
                   Math.max(...tickets.map((t) => parseInt(t.id.slice(3), 10))) +
                   1;
@@ -193,7 +174,6 @@ export function TicketsPage({
       </div>
 
       <div className="flex-1 overflow-auto px-4 sm:px-8 py-7 flex flex-col gap-5">
-        {/* TK-01 search + filters */}
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search

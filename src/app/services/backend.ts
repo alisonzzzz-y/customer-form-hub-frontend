@@ -1,11 +1,4 @@
-// Backend integration layer for the MVP shell.
-//
-// Every call is best-effort: if Alison's Spring Boot backend (localhost:8080)
-// is reachable the app uses real parsing/classification/RAG/export; when it is
-// not, callers fall back to the simulated layer in simulation.ts. Field-name
-// and status-value mapping between the PRD frontend model and the current
-// backend entities lives here so it can be deleted once the schemas converge
-// (see NOTES_FOR_ALISON.md §4.6).
+// Connects the frontend to the backend and maps their data formats.
 
 import {
   MvpQuestion,
@@ -67,9 +60,7 @@ interface ClassifiedQuestion {
   department: string;
 }
 
-// The backend classifier's fallback bucket is "General"; questions show it as
-// "TBD" so analysts know the AI did not pick a department. Stored value stays
-// "General" until the classifier vocabulary is renamed on the backend too.
+// Display the backend's "General" value as "TBD" for questions.
 export function questionDeptFromBackend(d: string | null | undefined): string {
   return d && d !== "General" ? d : TBD_DEPARTMENT;
 }
@@ -77,9 +68,7 @@ function questionDeptToBackend(d: string): string {
   return d === TBD_DEPARTMENT ? "General" : d;
 }
 
-// Configurable for deployment (PR #3 review): VITE_API_BASE on Vercel,
-// localhost default for development. All requests in this module go through
-// this configurable base URL.
+// Use the configured API URL, or the local backend during development.
 const BASE = `${import.meta.env.VITE_API_BASE ?? "http://localhost:8080"}/api`;
 
 export async function downloadTicketExport(
@@ -105,8 +94,6 @@ export async function downloadTicketExport(
   }
 }
 
-// ─── Live/offline status ─────────────────────────────────────────────────────
-
 let listener: ((live: boolean) => void) | null = null;
 export function onBackendStatus(fn: (live: boolean) => void) {
   listener = fn;
@@ -117,8 +104,7 @@ function report(live: boolean) {
 
 export async function pingBackend(): Promise<boolean> {
   try {
-    // Generous timeout: the hosted backend answers in ~1-2s when warm, and a
-    // premature abort here silently strands the app on demo seed data.
+    // Allow enough time for the hosted backend to respond.
     const res = await fetch(`${BASE}/tickets`, {
       signal: AbortSignal.timeout(8000),
     });
@@ -130,9 +116,7 @@ export async function pingBackend(): Promise<boolean> {
   }
 }
 
-// Fire-and-forget writes must not fail silently: the shell registers a
-// listener so a lost write at least tells the user their change may not have
-// been saved. Throttled — a burst of failures is one problem, not ten toasts.
+// Report failed background saves without showing repeated warnings.
 let writeFailListener: ((detail: string) => void) | null = null;
 export function onWriteFailure(fn: (detail: string) => void) {
   writeFailListener = fn;
@@ -145,9 +129,7 @@ function notifyWriteFailure(detail: string) {
   writeFailListener?.(detail);
 }
 
-// Wrap any backend promise: resolve null on failure instead of throwing.
-// An HTTP error response means the backend ANSWERED — only network-level
-// failures may flip the app into offline mode (a 500 is not "offline").
+// Return null on failure. Only network errors mark the backend as offline.
 async function attempt<T>(p: Promise<T>, mutation = false): Promise<T | null> {
   try {
     const v = await p;
@@ -209,9 +191,7 @@ async function patch<T>(path: string, body: unknown): Promise<T | null> {
   );
 }
 
-// File uploads need richer outcomes than attempt(): a 400 from the parser is
-// the backend WORKING and telling us the file is wrong — that must reach the
-// user instead of silently falling back to simulated questions.
+// Keep invalid-file errors separate from network failures.
 type FileOutcome<T> =
   | { kind: "ok"; data: T }
   | { kind: "rejected"; message: string }
@@ -221,8 +201,7 @@ async function postFile<T>(path: string, file: File): Promise<FileOutcome<T>> {
   const form = new FormData();
   form.append("file", file);
   try {
-    // Parsing + LLM classification on the hosted backend can take a while,
-    // but must not spin forever (F-04): 3 minutes, then a clear failure.
+    // Allow up to three minutes for file parsing and classification.
     const r = await fetch(`${BASE}${path}`, {
       method: "POST",
       body: form,
@@ -235,7 +214,7 @@ async function postFile<T>(path: string, file: File): Promise<FileOutcome<T>> {
         const body = (await r.json()) as { message?: string };
         if (body?.message) message = body.message;
       } catch {
-        /* non-JSON error body */
+        // Use the HTTP status when the response has no JSON message.
       }
       return { kind: "rejected", message };
     }
@@ -255,16 +234,12 @@ async function get<T>(path: string): Promise<T | null> {
   );
 }
 
-// ─── Value mapping between frontend and backend vocabularies ─────────────────
-
-// backend Ticket.ndaStatus: Yes / No / Unknown
 const NDA_TO_BACKEND: Record<string, string> = {
   "In Place": "Yes",
   Missing: "No",
   Unknown: "Unknown",
 };
 
-// backend KB sharingStatus: Public / Customer-shareable / NDA-required (spec)
 export function mapSharing(raw: string | null | undefined): SharingStatus {
   if (!raw) return "Internal";
   const v = raw.toLowerCase();
@@ -272,8 +247,6 @@ export function mapSharing(raw: string | null | undefined): SharingStatus {
   if (v.includes("public") || v.includes("shareable")) return "Public";
   return "Internal";
 }
-
-// ─── Tickets ─────────────────────────────────────────────────────────────────
 
 type BackendTicket = { id: number };
 
@@ -293,10 +266,7 @@ export async function createBackendTicket(
   return created?.id ?? null;
 }
 
-// Sync edited intake fields for a backend-synced ticket. Both backend PUTs
-// are null-skip partial updates (verified in TicketService/FormQuestionService),
-// so sending only the changed fields is safe. Debounced per ticket because
-// text inputs fire per keystroke.
+// Debounce ticket updates while the user is typing.
 const ticketSyncTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const ticketSyncPending = new Map<number, Record<string, unknown>>();
 
@@ -331,8 +301,7 @@ export function syncTicketFields(
   );
 }
 
-// Grouping/review department changes must reach the backend: the SME package
-// endpoint filters ITS copy of the questions by department.
+// Keep question departments in sync for SME packages.
 export async function syncQuestionDepartment(
   backendId: number | undefined,
   department: string,
@@ -348,11 +317,8 @@ export function syncTicketStatus(
   status: string,
 ) {
   if (!backendId) return;
-  // Frontend and backend now share the same PRD lifecycle vocabulary.
   void patch(`/tickets/${backendId}/status`, { status });
 }
-
-// ─── Questionnaire parsing + classification (real files) ─────────────────────
 
 export type ParsedBackendQuestion = {
   backendId?: number;
@@ -371,9 +337,7 @@ export async function parseQuestionnaire(
   backendTicketId: number | null,
 ): Promise<ParseOutcome> {
   if (backendTicketId !== null) {
-    // Reconcile before importing. If a previous upload committed but its
-    // response was lost, the saved questions are the source of truth and a
-    // second POST would duplicate every row.
+    // Reuse saved questions to avoid duplicate uploads.
     const existing = await get<FormQuestion[]>(
       `/questions/ticket/${backendTicketId}`,
     );
@@ -403,8 +367,6 @@ export async function parseQuestionnaire(
           section: fq.rowReference ?? "",
         })),
       };
-    // One user action = at most one upload (F-03). No fallback to /classify;
-    // the next attempt first reconciles from the ticket's saved questions.
     return imported;
   }
   const classified = await postFile<ClassifiedQuestion[]>(
@@ -423,13 +385,10 @@ export async function parseQuestionnaire(
   return classified;
 }
 
-// ─── RAG retrieval for suggestions and AI Search ─────────────────────────────
-
 export async function ragSearch(
   question: string,
 ): Promise<SearchResult[] | null> {
-  // Read-only search that happens to travel as POST — a failure here must not
-  // raise the "change could not be saved" write warning (PR #6 review).
+  // Search uses POST but does not change backend data.
   return attempt(
     fetch(`${BASE}/knowledge-base/search`, {
       method: "POST",
@@ -442,15 +401,13 @@ export async function ragSearch(
   );
 }
 
-// Batched retrieval (PR #3 review, discussion 4): a 36-question form must not
-// fire 36 concurrent embedding calls at a free-tier backend. Runs in batches
-// of 5; a null result for the first probe means the backend is offline.
+// Search in small batches to avoid overloading the backend.
 export async function ragSearchAll(
   questions: { id: number; text: string }[],
 ): Promise<Map<number, SearchResult[]> | null> {
   if (questions.length === 0) return new Map();
   const first = await ragSearch(questions[0].text);
-  if (first === null) return null; // offline → caller falls back to simulation
+  if (first === null) return null;
   const out = new Map<number, SearchResult[]>();
   out.set(questions[0].id, first);
   const rest = questions.slice(1);
@@ -462,14 +419,11 @@ export async function ragSearchAll(
   return out;
 }
 
-// Apply the retrieval hits to a question. Mirrors RetrievalService: cosine
-// similarity >= 0.35, top 3 — first hit becomes the primary suggestion, the
-// rest are shown as alternative matches (AI-03/04/05).
+// Use the best match as the main suggestion and keep two alternatives.
 export function applyRagResult(
   q: MvpQuestion,
   results: SearchResult[],
 ): MvpQuestion {
-  // the backend already applies its 0.35 similarity threshold and returns top 3
   const hits = results.slice(0, 3);
   const describe = (r: SearchResult) =>
     `Matched "${r.documentTitle} — ${r.sectionTitle}" (${Math.round((r.similarityScore ?? 0) * 100)}% similarity, updated ${r.lastUpdated?.slice(0, 10) ?? "n/a"})`;
@@ -498,10 +452,7 @@ export function applyRagResult(
   };
 }
 
-// ─── Startup load: hydrate the local model from the backend ─────────────────
-// Called once when the backend is reachable so existing tickets, questions,
-// SME requests, answers and knowledge appear in the app (the local demo seeds
-// stay alongside; everything loaded here is fully live-synced).
+// Load existing tickets and related data from the backend.
 
 type BackendTicketFull = {
   id: number;
@@ -600,14 +551,10 @@ export async function loadBackendWorld(
     complete: true,
   };
 
-  // Each round-trip to the hosted backend costs ~1s; sequential fetching made
-  // hydration take 30s+ for a handful of tickets. Fetch every ticket's detail
-  // lists concurrently. A ticket whose detail fetches failed is SKIPPED and
-  // the result marked incomplete — an empty-array stand-in would render a
-  // wrong stage and the caller would never retry (PR #6 review).
+  // Fetch ticket details in parallel and retry incomplete results later.
   const perTicket = await Promise.all(
     raw
-      .filter((bt) => !knownBackendIds.has(bt.id)) // already in local state this session
+      .filter((bt) => !knownBackendIds.has(bt.id))
       .map(async (bt) => {
         const [bqs, answers, breqsRaw] = await Promise.all([
           get<FormQuestion[]>(`/questions/ticket/${bt.id}`),
@@ -648,15 +595,14 @@ export async function loadBackendWorld(
       continue;
     }
     const localId = `TK-${9000 + bt.id}`;
-    // Only Confirmed answers count as approved — a Draft row is what an
-    // unapproved answer looks like, and must not hydrate back as Approved.
+    // Only confirmed answers are treated as approved.
     const answerByQ = new Map(
       answers
         .filter((a) => a.answered && a.approvalStatus === "Confirmed")
         .map((a) => [a.questionId, a]),
     );
 
-    // which backend questions are linked to an SME request (and their link ids)
+    // Map questions to their SME requests.
     const linkByQ = new Map<
       number,
       { reqId: number; srqId: number; returned: boolean }
@@ -707,9 +653,9 @@ export async function loadBackendWorld(
       > = {
         "Waiting for ETA": "Requested",
         "ETA Confirmed": "ETA Set",
-        Overdue: "ETA Set", // our UI derives overdue from the clock
+        Overdue: "ETA Set",
         Returned: "Returned",
-        "In Progress": "ETA Set", // legacy rows written before the vocab guard
+        "In Progress": "ETA Set",
       };
       const srqIds: Record<number, number> = {};
       const questionIds: number[] = [];
@@ -733,7 +679,7 @@ export async function loadBackendWorld(
       };
     });
 
-    // derive the workflow stage from the loaded state
+    // Derive the workflow stage from the loaded data.
     const allDone =
       localQs.length > 0 &&
       localQs.every((q) => ["Approved", "SME Complete"].includes(q.status));
@@ -785,9 +731,7 @@ export async function loadBackendWorld(
   return world;
 }
 
-// Live knowledge entries for the MVP Knowledge Base module (replaces the
-// seeded list when the backend is reachable, so suggestion source links
-// resolve to real entries).
+// Load knowledge entries from the backend.
 export async function loadBackendKnowledge(): Promise<
   import("../data/model").MvpKnowledgeEntry[] | null
 > {
@@ -807,7 +751,6 @@ export async function loadBackendKnowledge(): Promise<
   }));
 }
 
-// Write-back for the full Knowledge Base lifecycle.
 const SHARING_TO_BACKEND: Record<string, string> = {
   Public: "Public",
   Internal: "Internal",
@@ -845,8 +788,6 @@ export async function upsertBackendKnowledge(
   return updated?.id ?? null;
 }
 
-// ─── Answers ─────────────────────────────────────────────────────────────────
-
 export function syncFinalAnswer(
   q: MvpQuestion,
   answerText: string,
@@ -863,14 +804,10 @@ export function syncFinalAnswer(
     approvalStatus: "Confirmed",
     approvedBy,
   };
-  // the backend flips the question to "Answered" itself on Confirmed saves
   void post("/final-answers", input);
 }
 
-// Unapprove: downgrade the backend final answer to Draft instead of deleting
-// it. The backend upserts by questionId with null-skip, and its Excel export
-// prints "(Draft – not confirmed)" for anything not Confirmed — so a reverted
-// answer can never reach the customer while the audit trail is preserved.
+// Keep reverted answers as drafts so they are excluded from exports.
 export async function revertFinalAnswer(q: MvpQuestion): Promise<boolean> {
   if (!q.backendId) return true;
   return (await post("/final-answers", {
@@ -886,8 +823,6 @@ export async function syncQuestionStatus(
   if (!backendId) return true;
   return (await patch(`/questions/${backendId}/status`, { status })) !== null;
 }
-
-// ─── SME requests ────────────────────────────────────────────────────────────
 
 type BackendSmeRequest = { id: number };
 
@@ -909,8 +844,7 @@ export async function createBackendSmeRequest(
   return created?.id ?? null;
 }
 
-// Link the ticket's "SME Needed" questions of this department to the request;
-// returns a map of backend question id → SmeRequestQuestion id.
+// Link a department's questions to an SME request.
 export async function packageBackendQuestions(
   backendRequestId: number,
   backendTicketId: number,
@@ -924,8 +858,7 @@ export async function packageBackendQuestions(
       department,
     },
   );
-  // If the POST response was lost after the backend committed the links,
-  // reconcile from the read endpoint instead of reporting a false failure.
+  // Read saved links if the create response was lost.
   const reconciled =
     linked ??
     (await get<SmeRequestQuestion[]>(
@@ -956,9 +889,7 @@ export function syncSmeRequest(
   },
 ) {
   if (!backendId) return;
-  // Backend vocabulary: Waiting for ETA / ETA Confirmed / Overdue / Returned.
-  // Anything unmapped is a frontend-only state — drop it rather than writing
-  // an invalid string into the shared database.
+  // Only send status values supported by the backend.
   const statusMap: Record<string, string> = {
     Requested: "Waiting for ETA",
     "ETA Set": "ETA Confirmed",
@@ -989,8 +920,6 @@ export function syncSmeAnswer(srqId: number | undefined, answer: string) {
   });
 }
 
-// ── Dashboard live stats (read-only aggregate from the backend) ──────────────
-
 export type DashboardStats = {
   totalTickets: number;
   closedTickets: number;
@@ -1010,6 +939,6 @@ export async function fetchDashboardStats(): Promise<DashboardStats | null> {
     if (!res.ok) return null;
     return (await res.json()) as DashboardStats;
   } catch {
-    return null; // offline or timeout → caller falls back to hiding the card
+    return null;
   }
 }

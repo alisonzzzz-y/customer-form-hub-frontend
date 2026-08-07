@@ -19,9 +19,6 @@ import { WorkflowTab } from "./TicketWorkflow";
 import { Card, Pill } from "../components/ui";
 import { syncTicketStatus } from "../services/backend";
 
-// PRD §8: Ticket Detail is the core workspace. The Workflow tab carries the
-// guided flow (intake → grouping → review → SME → ETA → final).
-
 type Tab = "Overview" | "Workflow" | "Files" | "Timeline" | "Activity";
 
 export function TicketDetailPage({
@@ -134,8 +131,6 @@ export function TicketDetailPage({
     </div>
   );
 }
-
-// ─── Overview (TD-OV-01..04) ─────────────────────────────────────────────────
 
 function OverviewTab({
   state,
@@ -275,8 +270,6 @@ function OverviewTab({
   );
 }
 
-// ─── Files (TD-F-01..04) ─────────────────────────────────────────────────────
-
 function FilesTab({
   state,
   actions,
@@ -365,8 +358,6 @@ function UploadSupporting({ actions, ticketId }: { actions: AppActions; ticketId
     </>
   );
 }
-
-// ─── Timeline & Activity (§8.5) ──────────────────────────────────────────────
 
 const MILESTONE_ORDER = [
   "New",

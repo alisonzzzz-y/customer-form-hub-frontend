@@ -1,10 +1,6 @@
-// Simulated AI layer for the MVP (PRD §9). Heuristic stand-ins with the same
-// contracts as the real /ai/* endpoints, so they can be swapped later without
-// touching the UI (05_API_Specification §2).
+// Local fallback used when the AI backend is unavailable.
 
 import { MvpQuestion, NdaStatus, SUGGESTED_THRESHOLD, Urgency } from "../data/model";
-
-// ─── Intake extraction from a pasted AE email ────────────────────────────────
 
 export type IntakeExtraction = {
   customer: string;
@@ -23,7 +19,6 @@ const MONTHS = [
 ];
 
 function parseDeadline(text: string): string {
-  // "by 21 July", "by July 21st", "due 2026-07-21"
   const iso = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
   if (iso) return iso[1];
   const m1 = text.match(/\b(?:by|before|due(?:\s+by)?|deadline[^.\n]*?)\s+(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)/i);
@@ -111,8 +106,6 @@ Thanks,
 Jane Smith
 Account Executive, EMEA`;
 
-// ─── Question extraction + department classification ────────────────────────
-
 type Template = {
   original: string;
   normalised: string;
@@ -193,8 +186,6 @@ const TEMPLATES: Template[] = [
   },
 ];
 
-// AI-01/AI-02: extraction + classification only. Suggestions come later, after
-// the analyst confirms department grouping.
 export function extractQuestionsFor(ticketId: string, baseId: number): MvpQuestion[] {
   return TEMPLATES.map((t, i) => ({
     id: baseId + i + 1,
@@ -211,12 +202,10 @@ export function extractQuestionsFor(ticketId: string, baseId: number): MvpQuesti
   }));
 }
 
-// AI-03/AI-04/AI-05: retrieval + suggestion per confidence band, applied once
-// grouping is confirmed.
 export function attachSuggestions(q: MvpQuestion): MvpQuestion {
   const template = TEMPLATES.find((t) => t.normalised === q.normalised);
   if (q.confidence !== null && q.confidence >= 0.7 && template?.suggestion) {
-    // demo an alternative KB match on the ISO question (top-3 rule, like the backend)
+    // Include an alternative match for the ISO example.
     const alternatives = q.normalised.includes("ISO 27001")
       ? [
           {

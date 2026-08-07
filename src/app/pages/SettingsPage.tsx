@@ -11,10 +11,6 @@ import {
 import { ToastMsg } from "../data/model";
 import { BtnPrimary, BtnSecondary } from "../components/ui";
 
-// ─── Screen: Settings ─────────────────────────────────────────────────────────
-// Analyst-level preferences. Prototype scope: persisted to localStorage only;
-// a backend settings endpoint can replace the storage layer later.
-
 const STORAGE_KEY = "gom-settings";
 
 type Settings = {
@@ -52,7 +48,7 @@ function loadSettings(): Settings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
   } catch {
-    // corrupted storage falls back to defaults
+    // Use default settings if saved data cannot be read.
   }
   return DEFAULTS;
 }

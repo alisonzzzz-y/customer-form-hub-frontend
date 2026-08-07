@@ -4,9 +4,6 @@ import { MvpNotification, fmtDateTime } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { Card, EmptyState } from "../components/ui";
 
-// PRD §14: centralised attention items with read/unread filtering (NTF-05)
-// and deep links back to the related object (NTF-06).
-
 const ICONS: Record<MvpNotification["type"], React.ElementType> = {
   "SME Reply": Inbox,
   Overdue: Clock,
