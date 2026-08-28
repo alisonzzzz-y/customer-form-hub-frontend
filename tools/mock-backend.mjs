@@ -95,6 +95,18 @@ http
         reset();
         return json(res, 200, { ok: true });
       }
+      if (path === "/api/dashboard/stats" && req.method === "GET") {
+        return json(res, 200, {
+          totalTickets: tickets.length,
+          inProgressTickets: tickets.filter((t) => !["Closed", "Archived"].includes(t.status)).length,
+          closedTickets: tickets.filter((t) => ["Closed", "Archived"].includes(t.status)).length,
+          totalQuestions: questions.length,
+          answeredFromKnowledgeBase: finalAnswers.filter((a) => a.approvalStatus === "Confirmed" && a.sourceType === "Knowledge Base").length,
+          answeredBySme: finalAnswers.filter((a) => a.approvalStatus === "Confirmed" && a.sourceType !== "Knowledge Base").length,
+          overdueSmeRequests: smeRequests.filter((r) => r.status === "Overdue").length,
+          aiAcceptanceRate: 0,
+        });
+      }
 
       // ── tickets ──
       if (path === "/api/tickets" && req.method === "GET") return json(res, 200, tickets);
@@ -137,6 +149,10 @@ http
           riskLevel: null,
           rowReference: q.section,
           createdAt: new Date().toISOString(),
+          aiSuggestionSourceId: null,
+          reviewOutcome: null,
+          reviewedAt: null,
+          aeClarificationRequestedAt: null,
         }));
         questions.push(...saved);
         return json(res, 200, saved);
@@ -177,6 +193,61 @@ http
         const q = questions.find((x) => x.id === +m[1]);
         if (q) q.status = parse().status;
         return json(res, 200, q ?? {});
+      }
+      if ((m = path.match(/^\/api\/questions\/(\d+)\/review-escalation$/)) && req.method === "POST") {
+        const q = questions.find((x) => x.id === +m[1]);
+        if (!q) return json(res, 404, {});
+        const changes = parse();
+        const now = new Date().toISOString();
+        q.status = changes.type === "AE" ? "Waiting AE" : "SME Needed";
+        q.aiSuggestionSourceId = changes.suggestionSourceId ?? null;
+        q.reviewOutcome = q.aiSuggestionSourceId ? "ESCALATED" : null;
+        q.reviewedAt = now;
+        if (changes.type === "AE") q.aeClarificationRequestedAt = now;
+        return json(res, 200, q);
+      }
+      if ((m = path.match(/^\/api\/questions\/(\d+)\/review-reopen$/)) && req.method === "POST") {
+        const q = questions.find((x) => x.id === +m[1]);
+        if (!q) return json(res, 404, {});
+        q.status = "Needs Review";
+        q.reviewOutcome = null;
+        q.reviewedAt = null;
+        return json(res, 200, q);
+      }
+
+      // ── AI performance ──
+      if (path === "/api/ai-performance/review-summary" && req.method === "GET") {
+        const reviewed = questions.filter((q) => q.aiSuggestionSourceId && q.reviewOutcome);
+        const accepted = reviewed.filter((q) => q.reviewOutcome === "ACCEPTED").length;
+        const edited = reviewed.filter((q) => q.reviewOutcome === "EDITED").length;
+        const escalated = reviewed.filter((q) => q.reviewOutcome === "ESCALATED").length;
+        const total = accepted + edited + escalated;
+        const rate = (n) => total ? Math.round(n * 1000 / total) / 10 : null;
+        return json(res, 200, {
+          period: { from: url.searchParams.get("from"), to: url.searchParams.get("to"), timezone: "UTC" },
+          reviewed: total,
+          counts: { accepted, edited, rejected: 0, escalated },
+          rates: { directAcceptance: rate(accepted), humanEdit: rate(edited), rejectedOrEscalated: rate(escalated) },
+        });
+      }
+      if (path === "/api/ai-performance/retrieval-runs" && req.method === "GET") {
+        return json(res, 200, [{
+          runId: "mock-retrieval-v1",
+          status: "COMPLETED",
+          startedAt: "2026-08-24T09:00:00Z",
+          completedAt: "2026-08-24T09:00:04Z",
+          durationMs: 4000,
+          datasetVersion: "retrieval-v1-2026-08",
+          datasetHash: "mock",
+          evaluationCases: 12,
+          failedCases: 0,
+          skippedCases: 0,
+          top1Hits: 9,
+          top3Hits: 11,
+          top1HitRate: 75.0,
+          top3HitRate: 91.7,
+          errorMessage: null,
+        }]);
       }
 
       // ── knowledge base ──
@@ -222,7 +293,12 @@ http
         }
         if (fa.approvalStatus === "Confirmed") {
           const q = questions.find((x) => x.id === fa.questionId);
-          if (q) q.status = "Answered";
+          if (q) {
+            q.status = "Answered";
+            q.aiSuggestionSourceId = fa.sourceChunkId ?? null;
+            q.reviewOutcome = fa.sourceChunkId ? (fa.isEdited ? "EDITED" : "ACCEPTED") : null;
+            q.reviewedAt = new Date().toISOString();
+          }
         }
         return json(res, 200, fa);
       }

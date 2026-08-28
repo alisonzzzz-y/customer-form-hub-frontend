@@ -15,6 +15,7 @@ export type ModuleId =
   | "ticket-detail"
   | "ai-search"
   | "knowledge-base"
+  | "ai-performance"
   | "reports"
   | "notifications"
   | "settings";
@@ -39,6 +40,7 @@ export type QuestionStatus =
   | "SME Queued" // marked "route to SME" during review; not yet sent
   | "Waiting SME"
   | "SME Complete"
+  | "Waiting AE"
   | "Ready"
   | "Approved"
   | "Rejected";
@@ -155,6 +157,9 @@ export type MvpQuestion = {
   smeRequestId?: number;
   duplicateOf?: number;
   rejectedReason?: string;
+  reviewOutcome?: "ACCEPTED" | "EDITED" | "ESCALATED";
+  reviewedAt?: string;
+  aeClarificationRequestedAt?: string;
 };
 
 export type MvpSmeRequest = {

@@ -5,6 +5,7 @@ import {
   Sparkles,
   BookOpen,
   BarChart3,
+  Gauge,
   Bell,
   Settings as SettingsIcon,
   Search,
@@ -42,6 +43,7 @@ import { TicketDetailPage } from "./pages/TicketDetailPage";
 import { AiSearchPage } from "./pages/AiSearchPage";
 import { KnowledgeBasePage } from "./pages/KnowledgeBasePage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { AiPerformancePage } from "./pages/AiPerformancePage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 
 // Main navigation and shared application state.
@@ -51,6 +53,7 @@ const NAV: { id: ModuleId; label: string; icon: React.ElementType }[] = [
   { id: "tickets", label: "Tickets", icon: TicketIcon },
   { id: "ai-search", label: "AI Search", icon: Sparkles },
   { id: "knowledge-base", label: "Knowledge Base", icon: BookOpen },
+  { id: "ai-performance", label: "AI Performance", icon: Gauge },
   { id: "reports", label: "Reports", icon: BarChart3 },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "settings", label: "Settings", icon: SettingsIcon },
@@ -308,7 +311,7 @@ export default function AppShell() {
         </div>
       </div>
       <nav className="flex-1 py-5 px-4 flex flex-col gap-1.5">
-        {NAV.map(({ id, label, icon: Icon }) => {
+        {NAV.filter((item) => item.id !== "ai-performance" || role === "Manager").map(({ id, label, icon: Icon }) => {
           const active = module === id || (id === "tickets" && module === "ticket-detail");
           return (
             <button
@@ -492,6 +495,7 @@ export default function AppShell() {
               returnTicket={kbReturnTicket}
             />
           )}
+          {module === "ai-performance" && <AiPerformancePage />}
           {module === "reports" && <ReportsPage state={state} actions={actions} />}
           {module === "notifications" && <NotificationsPage state={state} actions={actions} />}
           {module === "settings" && (

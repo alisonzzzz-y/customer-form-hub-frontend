@@ -1,61 +1,120 @@
-# Customer Forms Hub — Frontend
+# Customer Forms Hub
 
-Internal AI-assisted workflow platform for Cloudera's Global Order Management
-team: intake customer compliance questionnaires, review AI-suggested answers
-against the knowledge base, route open questions to SMEs, track ETAs, and
-export the completed response. UCC x Cloudera capstone (July 2026).
+> A React app for teams answering customer security and compliance questionnaires.
 
-**Stack**: React 18 · TypeScript · Vite · Tailwind CSS 4 · Recharts · Playwright
+Customer Forms Hub helps a reviewer upload a questionnaire, find relevant internal knowledge, ask the right people for help, and approve the final response. AI helps with the repetitive parts, but a person always makes the final decision.
 
-## Getting started
+This is the frontend for the project. The [Spring Boot backend](https://github.com/alisonzzzz-y/customer-form-hub) handles document processing, AI calls, storage, exports, and the AI Performance data.
+
+For the deployed demo, the application uses a MySQL database hosted on Railway.
+
+[Backend repository](https://github.com/alisonzzzz-y/customer-form-hub) · [中文说明](README.zh-CN.md)
+
+[Open the live demo](https://customer-form-hub.vercel.app/)
+
+<!--
+SCREENSHOT PLACEHOLDERS
+Add the three images below here:
+![Dashboard and work queue](docs/screenshots/dashboard.png)
+![Question review and SME escalation](docs/screenshots/ticket-review.png)
+![AI Performance page](docs/screenshots/ai-performance.png)
+-->
+
+## What a user can do
+
+```text
+Create a customer request
+  -> Upload an Excel or Word questionnaire
+  -> Check the questions and suggested knowledge sources
+  -> Accept an answer, edit it, or ask an SME for help
+  -> Track open questions and expected replies
+  -> Review and export the completed response
+```
+
+The app is a review workspace, not a chatbot. It gives the reviewer useful context, while keeping the reviewer in charge of the final answer.
+
+## My contribution
+
+This frontend was a team project. I set up the main frontend structure and took responsibility for integrating and reviewing the pull requests contributed by my teammate.
+
+## AI Performance page
+
+Managers can see two simple views of how the AI support is being used:
+
+- **Review results**: how often a suggestion was accepted as it was, edited, or sent to an SME or AE.
+- **Retrieval check**: whether the backend found the expected knowledge source in its first one or three results.
+
+The retrieval check uses a small synthetic test set. It is useful for checking that search still works after a change, but it is not a claim about real-world answer accuracy. If the backend is offline, the page does not display made-up performance figures.
+
+## How the frontend connects to the backend
+
+```mermaid
+flowchart LR
+    User[Reviewer] --> UI[React app]
+    UI --> API[Spring Boot API]
+    API --> AI[AI classification and knowledge search]
+    API --> Data[(MySQL)]
+```
+
+All API calls go through `src/app/services/backend.ts`. During frontend work, the app can use a local mock API. The normal workflow screens also have a safe demo fallback when the backend is unavailable.
+
+## Tech used
+
+| Area | Tools |
+|---|---|
+| Frontend | React 18, TypeScript, Vite |
+| UI | Tailwind CSS 4, Recharts, Lucide icons |
+| Tests | Vitest, Testing Library, Playwright |
+| Backend connection | REST API, configured with `VITE_API_BASE` |
+
+## Run it locally
+
+### Use the real backend
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
+VITE_API_BASE=http://localhost:8080 npm run dev
 ```
 
-The app is backend-first with a simulated fallback: if the Spring Boot
-backend (https://github.com/alisonzzzz-y/customer-form-hub) is running on
-localhost:8080 you get real parsing/retrieval/export (green "Backend live"
-dot, bottom-left); otherwise every flow still works on simulated data.
+Open the URL shown by Vite. The status in the bottom-left corner shows whether the app is connected to the backend.
 
-To develop against realistic API responses without the real backend:
+If your backend uses another port, use that port in `VITE_API_BASE` and allow the frontend address in the backend's `CORS_ALLOWED_ORIGINS` setting.
+
+### Use the local mock API
 
 ```bash
-npm run mock       # contract mock of the backend on :8080
+npm run mock
+npm run dev
 ```
 
-## Configuration
+The mock helps with UI work and end-to-end tests. It does not replace the real backend AI features or the AI Performance data.
 
-| Variable | Purpose |
-|---|---|
-| `VITE_API_BASE` | Backend origin. Unset → `http://localhost:8080`. On Vercel, set to the Render backend URL (and set `CORS_ALLOWED_ORIGINS` on the backend to the Vercel URL). |
+## Checks
 
-See `.env.example`.
+```bash
+npm run test:unit
+npm run typecheck
+npm run build
+npm run test:e2e
+```
 
-## Scripts
+The browser tests cover the main ticket flow, reports, recovery when the API is unavailable, saved changes, and AI review actions.
 
-| Command | What it does |
-|---|---|
-| `npm run dev` | Vite dev server |
-| `npm run build` / `preview` | Production build / serve it locally |
-| `npm run typecheck` | Strict project-wide `tsc --noEmit` |
-| `npm run mock` | Contract mock backend on :8080 (in-memory, `/api/_debug/reset`) |
-| `npm run test:e2e` | Self-contained Playwright E2E: spawns the mock + a Vite server on :5199, runs all `e2e/*.spec.mjs`, cleans up |
+## Project layout
 
-## Structure
+```text
+src/app/
+  components/    shared UI pieces
+  data/          frontend models and demo data
+  pages/         dashboard, tickets, knowledge base, reports, AI Performance
+  services/      API connection and local fallback behaviour
+e2e/             browser tests
+tools/           local mock API
+```
 
-Layer-based `src/` layout — see [`src/app/README.md`](src/app/README.md) for
-a per-file map. Highlights: `services/backend.ts` is the only module that
-talks to the API (env-configurable, graceful offline fallback);
-`pages/TicketWorkflow.tsx` is the guided per-ticket flow (Intake → Grouping →
-Answer Review → SME Package → ETA Tracking → Final Review).
+## Current limits
 
-## Conventions
-
-- Backend calls are best-effort: reachable → live, otherwise simulate. Never
-  block the UI on the backend.
-- The system never sends email — sends open a pre-filled draft in the user's
-  mail client via `mailto:` (attachments must be added manually).
-- Archive over delete (no DELETE endpoints are called), UTC markers on all
-  timestamps, Cloudera orange `#F96702`.
+- Switching between roles is for the demo. It is not a login or permission system.
+- Email actions open a draft with `mailto:`. The app does not send email.
+- The AI Performance examples and retrieval test data are synthetic and clearly marked as demo data.
+- The system never automatically approves or sends an AI-assisted answer.

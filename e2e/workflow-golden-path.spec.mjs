@@ -67,6 +67,14 @@ await page.waitForSelector("text=of");
 await page.waitForSelector("text=AI Suggested Answer — best match");
 await page.getByRole("button", { name: "Approve", exact: true }).click();
 await page.waitForSelector("text=Answer approved.");
+// Ask AE ends the current question review but keeps the ticket open; reopening
+// after a reply returns the question to the normal review controls.
+await page.click("text=Is a data processing agreement available?");
+await page.getByRole("button", { name: "Ask AE", exact: true }).click();
+await page.click("text=Is a data processing agreement available?");
+await page.waitForSelector("text=Waiting for AE clarification");
+await page.getByRole("button", { name: "Reopen after AE reply", exact: true }).click();
+await page.waitForSelector("text=Question reopened for answer review.");
 // unapprove syncs a Draft downgrade to the backend, then re-approve
 await page.click("text=Do you hold ISO27001?");
 await page.click('button:has-text("Unapprove")');
@@ -154,6 +162,8 @@ const expectCalls = [
   "POST /api/questionnaire/import",
   "POST /api/knowledge-base/search",
   "POST /api/final-answers",
+  "POST /api/questions/{id}/review-escalation",
+  "POST /api/questions/{id}/review-reopen",
   "PATCH /api/questions/{id}/status",
   "PUT /api/questions/{id}",
   "POST /api/sme-requests",

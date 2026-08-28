@@ -15,6 +15,7 @@ interface SearchResult {
   sectionTitle: string;
   content: string;
   source: string;
+  sourceKey: string;
   lastUpdated: string;
   sharingStatus: string;
   department: string;
@@ -32,6 +33,10 @@ interface FormQuestion {
   riskLevel: string | null;
   rowReference: string | null;
   createdAt: string | null;
+  aiSuggestionSourceId: number | null;
+  reviewOutcome: "ACCEPTED" | "EDITED" | "ESCALATED" | null;
+  reviewedAt: string | null;
+  aeClarificationRequestedAt: string | null;
 }
 
 interface FinalAnswerInput {
@@ -629,6 +634,7 @@ export async function loadBackendWorld(
       if (fa) status = link?.returned ? "SME Complete" : "Approved";
       else if (q.status === "SME Needed")
         status = link ? "Waiting SME" : "SME Queued";
+      else if (q.status === "Waiting AE") status = "Waiting AE";
       else status = "Needs Review";
       return {
         id: 100000 + q.id,
@@ -643,6 +649,9 @@ export async function loadBackendWorld(
         confidence: null,
         finalAnswer: fa ? { text: fa.answerText ?? "", sourceType } : undefined,
         smeRequestId: link ? 100000 + link.reqId : undefined,
+        reviewOutcome: q.reviewOutcome ?? undefined,
+        reviewedAt: q.reviewedAt ?? undefined,
+        aeClarificationRequestedAt: q.aeClarificationRequestedAt ?? undefined,
       };
     });
 
@@ -814,6 +823,65 @@ export async function revertFinalAnswer(q: MvpQuestion): Promise<boolean> {
     questionId: q.backendId,
     approvalStatus: "Draft",
   })) !== null;
+}
+
+export async function recordReviewEscalation(
+  q: MvpQuestion,
+  type: "SME" | "AE",
+): Promise<boolean> {
+  if (!q.backendId) return true;
+  return (await post(`/questions/${q.backendId}/review-escalation`, {
+    type,
+    suggestionSourceId: q.suggested?.knowledgeId ?? null,
+  })) !== null;
+}
+
+export async function reopenReviewDecision(q: MvpQuestion): Promise<boolean> {
+  if (!q.backendId) return true;
+  return (await post(`/questions/${q.backendId}/review-reopen`, {})) !== null;
+}
+
+export type ReviewSummary = {
+  period: { from: string; to: string; timezone: string };
+  reviewed: number;
+  counts: { accepted: number; edited: number; rejected: number; escalated: number };
+  rates: {
+    directAcceptance: number | null;
+    humanEdit: number | null;
+    rejectedOrEscalated: number | null;
+  };
+};
+
+export type RetrievalEvaluationRun = {
+  runId: string;
+  status: "RUNNING" | "COMPLETED" | "FAILED";
+  startedAt: string | null;
+  completedAt: string | null;
+  durationMs: number | null;
+  datasetVersion: string | null;
+  datasetHash: string | null;
+  evaluationCases: number;
+  failedCases: number;
+  skippedCases: number;
+  top1Hits: number;
+  top3Hits: number;
+  top1HitRate: number | null;
+  top3HitRate: number | null;
+  errorMessage: string | null;
+};
+
+export async function loadAiPerformance(
+  days: number,
+): Promise<{ review: ReviewSummary; runs: RetrievalEvaluationRun[] } | null> {
+  const to = new Date();
+  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+  const [review, runs] = await Promise.all([
+    get<ReviewSummary>(
+      `/ai-performance/review-summary?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,
+    ),
+    get<RetrievalEvaluationRun[]>("/ai-performance/retrieval-runs?limit=10"),
+  ]);
+  return review && runs ? { review, runs } : null;
 }
 
 export async function syncQuestionStatus(

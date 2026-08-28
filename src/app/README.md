@@ -48,6 +48,8 @@ src/
       ReportsPage.tsx      # charts (ticket progress/status mix/dept load),
                            # filtered metrics + AI summary, report viewer
                            # with PDF/Excel export
+      AiPerformancePage.tsx# Manager demo view: review outcome KPIs and the
+                           # latest offline Top-1/Top-3 retrieval benchmark
       NotificationsPage.tsx# unread filtering, mark-all-read, deep links
       SettingsPage.tsx     # analyst preferences (localStorage for now)
 ```

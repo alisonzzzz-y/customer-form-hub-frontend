@@ -47,6 +47,8 @@ import {
   fetchSmeEmail,
   packageBackendQuestions,
   ragSearchAll,
+  recordReviewEscalation,
+  reopenReviewDecision,
   revertFinalAnswer,
   syncQuestionDepartment,
   syncTicketFields,
@@ -706,9 +708,10 @@ function ReviewPanel({
   const visible = deptTab === "All" ? qs : qs.filter((x) => x.department === deptTab);
 
   const q = visible.find((x) => x.id === selectedId) ?? visible[0] ?? qs[0];
-  const RESOLVED = ["Approved", "Ready", "SME Queued", "Waiting SME", "SME Complete", "Rejected"];
+  const RESOLVED = ["Approved", "Ready", "SME Queued", "Waiting SME", "SME Complete", "Waiting AE", "Rejected"];
   const resolved = qs.filter((x) => RESOLVED.includes(x.status));
   const queued = qs.filter((x) => x.status === "SME Queued");
+  const waitingAe = qs.filter((x) => x.status === "Waiting AE");
   const allResolved = qs.length > 0 && resolved.length === qs.length;
   const isResolvedDept = (d: string) =>
     qs.filter((x) => x.department === d).every((x) => RESOLVED.includes(x.status));
@@ -766,12 +769,17 @@ function ReviewPanel({
     if (queued.length > 0) {
       actions.setTickets((p) => p.map((t) => (t.id === ticket.id ? { ...t, stage: "sme" } : t)));
       actions.logActivity(`Answer review complete — ${queued.length} question(s) queued for SME`, ticket.id);
-    } else {
+    } else if (waitingAe.length === 0) {
       actions.setTickets((p) =>
         p.map((t) => (t.id === ticket.id ? { ...t, stage: "final", status: "Ready for Review" } : t)),
       );
       syncTicketStatus(ticket.backendId, "Ready for Review");
       actions.logActivity("Answer review complete — no SME input needed", ticket.id);
+    } else {
+      actions.addToast(
+        `${waitingAe.length} question(s) are waiting for AE clarification. The ticket remains open.`,
+        "info",
+      );
     }
   };
 
@@ -809,7 +817,8 @@ function ReviewPanel({
         <p className="text-[13px] text-[#6B7280]">
           <strong className="text-[#1F2937]">{resolved.length}</strong> of{" "}
           <strong className="text-[#1F2937]">{qs.length}</strong> resolved ·{" "}
-          <strong className="text-[#C05600]">{queued.length}</strong> queued for SME
+          <strong className="text-[#C05600]">{queued.length}</strong> queued for SME ·{" "}
+          <strong className="text-[#C05600]">{waitingAe.length}</strong> waiting for AE
         </p>
         <span className="flex-1" />
         <span title="Go back and adjust the department grouping — decisions made here are kept">
@@ -1022,6 +1031,15 @@ function ReviewPanel({
               </p>
             )}
 
+            {q.status === "Waiting AE" && (
+              <div className="bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-lg px-3.5 py-2.5 text-[12px] text-[#92400E]">
+                Waiting for AE clarification
+                {q.aeClarificationRequestedAt
+                  ? ` · requested ${fmtDateTime(q.aeClarificationRequestedAt)}`
+                  : ""}. The question remains open on this ticket.
+              </div>
+            )}
+
             </div>
             <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-t border-[rgba(0,0,0,0.06)] bg-[#FAFAFA] shrink-0">
               {editing ? (
@@ -1040,6 +1058,8 @@ function ReviewPanel({
                             text: draft.trim(),
                             sourceType: q.suggested ? "AI Edited" : "Manual",
                           },
+                          reviewOutcome: q.suggested ? "EDITED" : undefined,
+                          reviewedAt: new Date().toISOString(),
                         },
                         `${q.suggested ? "Edited and approved" : "Manually answered"} question #${q.row}`,
                       );
@@ -1063,6 +1083,8 @@ function ReviewPanel({
                           {
                             status: "Approved",
                             finalAnswer: { text: q.suggested!.text, sourceType: "AI" },
+                            reviewOutcome: "ACCEPTED",
+                            reviewedAt: new Date().toISOString(),
                           },
                           `Approved AI answer for question #${q.row}`,
                         );
@@ -1100,10 +1122,13 @@ function ReviewPanel({
                                   : "Needs Review"
                                 : "New",
                               finalAnswer: undefined,
+                              reviewOutcome: undefined,
+                              reviewedAt: undefined,
                             },
                             `Reverted approval on question #${q.row}`,
                           );
                           revertFinalAnswer(q); // backend answer -> Draft (export prints a placeholder)
+                          reopenReviewDecision(q);
                           syncQuestionStatus(q.backendId, "Needs Review");
                           actions.addToast("Approval undone — the question is back in review.", "info");
                         }}
@@ -1115,8 +1140,16 @@ function ReviewPanel({
                   {q.status !== "SME Queued" && !q.finalAnswer && (
                     <button
                       onClick={() => {
-                        update(q.id, { status: "SME Queued" }, `Routed question #${q.row} to ${q.department} SME queue`);
-                        syncQuestionStatus(q.backendId, "SME Needed");
+                        update(
+                          q.id,
+                          {
+                            status: "SME Queued",
+                            reviewOutcome: q.suggested ? "ESCALATED" : undefined,
+                            reviewedAt: new Date().toISOString(),
+                          },
+                          `Routed question #${q.row} to ${q.department} SME queue`,
+                        );
+                        recordReviewEscalation(q, "SME");
                         actions.addToast(`Added to the ${q.department} SME queue.`, "info");
                         advance();
                       }}
@@ -1136,7 +1169,7 @@ function ReviewPanel({
                       <BtnSecondary
                         onClick={() => {
                           update(q.id, { status: q.suggested ? "Needs Review" : "New" }, `Removed question #${q.row} from SME queue`);
-                          syncQuestionStatus(q.backendId, "Needs Review");
+                          reopenReviewDecision(q);
                           actions.addToast("Removed from SME queue.", "info");
                         }}
                       >
@@ -1144,16 +1177,49 @@ function ReviewPanel({
                       </BtnSecondary>
                     </span>
                   )}
-                  <button
-                    onClick={() => {
-                      actions.logActivity(`Asked AE for context on question #${q.row}`, ticket.id);
-                      actions.addToast(`Clarification request sent to ${ticket.ae ?? "the AE"}.`, "info");
-                    }}
-                    title="Email the account executive for missing context about this question"
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold border border-[rgba(0,0,0,0.18)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
-                  >
-                    <Mail size={11} /> Ask AE
-                  </button>
+                  {q.status === "Waiting AE" ? (
+                    <button
+                      onClick={() => {
+                        update(
+                          q.id,
+                          {
+                            status: q.suggested ? "Needs Review" : "New",
+                            reviewOutcome: undefined,
+                            reviewedAt: undefined,
+                          },
+                          `Reopened question #${q.row} after AE clarification`,
+                        );
+                        reopenReviewDecision(q);
+                        actions.addToast("Question reopened for answer review.", "info");
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold border border-[#F59E0B]/50 rounded-full text-[#92400E] hover:bg-[#FEF3C7] tracking-[0.04em] transition-all"
+                    >
+                      <RefreshCw size={11} /> Reopen after AE reply
+                    </button>
+                  ) : !q.finalAnswer && q.status !== "SME Queued" ? (
+                    <button
+                      onClick={() => {
+                        const requestedAt = new Date().toISOString();
+                        update(
+                          q.id,
+                          {
+                            status: "Waiting AE",
+                            reviewOutcome: q.suggested ? "ESCALATED" : undefined,
+                            reviewedAt: requestedAt,
+                            aeClarificationRequestedAt: requestedAt,
+                          },
+                          `Requested AE clarification for question #${q.row}`,
+                        );
+                        recordReviewEscalation(q, "AE");
+                        actions.addToast(`Clarification request recorded for ${ticket.ae ?? "the AE"}.`, "info");
+                        advance();
+                      }}
+                      title="Request missing context from the account executive"
+                      className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold border border-[rgba(0,0,0,0.18)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
+                    >
+                      <Mail size={11} /> Ask AE
+                    </button>
+                  ) : null}
                   <span className="flex-1" />
                   <button
                     onClick={nextQuestion}
@@ -1163,14 +1229,23 @@ function ReviewPanel({
                     Next Question <ChevronRight size={11} />
                   </button>
                   {allResolved && (
-                    <span title={queued.length > 0 ? "Package the queued questions into per-department SME emails" : "All questions answered — run the completeness checks and export"}>
-                      <BtnPrimary onClick={continueNext}>
-                        {queued.length > 0
-                          ? `Next: SME Package (${queued.length})`
-                          : "Next: Final Review"}{" "}
-                        <ChevronRight size={11} />
-                      </BtnPrimary>
-                    </span>
+                    queued.length > 0 ? (
+                      <span title="Package the queued questions into per-department SME emails">
+                        <BtnPrimary onClick={continueNext}>
+                          Next: SME Package ({queued.length}) <ChevronRight size={11} />
+                        </BtnPrimary>
+                      </span>
+                    ) : waitingAe.length > 0 ? (
+                      <span className="text-[11px] font-semibold text-[#92400E] bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-full px-3 py-1.5">
+                        Waiting for AE clarification ({waitingAe.length})
+                      </span>
+                    ) : (
+                      <span title="All questions answered — run the completeness checks and export">
+                        <BtnPrimary onClick={continueNext}>
+                          Next: Final Review <ChevronRight size={11} />
+                        </BtnPrimary>
+                      </span>
+                    )
                   )}
                 </>
               )}
@@ -1710,6 +1785,7 @@ function EtaPanel({
   const [undoingId, setUndoingId] = useState<number | null>(null);
 
   const allReturned = reqs.length > 0 && reqs.every((r) => r.status === "Returned");
+  const waitingAe = qs.filter((q) => q.status === "Waiting AE");
 
   const saveEta = () => {
     if (!etaModal) return;
@@ -1899,7 +1975,7 @@ function EtaPanel({
           </BtnSecondary>
         </span>
         <span className="flex-1" />
-        {allReturned && (
+        {allReturned && waitingAe.length === 0 && (
           <span title="All SME answers are back — run the completeness checks and export">
             <BtnPrimary
               onClick={() => {
@@ -1915,6 +1991,17 @@ function EtaPanel({
               Next: Final Review <ChevronRight size={11} />
             </BtnPrimary>
           </span>
+        )}
+        {allReturned && waitingAe.length > 0 && (
+          <BtnPrimary
+            onClick={() =>
+              actions.setTickets((p) =>
+                p.map((t) => (t.id === ticket.id ? { ...t, stage: "review", status: "In Progress" } : t)),
+              )
+            }
+          >
+            Resolve AE Clarification ({waitingAe.length}) <ChevronRight size={11} />
+          </BtnPrimary>
         )}
       </div>
 

@@ -170,7 +170,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
       (q) => q.finalAnswer || q.status === "Rejected",
     );
     const accepted = reviewed.filter(
-      (q) => q.finalAnswer && ["AI", "AI Edited"].includes(q.finalAnswer.sourceType),
+      (q) => q.finalAnswer?.sourceType === "AI",
     );
     const answered = selectedQuestions.filter((q) => q.finalAnswer);
     const fromKnowledge = answered.filter(
@@ -196,7 +196,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
     setMetrics(null);
     setTimeout(() => {
       const m = compute();
-      const s = `In the selected period (${range.toLowerCase()}${dept !== "All" ? `, ${dept} department` : ""}${company !== "All" ? `, ${company}` : ""}), the team handled ${m.volume} ticket(s) with ${m.overdue} currently overdue. Average completion time was ${m.avgCompletionDays} day(s) and SME turnaround averaged ${m.avgSmeTurnaroundDays} day(s). AI suggestions were accepted at a rate of ${m.aiAcceptance}, with ${m.knowledgeReuse} of final answers reusing approved knowledge. ${m.overdue > 0 ? "The main bottleneck is overdue tickets — review their deadlines and outstanding SME ETAs." : "No structural bottlenecks detected in this period."}`;
+      const s = `In the selected period (${range.toLowerCase()}${dept !== "All" ? `, ${dept} department` : ""}${company !== "All" ? `, ${company}` : ""}), the team handled ${m.volume} ticket(s) with ${m.overdue} currently overdue. Average completion time was ${m.avgCompletionDays} day(s) and SME turnaround averaged ${m.avgSmeTurnaroundDays} day(s). AI suggestions were accepted unchanged at a rate of ${m.aiAcceptance}, with ${m.knowledgeReuse} of final answers reusing approved knowledge. ${m.overdue > 0 ? "The main bottleneck is overdue tickets — review their deadlines and outstanding SME ETAs." : "No structural bottlenecks detected in this period."}`;
       setMetrics(m);
       setSummary(s);
       const rec: MvpReport = {
@@ -212,7 +212,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
           { label: "Avg Completion (days)", value: m.avgCompletionDays },
           { label: "Avg SME Turnaround (days)", value: m.avgSmeTurnaroundDays },
           { label: "Overdue Tickets", value: String(m.overdue) },
-          { label: "AI Acceptance Rate", value: m.aiAcceptance },
+          { label: "Direct AI Acceptance Rate", value: m.aiAcceptance },
           { label: "Knowledge Reuse Rate", value: m.knowledgeReuse },
         ],
         status: "Ready",
@@ -294,7 +294,7 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
         { label: "Avg Completion (days)", value: metrics.avgCompletionDays },
         { label: "Avg SME Turnaround (days)", value: metrics.avgSmeTurnaroundDays },
         { label: "Overdue Tickets", value: String(metrics.overdue), accent: metrics.overdue > 0 },
-        { label: "AI Acceptance Rate", value: metrics.aiAcceptance },
+        { label: "Direct AI Acceptance Rate", value: metrics.aiAcceptance },
         { label: "Knowledge Reuse Rate", value: metrics.knowledgeReuse },
       ]
     : [];

@@ -240,11 +240,11 @@ export function Toast({
   remove: (id: number) => void;
 }) {
   return (
-    <div className="fixed top-16 right-5 z-50 flex flex-col gap-2 pointer-events-none">
+    <div className="fixed bottom-4 left-4 right-4 z-50 flex flex-col gap-2 pointer-events-none lg:bottom-16 lg:left-4 lg:right-auto lg:w-60">
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] border text-[12px] font-medium min-w-[280px] max-w-xs bg-white ${t.type === "success" ? "border-green-200" : t.type === "warning" ? "border-[#F96702]/30" : "border-[rgba(0,0,0,0.08)]"}`}
+          className={`pointer-events-auto flex w-full items-center gap-2.5 px-4 py-3 rounded-2xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] border text-[12px] font-medium bg-white ${t.type === "success" ? "border-green-200" : t.type === "warning" ? "border-[#F96702]/30" : "border-[rgba(0,0,0,0.08)]"}`}
         >
           {t.type === "success" && <ToastOk size={13} className="text-green-500 shrink-0" />}
           {t.type === "warning" && <ToastWarn size={13} className="text-[#F96702] shrink-0" />}

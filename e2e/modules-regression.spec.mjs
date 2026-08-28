@@ -79,6 +79,15 @@ await page.click('button:has-text("Generate Report")');
 await page.waitForSelector("text=AI Executive Summary");
 if (!(await page.isVisible("text=Saved Reports"))) errors.push("Reports: saved record missing");
 
+// AI Performance is available to the Manager demo role and uses backend metrics.
+await page.click('button:has-text("Sarah Chen")');
+await page.click('button:has-text("Manager")');
+await page.waitForSelector("text=Viewing as Manager.");
+await page.click('nav >> text=AI Performance');
+await page.waitForSelector('h1:has-text("AI Performance")');
+await page.waitForSelector("text=Top-3 Hit Rate");
+if (!(await page.isVisible("text=retrieval-v1-2026-08"))) errors.push("AI Performance: dataset version missing");
+
 // Notifications: unread count + mark all read
 await page.click('nav >> text=Notifications');
 await page.waitForSelector("text=SME request overdue — InfoSec");
@@ -90,6 +99,7 @@ await page.click('button:has-text("Sarah Chen")');
 await page.click('button:has-text("SME")');
 await page.waitForSelector("text=Viewing as SME.");
 if (await page.isVisible('header >> text=Create Ticket')) errors.push("Role: Create Ticket visible for SME");
+if (await page.isVisible('nav >> text=AI Performance')) errors.push("Role: AI Performance visible for SME");
 
 console.log(errors.length ? "FAIL:\n" + errors.join("\n") : "MVP SMOKE OK");
 await browser.close();

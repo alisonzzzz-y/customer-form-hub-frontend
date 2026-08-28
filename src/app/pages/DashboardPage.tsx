@@ -37,6 +37,8 @@ export function DashboardPage({
     role === "Manager"
       ? tickets
       : tickets.filter((t) => t.owner === currentUser);
+  const hasLiveData = tickets.some((ticket) => ticket.backendId !== undefined);
+  const referenceDate = hasLiveData ? new Date() : MOCK_NOW;
   const live = scoped.filter((t) => t.status !== "Archived");
 
   const open = live.filter((t) => !["Closed", "Sent"].includes(t.status));
@@ -122,7 +124,8 @@ export function DashboardPage({
           </div>
         </div>
         <span className="text-[11px] font-semibold text-[#9CA3AF]">
-          Demo date: {fmtDate(MOCK_NOW.toISOString())} · This week
+          {hasLiveData ? "Live data: " : "Demo date: "}
+          {fmtDate(referenceDate.toISOString())} · This week
         </span>
       </div>
 
