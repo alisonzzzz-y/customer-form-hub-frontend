@@ -13,6 +13,7 @@ import {
   User,
   ChevronDown,
   AlertTriangle,
+  LoaderCircle,
   Menu,
 } from "lucide-react";
 import {
@@ -106,6 +107,35 @@ export default function AppShell() {
   const [kbReturnTicket, setKbReturnTicket] = useState<string | null>(null);
   const [globalQuery, setGlobalQuery] = useState("");
   const [backendLive, setBackendLive] = useState<boolean | null>(null);
+  const [initialLiveLoad, setInitialLiveLoad] = useState(!INCLUDE_DEMO_DATA);
+
+  const [tickets, setTickets] = useState<MvpTicket[]>(
+    INCLUDE_DEMO_DATA ? SEED_TICKETS : [],
+  );
+  const [questions, setQuestions] = useState<MvpQuestion[]>(
+    INCLUDE_DEMO_DATA ? SEED_QUESTIONS : [],
+  );
+  const [smeRequests, setSmeRequests] = useState<MvpSmeRequest[]>(
+    INCLUDE_DEMO_DATA ? SEED_SME_REQUESTS : [],
+  );
+  const [knowledge, setKnowledge] = useState<MvpKnowledgeEntry[]>(
+    INCLUDE_DEMO_DATA ? SEED_KNOWLEDGE : [],
+  );
+  const [notifications, setNotifications] = useState<MvpNotification[]>(
+    INCLUDE_DEMO_DATA ? SEED_NOTIFICATIONS : [],
+  );
+  const [activity, setActivity] = useState<MvpActivity[]>(
+    INCLUDE_DEMO_DATA ? SEED_ACTIVITY : [],
+  );
+
+  const showLocalDemoData = () => {
+    setTickets(SEED_TICKETS);
+    setQuestions(SEED_QUESTIONS);
+    setSmeRequests(SEED_SME_REQUESTS);
+    setKnowledge(SEED_KNOWLEDGE);
+    setNotifications(SEED_NOTIFICATIONS);
+    setActivity(SEED_ACTIVITY);
+  };
 
   // Load live data once the backend becomes available.
   const hydratedRef = useRef(false);
@@ -171,6 +201,7 @@ export default function AppShell() {
           );
         }
         addToast(`Loaded ${world.tickets.length} ticket(s) from the live backend.`, "info");
+        setInitialLiveLoad(false);
       }
       if (kb !== null)
         setKnowledge(
@@ -198,6 +229,8 @@ export default function AppShell() {
       }
       if (!live) {
         addToast("Backend unreachable — showing local demo data only.", "warning");
+        if (!INCLUDE_DEMO_DATA) showLocalDemoData();
+        setInitialLiveLoad(false);
         // Keep checking so live data can appear after a slow startup.
         pollRef.current = setInterval(() => {
           void pingBackend().then((ok) => {
@@ -222,13 +255,6 @@ export default function AppShell() {
     if (backendLive) void hydrate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendLive]);
-
-  const [tickets, setTickets] = useState<MvpTicket[]>(SEED_TICKETS);
-  const [questions, setQuestions] = useState<MvpQuestion[]>(SEED_QUESTIONS);
-  const [smeRequests, setSmeRequests] = useState<MvpSmeRequest[]>(SEED_SME_REQUESTS);
-  const [knowledge, setKnowledge] = useState<MvpKnowledgeEntry[]>(SEED_KNOWLEDGE);
-  const [notifications, setNotifications] = useState<MvpNotification[]>(SEED_NOTIFICATIONS);
-  const [activity, setActivity] = useState<MvpActivity[]>(SEED_ACTIVITY);
 
   const [toasts, setToasts] = useState<ToastMsg[]>([]);
   const idRef = useRef(0);
@@ -342,9 +368,11 @@ export default function AppShell() {
           className={`w-1.5 h-1.5 rounded-full ${backendLive ? "bg-green-500" : "bg-[#D8D5D0]"}`}
         />
         <span className={backendLive ? "text-green-700" : "text-[#B8B5B0]"}>
-          {backendLive
-            ? "Backend live — real AI parsing & retrieval"
-            : "Backend offline — simulated data"}
+          {backendLive === null
+            ? "Connecting to backend…"
+            : backendLive
+              ? "Backend live — real AI parsing & retrieval"
+              : "Backend offline — simulated data"}
         </span>
       </div>
     </>
@@ -453,7 +481,7 @@ export default function AppShell() {
           </div>
         </header>
 
-        {backendLive === false && (
+        {backendLive === false && !initialLiveLoad && (
           <div className="bg-[#FEF3C7] border-b border-[#F59E0B]/30 px-6 py-2 flex items-center gap-2 shrink-0">
             <AlertTriangle size={13} className="text-[#92400E] shrink-0" />
             <p className="text-[12px] text-[#92400E] font-medium flex-1">
@@ -470,6 +498,20 @@ export default function AppShell() {
         )}
 
         <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+          {initialLiveLoad ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
+              <div className="w-11 h-11 rounded-xl bg-[#FFF4EC] flex items-center justify-center">
+                <LoaderCircle size={20} className="text-[#F96702] animate-spin" />
+              </div>
+              <div>
+                <p className="text-[15px] font-semibold text-[#1F2937]">Connecting to your live workspace</p>
+                <p className="text-[12px] text-[#9CA3AF] mt-1">
+                  Loading tickets, SME requests, and approved knowledge sources.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
           {module === "dashboard" && <DashboardPage state={state} actions={actions} />}
           {module === "tickets" && (
             <TicketsPage
@@ -509,6 +551,8 @@ export default function AppShell() {
                 ])
               }
             />
+          )}
+            </>
           )}
         </main>
       </div>
