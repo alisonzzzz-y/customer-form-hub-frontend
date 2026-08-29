@@ -107,26 +107,16 @@ export default function AppShell() {
   const [kbReturnTicket, setKbReturnTicket] = useState<string | null>(null);
   const [globalQuery, setGlobalQuery] = useState("");
   const [backendLive, setBackendLive] = useState<boolean | null>(null);
-  const [initialLiveLoad, setInitialLiveLoad] = useState(!INCLUDE_DEMO_DATA);
+  // Show a complete demo workspace immediately. Live data refreshes it quietly
+  // in the background so a cold hosted backend never leaves the screen blank.
+  const [initialLiveLoad, setInitialLiveLoad] = useState(false);
 
-  const [tickets, setTickets] = useState<MvpTicket[]>(
-    INCLUDE_DEMO_DATA ? SEED_TICKETS : [],
-  );
-  const [questions, setQuestions] = useState<MvpQuestion[]>(
-    INCLUDE_DEMO_DATA ? SEED_QUESTIONS : [],
-  );
-  const [smeRequests, setSmeRequests] = useState<MvpSmeRequest[]>(
-    INCLUDE_DEMO_DATA ? SEED_SME_REQUESTS : [],
-  );
-  const [knowledge, setKnowledge] = useState<MvpKnowledgeEntry[]>(
-    INCLUDE_DEMO_DATA ? SEED_KNOWLEDGE : [],
-  );
-  const [notifications, setNotifications] = useState<MvpNotification[]>(
-    INCLUDE_DEMO_DATA ? SEED_NOTIFICATIONS : [],
-  );
-  const [activity, setActivity] = useState<MvpActivity[]>(
-    INCLUDE_DEMO_DATA ? SEED_ACTIVITY : [],
-  );
+  const [tickets, setTickets] = useState<MvpTicket[]>(SEED_TICKETS);
+  const [questions, setQuestions] = useState<MvpQuestion[]>(SEED_QUESTIONS);
+  const [smeRequests, setSmeRequests] = useState<MvpSmeRequest[]>(SEED_SME_REQUESTS);
+  const [knowledge, setKnowledge] = useState<MvpKnowledgeEntry[]>(SEED_KNOWLEDGE);
+  const [notifications, setNotifications] = useState<MvpNotification[]>(SEED_NOTIFICATIONS);
+  const [activity, setActivity] = useState<MvpActivity[]>(SEED_ACTIVITY);
 
   const showLocalDemoData = () => {
     setTickets(SEED_TICKETS);
@@ -144,7 +134,6 @@ export default function AppShell() {
     if (hydratedRef.current || hydratingRef.current) return;
     hydratingRef.current = true;
     try {
-      addToast("Backend connected — loading live tickets…", "info");
       const [world, kb] = await Promise.all([
         loadBackendWorld(
           new Set(
@@ -200,7 +189,6 @@ export default function AppShell() {
             p.filter((a) => !SEED_ACTIVITY_IDS.has(a.id)),
           );
         }
-        addToast(`Loaded ${world.tickets.length} ticket(s) from the live backend.`, "info");
         setInitialLiveLoad(false);
       }
       if (kb !== null)
