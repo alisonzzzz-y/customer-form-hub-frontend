@@ -33,6 +33,7 @@ import {
   SEED_QUESTIONS,
   SEED_SME_REQUESTS,
   SEED_TICKETS,
+  STARTUP_TICKETS,
 } from "./data/seeds";
 import { Toast } from "./components/ui";
 import { loadBackendKnowledge, loadBackendWorld, onBackendStatus, onWriteFailure, pingBackend } from "./services/backend";
@@ -61,7 +62,7 @@ const NAV: { id: ModuleId; label: string; icon: React.ElementType }[] = [
 
 // Demo data is only included when explicitly enabled.
 const INCLUDE_DEMO_DATA = import.meta.env.VITE_INCLUDE_DEMO_DATA === "true";
-const SEED_TICKET_IDS = new Set(SEED_TICKETS.map((t) => t.id));
+const STARTUP_TICKET_IDS = new Set(STARTUP_TICKETS.map((t) => t.id));
 const SEED_QUESTION_IDS = new Set(SEED_QUESTIONS.map((q) => q.id));
 const SEED_SME_REQUEST_IDS = new Set(SEED_SME_REQUESTS.map((r) => r.id));
 const SEED_NOTIFICATION_IDS = new Set(SEED_NOTIFICATIONS.map((n) => n.id));
@@ -111,7 +112,9 @@ export default function AppShell() {
   // in the background so a cold hosted backend never leaves the screen blank.
   const [initialLiveLoad, setInitialLiveLoad] = useState(false);
 
-  const [tickets, setTickets] = useState<MvpTicket[]>(SEED_TICKETS);
+  const [tickets, setTickets] = useState<MvpTicket[]>(
+    INCLUDE_DEMO_DATA ? SEED_TICKETS : STARTUP_TICKETS,
+  );
   const [questions, setQuestions] = useState<MvpQuestion[]>(SEED_QUESTIONS);
   const [smeRequests, setSmeRequests] = useState<MvpSmeRequest[]>(SEED_SME_REQUESTS);
   const [knowledge, setKnowledge] = useState<MvpKnowledgeEntry[]>(SEED_KNOWLEDGE);
@@ -119,7 +122,7 @@ export default function AppShell() {
   const [activity, setActivity] = useState<MvpActivity[]>(SEED_ACTIVITY);
 
   const showLocalDemoData = () => {
-    setTickets(SEED_TICKETS);
+    setTickets(INCLUDE_DEMO_DATA ? SEED_TICKETS : STARTUP_TICKETS);
     setQuestions(SEED_QUESTIONS);
     setSmeRequests(SEED_SME_REQUESTS);
     setKnowledge(SEED_KNOWLEDGE);
@@ -151,7 +154,7 @@ export default function AppShell() {
         setTickets((p) => {
           const retained = keepDemo
             ? p
-            : p.filter((t) => !SEED_TICKET_IDS.has(t.id));
+            : p.filter((t) => !STARTUP_TICKET_IDS.has(t.id));
           return [
             ...world.tickets.filter(
               (w) => !retained.some((t) => t.backendId === w.backendId),

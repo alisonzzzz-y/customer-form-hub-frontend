@@ -9,6 +9,48 @@ import {
   MvpTicket,
 } from "./model";
 
+const dateFromToday = (offset: number) => {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+};
+
+// The public demo appears before a hosted backend has responded. Keep this
+// first-paint data aligned with the backend's rolling-demo rule, so the
+// dashboard does not jump from an old local total to the live total.
+const STARTUP_TICKET_BLUEPRINTS: Array<{
+  id: string;
+  customer: string;
+  status: MvpTicket["status"];
+  stage: MvpTicket["stage"];
+  dueOffset: number;
+  urgency: MvpTicket["urgency"];
+  nda: MvpTicket["nda"];
+}> = [
+  { id: "TK-DEMO-01", customer: "Acme Corp", status: "Intake Review", stage: "intake", dueOffset: 0, urgency: "Medium", nda: "In Place" },
+  { id: "TK-DEMO-02", customer: "Globex Inc", status: "Ready for Review", stage: "final", dueOffset: 0, urgency: "High", nda: "In Place" },
+  { id: "TK-DEMO-03", customer: "Hooli", status: "In Progress", stage: "review", dueOffset: 0, urgency: "Medium", nda: "Unknown" },
+  { id: "TK-DEMO-04", customer: "Vandelay Industries", status: "Waiting SME", stage: "eta", dueOffset: 2, urgency: "High", nda: "In Place" },
+  { id: "TK-DEMO-05", customer: "Initech", status: "In Progress", stage: "review", dueOffset: 4, urgency: "Medium", nda: "In Place" },
+  { id: "TK-DEMO-06", customer: "Umbrella Health", status: "New", stage: "intake", dueOffset: 7, urgency: "Low", nda: "In Place" },
+  { id: "TK-DEMO-07", customer: "Wayne Enterprises", status: "Ready for Review", stage: "final", dueOffset: 10, urgency: "High", nda: "In Place" },
+  { id: "TK-DEMO-08", customer: "Stark Industries", status: "In Progress", stage: "review", dueOffset: 14, urgency: "Medium", nda: "In Place" },
+  { id: "TK-DEMO-09", customer: "Soylent Corp", status: "Waiting SME", stage: "eta", dueOffset: 21, urgency: "Medium", nda: "Unknown" },
+  { id: "TK-DEMO-10", customer: "Pied Piper", status: "In Progress", stage: "review", dueOffset: -2, urgency: "High", nda: "In Place" },
+];
+
+export const STARTUP_TICKETS: MvpTicket[] = STARTUP_TICKET_BLUEPRINTS.map((ticket, index) => ({
+  ...ticket,
+  isStartupDemo: true,
+  sorId: `DEMO-${String(index + 1).padStart(4, "0")}`,
+  owner: "Sarah Chen",
+  due: dateFromToday(ticket.dueOffset),
+  created: dateFromToday(-7 - index),
+  region: "EMEA",
+  source: "Demo workspace",
+  files: [],
+}));
+
 export const SEED_TICKETS: MvpTicket[] = [
   {
     id: "TK-1027",

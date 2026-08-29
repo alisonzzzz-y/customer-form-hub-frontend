@@ -38,7 +38,8 @@ export function DashboardPage({
       ? tickets
       : tickets.filter((t) => t.owner === currentUser);
   const hasLiveData = tickets.some((ticket) => ticket.backendId !== undefined);
-  const referenceDate = hasLiveData ? new Date() : MOCK_NOW;
+  const hasStartupDemo = tickets.some((ticket) => ticket.isStartupDemo);
+  const referenceDate = hasLiveData || hasStartupDemo ? new Date() : MOCK_NOW;
   const live = scoped.filter((t) => t.status !== "Archived");
 
   const open = live.filter((t) => !["Closed", "Sent"].includes(t.status));

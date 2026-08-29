@@ -107,6 +107,9 @@ export type MvpFile = {
 export type MvpTicket = {
   id: string;
   backendId?: number;
+  // Used only for the first paint of the hosted demo. These records are
+  // replaced as soon as the live backend returns its own ticket data.
+  isStartupDemo?: boolean;
   // Fields that still need to be completed.
   intakeMissing?: string[];
   customer: string;
@@ -244,7 +247,7 @@ export function fmtDateTime(iso: string | undefined | null): string {
 }
 
 export function isOverdueTicket(t: MvpTicket): boolean {
-  const now = t.backendId ? new Date() : MOCK_NOW;
+  const now = t.backendId || t.isStartupDemo ? new Date() : MOCK_NOW;
   return (
     !["Approved", "Sent", "Closed", "Archived"].includes(t.status) &&
     new Date(t.due + "T23:59:59Z") < now
@@ -252,7 +255,7 @@ export function isOverdueTicket(t: MvpTicket): boolean {
 }
 
 export function isDueToday(t: MvpTicket): boolean {
-  const now = t.backendId ? new Date() : MOCK_NOW;
+  const now = t.backendId || t.isStartupDemo ? new Date() : MOCK_NOW;
   return (
     t.due === now.toISOString().slice(0, 10) &&
     !["Closed", "Archived"].includes(t.status)
@@ -260,7 +263,7 @@ export function isDueToday(t: MvpTicket): boolean {
 }
 
 export function ticketReferenceNow(t: MvpTicket): Date {
-  return t.backendId ? new Date() : MOCK_NOW;
+  return t.backendId || t.isStartupDemo ? new Date() : MOCK_NOW;
 }
 
 export function smeRequestReferenceNow(r: MvpSmeRequest): Date {
