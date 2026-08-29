@@ -6,7 +6,16 @@ Customer Forms Hub 让审核者可以上传问卷、找到相关内部知识、�
 
 这是项目的前端仓库。后端负责处理文档、调用 AI、保存数据、导出文件和提供 AI Performance 数据。
 
-在线演示使用 Railway 托管的 MySQL 数据库。
+## 部署架构
+
+在线演示由四个小型服务组成：
+
+| 部分 | 服务 | 作用 |
+|---|---|---|
+| 前端 | Vercel | 托管 React 应用 |
+| 后端 API | Render | 运行 Spring Boot API 和文档处理流程 |
+| 数据库 | Railway MySQL | 保存工单、问题、知识条目和审核数据 |
+| AI 服务 | OpenAI API | 对问题分类，并为知识搜索创建 embedding |
 
 [英文 README](README.md) · [后端仓库](https://github.com/alisonzzzz-y/customer-form-hub)
 

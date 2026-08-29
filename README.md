@@ -6,7 +6,16 @@ Customer Forms Hub helps a reviewer upload a questionnaire, find relevant intern
 
 This is the frontend for the project. The [Spring Boot backend](https://github.com/alisonzzzz-y/customer-form-hub) handles document processing, AI calls, storage, exports, and the AI Performance data.
 
-For the deployed demo, the application uses a MySQL database hosted on Railway.
+## Deployment architecture
+
+The deployed demo is split into four small services:
+
+| Part | Service | Responsibility |
+|---|---|---|
+| Frontend | Vercel | Hosts the React application |
+| Backend API | Render | Runs the Spring Boot API and document workflow |
+| Database | Railway MySQL | Stores tickets, questions, knowledge entries, and review data |
+| AI services | OpenAI API | Classifies questions and creates embeddings for knowledge search |
 
 [Backend repository](https://github.com/alisonzzzz-y/customer-form-hub) · [中文说明](README.zh-CN.md)
 
