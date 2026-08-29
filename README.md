@@ -1,5 +1,7 @@
 # Customer Forms Hub
 
+[![Frontend CI](https://github.com/alisonzzzz-y/customer-form-hub-frontend/actions/workflows/frontend-ci.yml/badge.svg?branch=main)](https://github.com/alisonzzzz-y/customer-form-hub-frontend/actions/workflows/frontend-ci.yml)
+
 > A React app for teams answering customer security and compliance questionnaires.
 
 Customer Forms Hub helps a reviewer upload a questionnaire, find relevant internal knowledge, ask the right people for help, and approve the final response. AI helps with the repetitive parts, but a person always makes the final decision.
@@ -10,24 +12,22 @@ This is the frontend for the project. The [Spring Boot backend](https://github.c
 
 The deployed demo is split into four small services:
 
-| Part | Service | Responsibility |
-|---|---|---|
-| Frontend | Vercel | Hosts the React application |
-| Backend API | Render | Runs the Spring Boot API and document workflow |
-| Database | Railway MySQL | Stores tickets, questions, knowledge entries, and review data |
-| AI services | OpenAI API | Classifies questions and creates embeddings for knowledge search |
+| Part        | Service       | Responsibility                                                   |
+| ----------- | ------------- | ---------------------------------------------------------------- |
+| Frontend    | Vercel        | Hosts the React application                                      |
+| Backend API | Render        | Runs the Spring Boot API and document workflow                   |
+| Database    | Railway MySQL | Stores tickets, questions, knowledge entries, and review data    |
+| AI services | OpenAI API    | Classifies questions and creates embeddings for knowledge search |
 
 [Backend repository](https://github.com/alisonzzzz-y/customer-form-hub) · [中文说明](README.zh-CN.md)
 
 [Open the live demo](https://customer-form-hub.vercel.app/)
 
-<!--
-SCREENSHOT PLACEHOLDERS
-Add the three images below here:
 ![Dashboard and work queue](docs/screenshots/dashboard.png)
+
 ![Question review and SME escalation](docs/screenshots/ticket-review.png)
+
 ![AI Performance page](docs/screenshots/ai-performance.png)
--->
 
 ## What a user can do
 
@@ -69,11 +69,11 @@ All API calls go through `src/app/services/backend.ts`. During frontend work, th
 
 ## Tech used
 
-| Area | Tools |
-|---|---|
-| Frontend | React 18, TypeScript, Vite |
-| UI | Tailwind CSS 4, Recharts, Lucide icons |
-| Tests | Vitest, Testing Library, Playwright |
+| Area               | Tools                                     |
+| ------------------ | ----------------------------------------- |
+| Frontend           | React 18, TypeScript, Vite                |
+| UI                 | Tailwind CSS 4, Recharts, Lucide icons    |
+| Tests              | Vitest, Testing Library, Playwright       |
 | Backend connection | REST API, configured with `VITE_API_BASE` |
 
 ## Run it locally

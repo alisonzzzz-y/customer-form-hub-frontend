@@ -1,5 +1,7 @@
 # Customer Forms Hub | 中文说明
 
+[![前端 CI](https://github.com/alisonzzzz-y/customer-form-hub-frontend/actions/workflows/frontend-ci.yml/badge.svg?branch=main)](https://github.com/alisonzzzz-y/customer-form-hub-frontend/actions/workflows/frontend-ci.yml)
+
 > 一个帮助团队处理客户安全和合规问卷的 React 应用。
 
 Customer Forms Hub 让审核者可以上传问卷、找到相关内部知识、向合适的人求助，并最终确认回复。AI 帮助处理重复工作，但最终决定始终由人来做。
@@ -10,23 +12,22 @@ Customer Forms Hub 让审核者可以上传问卷、找到相关内部知识、�
 
 在线演示由四个小型服务组成：
 
-| 部分 | 服务 | 作用 |
-|---|---|---|
-| 前端 | Vercel | 托管 React 应用 |
-| 后端 API | Render | 运行 Spring Boot API 和文档处理流程 |
-| 数据库 | Railway MySQL | 保存工单、问题、知识条目和审核数据 |
-| AI 服务 | OpenAI API | 对问题分类，并为知识搜索创建 embedding |
+| 部分     | 服务          | 作用                                   |
+| -------- | ------------- | -------------------------------------- |
+| 前端     | Vercel        | 托管 React 应用                        |
+| 后端 API | Render        | 运行 Spring Boot API 和文档处理流程    |
+| 数据库   | Railway MySQL | 保存工单、问题、知识条目和审核数据     |
+| AI 服务  | OpenAI API    | 对问题分类，并为知识搜索创建 embedding |
 
 [英文 README](README.md) · [后端仓库](https://github.com/alisonzzzz-y/customer-form-hub)
 
 [打开在线演示](https://customer-form-hub.vercel.app/)
 
-<!--
-截图占位：在这里加入以下三张图：
-![Dashboard 和工作队列](docs/screenshots/dashboard.png)
-![问题审核和 SME 升级](docs/screenshots/ticket-review.png)
-![AI Performance 页面](docs/screenshots/ai-performance.png)
--->
+![Dashboard and work queue](docs/screenshots/dashboard.png)
+
+![Question review and SME escalation](docs/screenshots/ticket-review.png)
+
+![AI Performance page](docs/screenshots/ai-performance.png)
 
 ## 用户可以做什么
 
@@ -56,12 +57,12 @@ Manager 可以看到两类简单信息：
 
 ## 技术栈
 
-| 模块 | 技术 |
-|---|---|
-| 前端 | React 18、TypeScript、Vite |
-| UI | Tailwind CSS 4、Recharts、Lucide icons |
-| 测试 | Vitest、Testing Library、Playwright |
-| 后端连接 | 通过 `VITE_API_BASE` 配置的 REST API |
+| 模块     | 技术                                   |
+| -------- | -------------------------------------- |
+| 前端     | React 18、TypeScript、Vite             |
+| UI       | Tailwind CSS 4、Recharts、Lucide icons |
+| 测试     | Vitest、Testing Library、Playwright    |
+| 后端连接 | 通过 `VITE_API_BASE` 配置的 REST API   |
 
 ## 本地运行
 
