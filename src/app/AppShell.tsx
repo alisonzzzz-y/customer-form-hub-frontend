@@ -13,7 +13,6 @@ import {
   User,
   ChevronDown,
   AlertTriangle,
-  LoaderCircle,
   Menu,
 } from "lucide-react";
 import {
@@ -71,6 +70,7 @@ const SEED_ACTIVITY_IDS = new Set(SEED_ACTIVITY.map((a) => a.id));
 export type AppState = {
   role: Role;
   currentUser: string;
+  isInitialLiveLoad: boolean;
   tickets: MvpTicket[];
   questions: MvpQuestion[];
   smeRequests: MvpSmeRequest[];
@@ -307,6 +307,7 @@ export default function AppShell() {
   const state: AppState = {
     role,
     currentUser,
+    isInitialLiveLoad: initialLiveLoad,
     tickets,
     questions,
     smeRequests,
@@ -498,20 +499,7 @@ export default function AppShell() {
         )}
 
         <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-          {initialLiveLoad ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
-              <div className="w-11 h-11 rounded-xl bg-[#FFF4EC] flex items-center justify-center">
-                <LoaderCircle size={20} className="text-[#F96702] animate-spin" />
-              </div>
-              <div>
-                <p className="text-[15px] font-semibold text-[#1F2937]">Connecting to your live workspace</p>
-                <p className="text-[12px] text-[#9CA3AF] mt-1">
-                  Loading tickets, SME requests, and approved knowledge sources.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <>
+          <>
           {module === "dashboard" && <DashboardPage state={state} actions={actions} />}
           {module === "tickets" && (
             <TicketsPage
@@ -552,8 +540,7 @@ export default function AppShell() {
               }
             />
           )}
-            </>
-          )}
+          </>
         </main>
       </div>
       <Toast toasts={toasts} remove={(id) => setToasts((p) => p.filter((t) => t.id !== id))} />

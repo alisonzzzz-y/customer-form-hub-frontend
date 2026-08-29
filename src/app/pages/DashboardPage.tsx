@@ -1,4 +1,4 @@
-import { Activity, BookOpen, ChevronRight, Clock, Inbox } from "lucide-react";
+import { Activity, BookOpen, ChevronRight, Clock, Inbox, LoaderCircle } from "lucide-react";
 import {
   MOCK_NOW,
   fmtDate,
@@ -19,7 +19,7 @@ export function DashboardPage({
   state: AppState;
   actions: AppActions;
 }) {
-  const { tickets, smeRequests, activity, knowledge, role, currentUser } =
+  const { tickets, smeRequests, activity, knowledge, role, currentUser, isInitialLiveLoad } =
     state;
   // Hide live metrics when the backend is unavailable.
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -124,11 +124,14 @@ export function DashboardPage({
           </div>
         </div>
         <span className="text-[11px] font-semibold text-[#9CA3AF]">
-          {hasLiveData ? "Live data: " : "Demo date: "}
-          {fmtDate(referenceDate.toISOString())} · This week
+          {isInitialLiveLoad ? "Loading live workspace…" : hasLiveData ? "Live data: " : "Demo date: "}
+          {!isInitialLiveLoad && `${fmtDate(referenceDate.toISOString())} · This week`}
         </span>
       </div>
 
+      {isInitialLiveLoad ? (
+        <DashboardLoading />
+      ) : (
       <div className="flex-1 overflow-auto px-4 sm:px-8 py-7 flex flex-col gap-5">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {metrics.map((m) => (
@@ -380,7 +383,62 @@ export function DashboardPage({
           </Card>
         </div>
       </div>
+      )}
     </div>
+  );
+}
+
+function DashboardLoading() {
+  return (
+    <div className="flex-1 overflow-auto px-4 sm:px-8 py-7 flex flex-col gap-5" aria-busy="true" aria-label="Loading live workspace data">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] shadow-sm px-4 py-3.5 animate-pulse">
+            <div className="h-7 w-12 rounded bg-[#EEECE8]" />
+            <div className="h-2.5 w-20 rounded bg-[#F3F1EE] mt-2.5" />
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={index} className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] shadow-sm px-4 py-4 animate-pulse">
+            <div className="h-2.5 w-24 rounded bg-[#EEECE8]" />
+            <div className="h-7 w-14 rounded bg-[#F3F1EE] mt-3" />
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <LoadingCard title="My Priority Tickets" className="lg:col-span-3" rows={5} />
+        <LoadingCard title="SME ETA Tracker" className="lg:col-span-2" rows={5} />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <LoadingCard title="Recent Activity" className="lg:col-span-3" rows={4} />
+        <LoadingCard title="Knowledge Pending Review" className="lg:col-span-2" rows={4} />
+      </div>
+
+      <div className="flex items-center justify-center gap-2 text-[12px] text-[#6B7280] py-1">
+        <LoaderCircle size={14} className="text-[#F96702] animate-spin" />
+        Loading live tickets, SME requests, and knowledge sources.
+      </div>
+    </div>
+  );
+}
+
+function LoadingCard({ title, className, rows }: { title: string; className: string; rows: number }) {
+  return (
+    <Card title={title} className={`${className} overflow-hidden`}>
+      <div className="animate-pulse divide-y divide-border">
+        {Array.from({ length: rows }).map((_, index) => (
+          <div key={index} className="px-4 py-3 flex items-center gap-3">
+            <div className="h-3 w-24 rounded bg-[#EEECE8]" />
+            <div className="h-3 flex-1 rounded bg-[#F3F1EE]" />
+            <div className="h-3 w-14 rounded bg-[#EEECE8]" />
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 
