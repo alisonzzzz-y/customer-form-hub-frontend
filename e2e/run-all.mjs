@@ -34,7 +34,7 @@ const vite = spawn("npx", ["vite", "--port", String(vitePort), "--strictPort"], 
   env: {
     ...process.env,
     VITE_API_BASE: apiUrl,
-    VITE_INCLUDE_DEMO_DATA: "true",
+    VITE_TEST_DEMO_DATA: "true",
   },
   stdio: "ignore",
 });

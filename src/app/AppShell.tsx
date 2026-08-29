@@ -60,8 +60,9 @@ const NAV: { id: ModuleId; label: string; icon: React.ElementType }[] = [
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
-// Demo data is only included when explicitly enabled.
-const INCLUDE_DEMO_DATA = import.meta.env.VITE_INCLUDE_DEMO_DATA === "true";
+// The old static seed is reserved for the isolated browser-test environment.
+// Production always starts with the 10-ticket rolling demo workspace below.
+const USE_TEST_DEMO_DATA = import.meta.env.VITE_TEST_DEMO_DATA === "true";
 const STARTUP_TICKET_IDS = new Set(STARTUP_TICKETS.map((t) => t.id));
 const SEED_QUESTION_IDS = new Set(SEED_QUESTIONS.map((q) => q.id));
 const SEED_SME_REQUEST_IDS = new Set(SEED_SME_REQUESTS.map((r) => r.id));
@@ -113,7 +114,7 @@ export default function AppShell() {
   const [initialLiveLoad, setInitialLiveLoad] = useState(false);
 
   const [tickets, setTickets] = useState<MvpTicket[]>(
-    INCLUDE_DEMO_DATA ? SEED_TICKETS : STARTUP_TICKETS,
+    USE_TEST_DEMO_DATA ? SEED_TICKETS : STARTUP_TICKETS,
   );
   const [questions, setQuestions] = useState<MvpQuestion[]>(SEED_QUESTIONS);
   const [smeRequests, setSmeRequests] = useState<MvpSmeRequest[]>(SEED_SME_REQUESTS);
@@ -122,7 +123,7 @@ export default function AppShell() {
   const [activity, setActivity] = useState<MvpActivity[]>(SEED_ACTIVITY);
 
   const showLocalDemoData = () => {
-    setTickets(INCLUDE_DEMO_DATA ? SEED_TICKETS : STARTUP_TICKETS);
+    setTickets(USE_TEST_DEMO_DATA ? SEED_TICKETS : STARTUP_TICKETS);
     setQuestions(SEED_QUESTIONS);
     setSmeRequests(SEED_SME_REQUESTS);
     setKnowledge(SEED_KNOWLEDGE);
@@ -150,7 +151,7 @@ export default function AppShell() {
       if (world !== null && !world.complete)
         addToast("Some tickets could not be fully loaded — will retry on reconnect.", "warning");
       if (world) {
-        const keepDemo = INCLUDE_DEMO_DATA || !world.complete;
+        const keepDemo = USE_TEST_DEMO_DATA || !world.complete;
         setTickets((p) => {
           const retained = keepDemo
             ? p
@@ -196,7 +197,7 @@ export default function AppShell() {
       }
       if (kb !== null)
         setKnowledge(
-          INCLUDE_DEMO_DATA && kb.length === 0 ? SEED_KNOWLEDGE : kb,
+          USE_TEST_DEMO_DATA && kb.length === 0 ? SEED_KNOWLEDGE : kb,
         );
     } finally {
       hydratingRef.current = false;
@@ -220,7 +221,7 @@ export default function AppShell() {
       }
       if (!live) {
         addToast("Backend unreachable — showing local demo data only.", "warning");
-        if (!INCLUDE_DEMO_DATA) showLocalDemoData();
+        if (!USE_TEST_DEMO_DATA) showLocalDemoData();
         setInitialLiveLoad(false);
         // Keep checking so live data can appear after a slow startup.
         pollRef.current = setInterval(() => {
