@@ -25,7 +25,8 @@ await page.waitForSelector("text=Department Grouping — 8 questions", { timeout
 
 // 2) reload: the ticket must come back from the backend, not local memory
 await page.goto(BASE_URL);
-await page.waitForSelector("text=Loaded 1 ticket(s) from the live backend.", { timeout: 10000 });
+// Wait for the stable live-data marker instead of the short-lived toast.
+await page.waitForSelector("text=Live data:", { timeout: 10000 });
 await page.click('nav >> text=Tickets');
 await page.waitForSelector('tr:has-text("Vandelay Industries")');
 const row = page.locator('tr:has-text("Vandelay Industries")').first();

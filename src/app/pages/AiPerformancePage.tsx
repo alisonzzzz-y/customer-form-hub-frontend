@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, BarChart3, CheckCircle, Edit3, RefreshCw, Send } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip as ChartTooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { Card, EmptyState } from "../components/ui";
 import { fmtDateTime } from "../data/model";
 import {
@@ -60,6 +70,21 @@ export function AiPerformancePage() {
         { label: "Accepted unchanged", value: review.counts.accepted, color: "bg-green-600", icon: CheckCircle },
         { label: "Edited by a reviewer", value: review.counts.edited, color: "bg-[#2563EB]", icon: Edit3 },
         { label: "Escalated to SME or AE", value: combinedEscalated, color: "bg-[#F96702]", icon: Send },
+      ]
+    : [];
+  const retrievalRankData = completed
+    ? [
+        { label: "Rank 1", cases: completed.top1Hits, color: "#16A34A" },
+        {
+          label: "Ranks 2–3",
+          cases: Math.max(0, completed.top3Hits - completed.top1Hits),
+          color: "#2563EB",
+        },
+        {
+          label: "Not in top 3",
+          cases: Math.max(0, completed.evaluationCases - completed.top3Hits),
+          color: "#F96702",
+        },
       ]
     : [];
 
@@ -168,6 +193,41 @@ export function AiPerformancePage() {
                     <p><span className="text-[#9CA3AF]">Latest completed run:</span> <strong className="text-[#374151]">{fmtDateTime(completed.completedAt)}</strong></p>
                     <p><span className="text-[#9CA3AF]">Dataset:</span> <strong className="text-[#374151]">{completed.datasetVersion ?? "—"}</strong></p>
                   </div>
+                  <Card title="Offline Benchmark">
+                    <div className="px-4 pt-4">
+                      <p className="text-[12px] font-semibold text-[#374151]">Expected source rank distribution</p>
+                      <p className="text-[11px] text-[#6B7280] mt-0.5">
+                        Where the expected knowledge source appeared for each evaluation case.
+                      </p>
+                    </div>
+                    <div className="h-[220px] px-2 py-3" role="img" aria-label={`Retrieval rank distribution: ${completed.top1Hits} cases at rank one, ${Math.max(0, completed.top3Hits - completed.top1Hits)} at ranks two or three, and ${Math.max(0, completed.evaluationCases - completed.top3Hits)} outside the top three`}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={retrievalRankData} margin={{ top: 8, right: 20, left: -18, bottom: 0 }}>
+                          <CartesianGrid vertical={false} stroke="#EEECE8" />
+                          <XAxis
+                            dataKey="label"
+                            tick={{ fontSize: 11, fill: "#6B7280" }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            allowDecimals={false}
+                            domain={[0, Math.max(1, completed.evaluationCases)]}
+                            tick={{ fontSize: 10, fill: "#9CA3AF" }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <ChartTooltip
+                            formatter={(value: number) => [`${value} case${value === 1 ? "" : "s"}`, "Evaluation cases"]}
+                            contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                          />
+                          <Bar dataKey="cases" radius={[5, 5, 0, 0]} isAnimationActive={false}>
+                            {retrievalRankData.map((entry) => <Cell key={entry.label} fill={entry.color} />)}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
                 </>
               )}
             </section>
