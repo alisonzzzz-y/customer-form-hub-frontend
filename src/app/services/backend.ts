@@ -317,6 +317,24 @@ export async function syncQuestionDepartment(
   })) !== null;
 }
 
+// Older demo tickets can have locally-created questions even when the ticket
+// itself was saved to the backend. Save those questions before they enter an
+// SME workflow so the package, request and email draft remain traceable.
+export async function createBackendQuestion(
+  ticketId: number,
+  question: Pick<MvpQuestion, "original" | "department" | "risk" | "row">,
+): Promise<number | null> {
+  const created = await post<FormQuestion>("/questions", {
+    ticketId,
+    questionText: question.original,
+    department: questionDeptToBackend(question.department),
+    status: "SME Needed",
+    riskLevel: question.risk,
+    rowReference: `Q${question.row}`,
+  });
+  return created?.id ?? null;
+}
+
 export function syncTicketStatus(
   backendId: number | undefined,
   status: string,

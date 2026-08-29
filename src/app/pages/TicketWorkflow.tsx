@@ -40,6 +40,7 @@ import {
 import { AppActions, AppState } from "../AppShell";
 import {
   applyRagResult,
+  createBackendQuestion,
   createBackendSmeRequest,
   createBackendTicket,
   downloadTicketExport,
@@ -1350,19 +1351,44 @@ function SmePackagePanel({
       questionIds: deptQueued.map((q) => q.id),
       sentAt: new Date().toISOString(),
     };
+    const backendQuestionIds = new Map(
+      deptQueued.map((question) => [question.id, question.backendId]),
+    );
     if (ticket.backendId) {
-      if (deptQueued.some((q) => !q.backendId)) {
-        actions.addToast(
-          `${dept} cannot be sent yet because one or more questions are not synced to the backend.`,
-          "warning",
+      const unsyncedQuestions = deptQueued.filter((question) => !question.backendId);
+      if (unsyncedQuestions.length > 0) {
+        const savedIds = await Promise.all(
+          unsyncedQuestions.map(async (question) => [
+            question.id,
+            await createBackendQuestion(ticket.backendId!, question),
+          ] as const),
         );
-        return;
+        if (savedIds.some(([, backendId]) => backendId === null)) {
+          actions.addToast(
+            `${dept} was not sent because its questions could not be saved to the backend.`,
+            "warning",
+          );
+          return;
+        }
+        savedIds.forEach(([questionId, backendId]) => backendQuestionIds.set(questionId, backendId!));
+        actions.setQuestions((current) =>
+          current.map((question) => {
+            const backendId = backendQuestionIds.get(question.id);
+            return backendId && !question.backendId ? { ...question, backendId } : question;
+          }),
+        );
+        actions.addToast(
+          `Saved ${unsyncedQuestions.length} ${dept} question${unsyncedQuestions.length === 1 ? "" : "s"} to the live backend.`,
+          "info",
+        );
       }
       const prepared = await Promise.all(
         deptQueued.map(async (q) => {
+          const backendId = backendQuestionIds.get(q.id);
+          if (!backendId) return false;
           const [departmentSaved, statusSaved] = await Promise.all([
-            syncQuestionDepartment(q.backendId, dept),
-            syncQuestionStatus(q.backendId, "SME Needed"),
+            syncQuestionDepartment(backendId, dept),
+            syncQuestionStatus(backendId, "SME Needed"),
           ]);
           return departmentSaved && statusSaved;
         }),
@@ -1392,7 +1418,10 @@ function SmePackagePanel({
       );
       const linkedCount = srqByBackendQ
         ? deptQueued.filter(
-            (q) => q.backendId && srqByBackendQ[q.backendId] !== undefined,
+            (q) => {
+              const backendId = backendQuestionIds.get(q.id);
+              return backendId && srqByBackendQ[backendId] !== undefined;
+            },
           ).length
         : 0;
       if (!srqByBackendQ || linkedCount !== deptQueued.length) {
@@ -1404,8 +1433,9 @@ function SmePackagePanel({
       }
       req.srqIds = {};
       for (const q of deptQueued) {
-        if (q.backendId && srqByBackendQ[q.backendId] !== undefined)
-          req.srqIds[q.id] = srqByBackendQ[q.backendId];
+        const backendId = backendQuestionIds.get(q.id);
+        if (backendId && srqByBackendQ[backendId] !== undefined)
+          req.srqIds[q.id] = srqByBackendQ[backendId];
       }
       const email = await fetchSmeEmail(backendReqId);
       if (email) req.sentEmail = email;
@@ -1413,7 +1443,14 @@ function SmePackagePanel({
     actions.setSmeRequests((p) => [...p, req]);
     actions.setQuestions((p) =>
       p.map((q) =>
-        req.questionIds.includes(q.id) ? { ...q, status: "Waiting SME", smeRequestId: req.id } : q,
+        req.questionIds.includes(q.id)
+          ? {
+              ...q,
+              status: "Waiting SME",
+              smeRequestId: req.id,
+              backendId: backendQuestionIds.get(q.id) ?? q.backendId,
+            }
+          : q,
       ),
     );
     actions.logActivity(`Sent ${dept} SME package (${deptQueued.length} questions) — awaiting ETA`, ticket.id);
