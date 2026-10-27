@@ -1,6 +1,6 @@
 // Local fallback used when the AI backend is unavailable.
 
-import { MvpQuestion, NdaStatus, SUGGESTED_THRESHOLD, Urgency } from "../data/model";
+import { MvpQuestion, NdaStatus, SUGGESTED_THRESHOLD, Urgency, demoDeadline } from "../data/model";
 
 export type IntakeExtraction = {
   customer: string;
@@ -18,7 +18,10 @@ const MONTHS = [
   "july", "august", "september", "october", "november", "december",
 ];
 
-function parseDeadline(text: string): string {
+// A deadline written without a year ("by 6 November") is read in the current
+// year. A date that has already passed is kept as written and flagged on the
+// intake check, because old or overdue requests can be legitimate.
+function parseDeadline(text: string, now: Date = new Date()): string {
   const iso = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
   if (iso) return iso[1];
   const m1 = text.match(/\b(?:by|before|due(?:\s+by)?|deadline[^.\n]*?)\s+(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)/i);
@@ -34,7 +37,11 @@ function parseDeadline(text: string): string {
   }
   const month = MONTHS.findIndex((m) => m.startsWith(monthName.slice(0, 3)));
   if (day >= 1 && day <= 31 && month >= 0 && monthName.length >= 3) {
-    return `2026-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const explicitYear = text
+      .slice((m1 ?? m2)!.index! + (m1 ?? m2)![0].length)
+      .match(/^,?\s+(20\d{2})\b/)?.[1];
+    const year = explicitYear ?? String(now.getUTCFullYear());
+    return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
   return "";
 }
@@ -92,19 +99,30 @@ export function parseIntakeEmail(text: string): IntakeExtraction {
   };
 }
 
-export const SAMPLE_AE_EMAIL = `From: Jane Smith <jane.smith@cloudera.com>
-To: gom-team@cloudera.com
+// Demo email for the New Request dialog. The deadline is always ten days from
+// today so a freshly created demo ticket is never already overdue. Addresses
+// use the reserved example.com domain so a demo can never email real people.
+export function sampleAeEmail(now: Date = new Date()): string {
+  const due = new Date(demoDeadline(now) + "T00:00:00Z").toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  return `From: Jane Smith <jane.smith@example.com>
+To: gom-team@example.com
 Subject: Security questionnaire for Vandelay Industries — urgent
 
 Hi GOM team,
 
-Vandelay Industries sent over the attached security questionnaire as part of their renewal (~$450k ARR). They need the completed answers back by 21 July. We have an NDA in place with them.
+Vandelay Industries sent over the attached security questionnaire as part of their renewal (~$450k ARR). They need the completed answers back by ${due}. We have an NDA in place with them.
 
 This one is urgent — their legal review is blocking the renewal.
 
 Thanks,
 Jane Smith
 Account Executive, EMEA`;
+}
 
 type Template = {
   original: string;
@@ -196,6 +214,7 @@ export function extractQuestionsFor(ticketId: string, baseId: number): MvpQuesti
     department: t.department,
     risk: t.risk,
     status: "AI Analysed",
+    departmentSource: "Demo",
     confidence: t.confidence,
     sharingStatus: t.sharingStatus,
     duplicateOf: t.duplicateOfIndex !== undefined ? baseId + t.duplicateOfIndex + 1 : undefined,

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Copy, ExternalLink, History, Loader2, Lock, Search, Sparkles, X } from "lucide-react";
-import { MvpKnowledgeEntry } from "../data/model";
+import { AlertTriangle, Copy, ExternalLink, History, Loader2, Lock, Search, Sparkles, X } from "lucide-react";
+import { MvpKnowledgeEntry, matchSupport } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { mapSharing, ragSearch } from "../services/backend";
 import { Card, ConfidenceBadge, EmptyState, SharingBadge } from "../components/ui";
@@ -240,11 +240,22 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
                 <div className="px-4 py-2.5 bg-[#FFF4EC] flex items-center gap-2">
                   <Sparkles size={12} className="text-[#C05600]" />
                   <p className="text-[11px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
-                    Best match — answer drafted from approved knowledge
+                    {matchSupport(result.confidence) === "related"
+                      ? "Related knowledge only — no sufficiently supported answer"
+                      : "Closest approved passage — check it answers the question"}
                   </p>
                   <ConfidenceBadge confidence={result.confidence} />
                   <SharingBadge status={result.entry.sharingStatus} />
                 </div>
+                {matchSupport(result.confidence) === "related" && (
+                  <div className="mx-4 mt-3 bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-md px-3 py-2 flex items-start gap-2">
+                    <AlertTriangle size={11} className="text-[#92400E] shrink-0 mt-0.5" />
+                    <p className="text-[12px] text-[#92400E]">
+                      No sufficiently supported answer found. Manual review required — this
+                      entry is only loosely related to the question.
+                    </p>
+                  </div>
+                )}
                 <div className="px-4 py-3.5 text-sm text-[#374151] leading-relaxed">
                   {result.entry.content}
                 </div>

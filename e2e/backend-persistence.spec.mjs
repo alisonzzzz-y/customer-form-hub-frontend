@@ -28,9 +28,11 @@ await page.goto(BASE_URL);
 // Wait for the stable live-data marker instead of the short-lived toast.
 await page.waitForSelector("text=Live data:", { timeout: 10000 });
 await page.click('nav >> text=Tickets');
-await page.waitForSelector('tr:has-text("Vandelay Industries")');
-const row = page.locator('tr:has-text("Vandelay Industries")').first();
-if (!(await row.textContent())?.includes("TK-9001")) errors.push("Persist: loaded ticket id not TK-9001");
+// the ticket keeps the ID it was given at creation (seed TK-1027 is also Vandelay)
+await page.waitForSelector('tr:has-text("TK-9001")');
+const row = page.locator('tr:has-text("TK-9001")').first();
+if (!(await row.textContent())?.includes("Vandelay Industries")) errors.push("Persist: TK-9001 is not the Vandelay ticket");
+if ((await page.locator('tr:has-text("TK-NaN")').count()) > 0) errors.push("Persist: TK-NaN in ticket list");
 
 // 3) hydrated ticket continues the workflow: regenerate suggestions via grouping
 await row.click();

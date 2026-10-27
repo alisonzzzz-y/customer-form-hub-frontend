@@ -7,6 +7,8 @@ import {
   SUGGESTED_THRESHOLD,
   SharingStatus,
   TBD_DEPARTMENT,
+  matchSupport,
+  ticketIdForBackend,
 } from "../data/model";
 
 interface SearchResult {
@@ -262,10 +264,10 @@ export async function createBackendTicket(
     customerName: t.customer,
     createdBy: t.ae ?? null,
     assignedTo: t.owner,
-    status: "New",
+    status: t.status,
     urgency: t.urgency,
     ndaStatus: NDA_TO_BACKEND[t.nda] ?? "Unknown",
-    deadline: `${t.due}T00:00:00`,
+    deadline: t.due ? `${t.due}T00:00:00` : null,
     businessImpact: t.businessImpact ?? null,
   });
   return created?.id ?? null;
@@ -351,7 +353,8 @@ export type ParsedBackendQuestion = {
 };
 
 export type ParseOutcome =
-  | { kind: "ok"; questions: ParsedBackendQuestion[] }
+  // reused = the ticket already had saved questions, so nothing was re-imported
+  | { kind: "ok"; questions: ParsedBackendQuestion[]; reused?: boolean }
   | { kind: "rejected"; message: string } // backend alive but refused the file
   | { kind: "offline" };
 
@@ -368,6 +371,7 @@ export async function parseQuestionnaire(
     if (existing.length > 0) {
       return {
         kind: "ok",
+        reused: true,
         questions: existing.map((fq) => ({
           backendId: fq.id,
           text: fq.questionText,
@@ -453,6 +457,8 @@ export function applyRagResult(
   const top = hits[0];
   if (!top) return { ...q, status: "New", confidence: null };
   const score = top.similarityScore ?? 0;
+  // A weak match is kept for reference, but it is not offered as an answer.
+  const support = matchSupport(score);
   return {
     ...q,
     confidence: score,
@@ -471,7 +477,7 @@ export function applyRagResult(
       sourceTitle: `${r.documentTitle} — ${r.sectionTitle}`,
       sharingStatus: mapSharing(r.sharingStatus),
     })),
-    status: score >= SUGGESTED_THRESHOLD ? "Suggested" : "Needs Review",
+    status: support === "supported" && score >= SUGGESTED_THRESHOLD ? "Suggested" : "Needs Review",
   };
 }
 
@@ -617,7 +623,7 @@ export async function loadBackendWorld(
       world.complete = false;
       continue;
     }
-    const localId = `TK-${9000 + bt.id}`;
+    const localId = ticketIdForBackend(bt.id);
     // Only confirmed answers are treated as approved.
     const answerByQ = new Map(
       answers
@@ -678,6 +684,7 @@ export async function loadBackendWorld(
         string,
         import("../data/model").MvpSmeRequest["status"]
       > = {
+        "Draft Prepared": "Draft Prepared",
         "Waiting for ETA": "Requested",
         "ETA Confirmed": "ETA Set",
         Overdue: "ETA Set",
@@ -924,8 +931,9 @@ export async function createBackendSmeRequest(
     teamName,
     questionCount,
     eta: null,
-    status: "Waiting for ETA",
-    sentAt: new Date().toISOString().slice(0, 19),
+    // The app only opens a mail draft; sentAt is set when the user confirms the send.
+    status: "Draft Prepared",
+    sentAt: null,
   });
   return created?.id ?? null;
 }
@@ -972,11 +980,13 @@ export function syncSmeRequest(
     status?: string;
     confirmedBy?: string | null;
     returnedAt?: string | null;
+    sentAt?: string | null;
   },
 ) {
   if (!backendId) return;
   // Only send status values supported by the backend.
   const statusMap: Record<string, string> = {
+    "Draft Prepared": "Draft Prepared",
     Requested: "Waiting for ETA",
     "ETA Set": "ETA Confirmed",
     Overdue: "Overdue",
@@ -989,6 +999,7 @@ export function syncSmeRequest(
     returnedAt: patch.returnedAt
       ? patch.returnedAt.slice(0, 19)
       : patch.returnedAt,
+    sentAt: patch.sentAt ? patch.sentAt.slice(0, 19) : patch.sentAt,
   });
 }
 

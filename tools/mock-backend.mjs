@@ -140,6 +140,9 @@ http
         return json(res, 200, QUESTION_TEMPLATES.map((q) => ({ ...q })));
       if (path === "/api/questionnaire/import" && req.method === "POST") {
         const ticketId = +(url.searchParams.get("ticketId") ?? 0);
+        // Mirrors the real backend: importing the same file again reuses rows.
+        const already = questions.filter((q) => q.ticketId === ticketId);
+        if (already.length > 0) return json(res, 200, already);
         const saved = QUESTION_TEMPLATES.map((q) => ({
           id: questionSeq++,
           ticketId,
@@ -339,7 +342,12 @@ http
       }
       if ((m = path.match(/^\/api\/sme-requests\/(\d+)$/)) && req.method === "PUT") {
         const i = smeRequests.findIndex((x) => x.id === +m[1]);
-        if (i >= 0) smeRequests[i] = { ...smeRequests[i], ...parse() };
+        if (i >= 0) {
+          const changes = parse();
+          // sentAt is recorded once, like the real backend.
+          if (smeRequests[i].sentAt) delete changes.sentAt;
+          smeRequests[i] = { ...smeRequests[i], ...changes };
+        }
         return json(res, 200, smeRequests[i] ?? {});
       }
       if ((m = path.match(/^\/api\/sme-requests\/(\d+)\/unreturn$/)) && req.method === "POST") {

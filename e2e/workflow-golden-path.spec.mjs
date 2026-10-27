@@ -27,20 +27,25 @@ await page.setInputFiles('input[type="file"]', {
   buffer: Buffer.from("dummy"),
 });
 await page.click("text=Extract Intake Information");
-// lands directly on the full-page intake check of the new ticket
-await page.waitForSelector("text=TK-1030 · Vandelay Industries", { timeout: 15000 });
+// lands directly on the full-page intake check of the new ticket; the ID comes
+// from the backend row (id 1 after reset), never from local arithmetic (TK-NaN)
+await page.waitForSelector("text=TK-9001 · Vandelay Industries", { timeout: 15000 });
+if (await page.isVisible("text=TK-NaN")) errors.push("Extract: TK-NaN shown");
 await page.waitForSelector("text=All required intake fields resolved");
 // verify extraction hit the right values (now editable inputs in the panel)
 const customer = await page.inputValue("td input >> nth=0");
 if (customer !== "Vandelay Industries") errors.push(`Extract: customer=${customer}`);
 const due = await page.inputValue('input[type="date"]');
-if (due !== "2026-07-21") errors.push(`Extract: due=${due}`);
+// the sample email deadline is always ten days from today
+const expectedDue = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+if (due !== expectedDue) errors.push(`Extract: due=${due}, expected ${expectedDue}`);
 const urgency = await page.inputValue("td select >> nth=0");
 if (urgency !== "High") errors.push(`Extract: urgency=${urgency}`);
 const nda = await page.inputValue("td select >> nth=1");
 if (nda !== "In Place") errors.push(`Extract: nda=${nda}`);
 await page.click("text=Next: Analyse Form");
 await page.waitForSelector("text=Department Grouping — 8 questions", { timeout: 15000 });
+if (await page.isVisible("text=Demo mode")) errors.push("Grouping: uploaded file shown as demo data");
 // live backend indicator + live parse toast
 if (!(await page.isVisible("text=Backend live — real AI parsing & retrieval")))
   errors.push("Live: backend indicator not green");
@@ -119,7 +124,14 @@ await page.click('button:has-text("Next: SME Package")');
 // ── SME package: batch send all departments at once ──
 await page.waitForSelector("text=SMEs don't log in — send each department");
 await page.click('button:has-text("Send All")');
-await page.waitForSelector("text=All SME packages sent — track ETAs next.", { timeout: 15000 });
+// preparing a package only opens mail drafts — nothing may claim it was sent yet
+await page.waitForSelector("text=All SME packages prepared", { timeout: 15000 });
+await page.click('div.fixed >> text=Done');
+await page.waitForSelector("text=SME ETA Tracking — this ticket");
+if ((await page.locator('button:has-text("Mark as Sent")').count()) === 0)
+  errors.push("SME: prepared drafts were not left pending a manual send");
+await page.click('button:has-text("Mark as Sent") >> nth=0');
+await page.waitForSelector("text=package marked as sent");
 
 // ── ETA tracking: record ETA, mark returned ──
 await page.waitForSelector("text=SME ETA Tracking — this ticket");

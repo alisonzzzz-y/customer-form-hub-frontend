@@ -31,9 +31,12 @@ import {
   MvpTicket,
   TicketStage,
   SUGGESTED_THRESHOLD,
+  duplicateKey,
   fmtDate,
   fmtDateTime,
   isOverdueSmeRequest,
+  isPastDate,
+  matchSupport,
   pendingForms,
   smeRequestReferenceNow,
 } from "../data/model";
@@ -211,12 +214,25 @@ function IntakePanel({
       key: "due",
       label: "Deadline",
       edit: (
-        <input
-          type="date"
-          className={input}
-          value={ticket.due}
-          onChange={(e) => patch({ due: e.target.value }, "due")}
-        />
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="date"
+            lang="en-GB"
+            className={input}
+            value={ticket.due}
+            onChange={(e) => patch({ due: e.target.value }, "due")}
+          />
+          {/* The native picker follows the browser language; show the
+              chosen date in the app's own format next to it. */}
+          {ticket.due && (
+            <span className="text-[11px] text-[#6B7280]">{fmtDate(ticket.due)}</span>
+          )}
+          {isPastDate(ticket.due) && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-orange-600">
+              <AlertTriangle size={10} /> This date has already passed — check it with the AE
+            </span>
+          )}
+        </div>
       ),
     },
     {
@@ -271,7 +287,14 @@ function IntakePanel({
   const requiredMissing = ["customer", "due", "urgency", "nda"].filter(isMissing);
   const ready = requiredMissing.length === 0;
 
-  const confirm = async () => {
+  // Demo questions are used only when the user explicitly asks for them and
+  // no customer form is attached. An attached file is always parsed for real.
+  const confirm = async (useDemoQuestions = false) => {
+    const file = pendingForms.get(ticket.id);
+    if (!file && !useDemoQuestions) {
+      actions.addToast("Attach the customer form, or choose to continue with demo questions.", "warning");
+      return;
+    }
     setProcessing(true);
     patch({ status: "AI Processing" });
     actions.logActivity("Confirmed intake complete — AI analysis started", ticket.id);
@@ -283,9 +306,10 @@ function IntakePanel({
     }
 
     const base = Math.max(0, ...state.questions.map((q) => q.id));
-    const file = pendingForms.get(ticket.id);
+    const existing = state.questions.filter((q) => q.ticketId === ticket.id);
     let newQs: MvpQuestion[] = [];
     let live = false;
+    let formImport: NonNullable<MvpTicket["formImport"]>;
     if (file) {
       // Keep the file attached so the user can retry after a parsing failure.
       const parsed = await parseQuestionnaire(file, backendId);
@@ -318,25 +342,63 @@ function IntakePanel({
       }
       live = true;
       pendingForms.delete(ticket.id);
-      newQs = parsed.questions.map((pq, i) => ({
-        id: base + i + 1,
-        backendId: pq.backendId,
-        ticketId: ticket.id,
-        row: i + 1,
-        original: pq.text,
-        normalised: pq.text,
-        department: pq.department,
-        risk: "Medium" as const,
-        status: "AI Analysed" as const,
-        confidence: null,
-      }));
+      // Flag questions the customer form itself repeats; they are kept, not deleted.
+      const firstByText = new Map<string, number>();
+      newQs = parsed.questions.map((pq, i) => {
+        const id = base + i + 1;
+        const key = duplicateKey(pq.text);
+        const duplicateOf = firstByText.get(key);
+        if (duplicateOf === undefined) firstByText.set(key, id);
+        return {
+          id,
+          backendId: pq.backendId,
+          ticketId: ticket.id,
+          row: i + 1,
+          original: pq.text,
+          normalised: pq.text,
+          department: pq.department,
+          departmentSource: "AI" as const,
+          risk: "Medium" as const,
+          status: "AI Analysed" as const,
+          confidence: null,
+          duplicateOf,
+        };
+      });
+      formImport = {
+        source: "file",
+        fileName: file.name,
+        questionCount: newQs.length,
+        // Multi-sheet imports prefix each section with its sheet name ("InfoSec / …").
+        sections: [
+          ...new Set(
+            parsed.questions.map((pq) => pq.section.split(/ \/ |!/)[0].trim()).filter(Boolean),
+          ),
+        ],
+        reused: parsed.reused ? newQs.length : 0,
+        at: new Date().toISOString(),
+      };
     } else {
-      newQs = extractQuestionsFor(ticket.id, base);
-      actions.addToast("No form attached — using simulated demo questions.", "info");
+      // Analysing the same ticket twice must not add a second demo set.
+      newQs = existing.length > 0 ? [] : extractQuestionsFor(ticket.id, base);
+      formImport = {
+        source: "demo",
+        questionCount: existing.length || newQs.length,
+        sections: [],
+        reused: existing.length,
+        at: new Date().toISOString(),
+      };
+      actions.addToast("Using simulated demo questions — they are not from a customer file.", "info");
     }
 
     setTimeout(() => {
-      actions.setQuestions((p) => [...p, ...newQs]);
+      // Merge by backend ID so a repeated analysis never shows a question twice;
+      // questions already on this ticket keep their review state.
+      actions.setQuestions((p) => {
+        const known = new Set(
+          p.filter((q) => q.ticketId === ticket.id && q.backendId).map((q) => q.backendId),
+        );
+        return [...p, ...newQs.filter((q) => !q.backendId || !known.has(q.backendId))];
+      });
       actions.setTickets((p) =>
         p.map((t) =>
           t.id === ticket.id
@@ -344,8 +406,11 @@ function IntakePanel({
                 ...t,
                 status: "In Progress",
                 stage: "grouping",
+                formImport,
                 files: t.files.map((fl) =>
-                  fl.kind === "Customer form" ? { ...fl, status: "Processed" } : fl,
+                  fl.kind === "Customer form" && (!file || fl.name === file.name)
+                    ? { ...fl, status: "Processed" }
+                    : fl,
                 ),
               }
             : t,
@@ -354,12 +419,16 @@ function IntakePanel({
       syncTicketStatus(backendId ?? undefined, "In Progress");
       actions.logActivity(
         live
-          ? `AI parsed ${file!.name} and classified ${newQs.length} questions by department (live backend)`
-          : `AI extracted ${newQs.length} questions and classified departments (1 possible duplicate flagged)`,
+          ? formImport.reused > 0
+            ? `Re-analysed ${file!.name}: reused the ${formImport.questionCount} questions already saved for this ticket (nothing inserted twice)`
+            : `AI parsed ${file!.name}: ${formImport.questionCount} questions across ${Math.max(1, formImport.sections.length)} sheet(s)/section(s), departments classified by AI`
+          : `Loaded ${formImport.questionCount} simulated demo questions (no customer form attached)`,
         ticket.id,
       );
       actions.addToast(
-        `${newQs.length} questions ${live ? "parsed from the uploaded form" : "extracted"} — review the department grouping.`,
+        live
+          ? `${formImport.questionCount} questions parsed from ${file!.name} — review the department grouping.`
+          : `${formImport.questionCount} demo questions loaded — review the department grouping.`,
         "success",
       );
     }, live ? 0 : 1400);
@@ -428,8 +497,8 @@ function IntakePanel({
               {pendingForms.get(ticket.id)!.name} attached — parsed right after this step.
             </p>
           ) : (
-            <p className="text-[11px] text-[#9CA3AF]">
-              No customer form attached — analysis will use simulated demo questions.
+            <p className="text-[11px] text-[#92400E]">
+              No customer form attached — attach the .xlsx / .docx to analyse it.
             </p>
           )}
           <input
@@ -441,7 +510,19 @@ function IntakePanel({
               const f = e.target.files?.[0];
               if (f) {
                 pendingForms.set(ticket.id, f);
-                patch({}); // re-render
+                // Record the file on the ticket so the Files tab shows it.
+                patch({
+                  files: [
+                    ...ticket.files.filter((fl) => fl.kind !== "Customer form"),
+                    {
+                      name: f.name,
+                      size: `${Math.max(1, Math.round(f.size / 1024))} KB`,
+                      kind: "Customer form",
+                      uploaded: new Date().toISOString().slice(0, 10),
+                      status: "Uploaded",
+                    },
+                  ],
+                });
                 actions.addToast(`Attached ${f.name}.`, "info");
               }
               e.target.value = "";
@@ -456,11 +537,24 @@ function IntakePanel({
           </button>
         </div>
         <div className="flex items-center gap-2 mt-4 flex-wrap">
-          <span title="Confirm the intake fields — AI then extracts and classifies the questions automatically">
-            <BtnPrimary onClick={confirm} disabled={!ready}>
+          <span
+            title={
+              pendingForms.has(ticket.id)
+                ? "Confirm the intake fields — AI then extracts and classifies the questions automatically"
+                : "Attach the customer form first"
+            }
+          >
+            <BtnPrimary onClick={() => confirm()} disabled={!ready || !pendingForms.has(ticket.id)}>
               <Brain size={12} /> Next: Analyse Form <ChevronRight size={11} />
             </BtnPrimary>
           </span>
+          {!pendingForms.has(ticket.id) && ready && (
+            <span title="Demo mode: loads a fixed set of simulated questions instead of a customer file">
+              <BtnSecondary onClick={() => void confirm(true)}>
+                Continue with demo questions
+              </BtnSecondary>
+            </span>
+          )}
           <button
             onClick={() => setClarifyOpen(true)}
             title="Auto-drafts an editable email to the AE asking only for the missing intake fields"
@@ -521,7 +615,7 @@ function GroupingPanel({
 
   const moveDept = (q: MvpQuestion, dept: string) => {
     actions.setQuestions((p) =>
-      p.map((x) => (x.id === q.id ? { ...x, department: dept } : x)),
+      p.map((x) => (x.id === q.id ? { ...x, department: dept, departmentSource: "Manual" } : x)),
     );
     syncQuestionDepartment(q.backendId, dept);
     actions.logActivity(`Moved question #${q.row} to ${dept}`, ticket.id);
@@ -573,10 +667,11 @@ function GroupingPanel({
       title={`Department Grouping — ${qs.length} questions`}
       right={
         <span className="text-[11px] text-white/85">
-          AI classified each question — adjust below, then confirm
+          Check each department — adjust below, then confirm
         </span>
       }
     >
+      <ImportSummary ticket={ticket} qs={qs} />
       {qs.some((q) => q.department === TBD_DEPARTMENT) && (
         <div className="bg-[#FEF3C7] border-b border-[#F59E0B]/30 px-4 py-2.5 flex items-center gap-2">
           <AlertTriangle size={13} className="text-[#92400E] shrink-0" />
@@ -614,7 +709,7 @@ function GroupingPanel({
                 </span>
               )}
             </div>
-            <ConfidenceBadge confidence={q.confidence} />
+            <ClassificationBadge q={q} />
             <select
               value={q.department}
               title="Change which department this question belongs to"
@@ -683,6 +778,61 @@ function GroupingPanel({
         </div>
       )}
     </Card>
+  );
+}
+
+// What the grouping step is showing: a parsed customer file or demo data.
+function ImportSummary({ ticket, qs }: { ticket: MvpTicket; qs: MvpQuestion[] }) {
+  const info = ticket.formImport;
+  const duplicates = qs.filter((q) => q.duplicateOf).length;
+  if (!info) return null;
+  if (info.source === "demo")
+    return (
+      <div className="bg-[#FEF3C7] border-b border-[#F59E0B]/30 px-4 py-2.5 flex items-center gap-2">
+        <Info size={13} className="text-[#92400E] shrink-0" />
+        <p className="text-[12px] text-[#92400E]">
+          <strong>Demo mode</strong> — these {qs.length} questions are simulated, not read from a
+          customer file. Attach the real form on a new request to analyse it.
+        </p>
+      </div>
+    );
+  return (
+    <div className="bg-[#F0FDF4] border-b border-green-200 px-4 py-2.5 flex items-start gap-2">
+      <FileSpreadsheet size={13} className="text-green-700 shrink-0 mt-0.5" />
+      <p className="text-[12px] text-[#166534]">
+        <strong>{info.fileName}</strong> parsed · {info.questionCount} question
+        {info.questionCount === 1 ? "" : "s"}
+        {info.sections.length > 1 &&
+          ` across ${info.sections.length} sheets/sections (${info.sections.join(", ")})`}
+        {info.reused > 0 && " · already saved for this ticket, so nothing was imported twice"}
+        {duplicates > 0 &&
+          ` · ${duplicates} possible duplicate${duplicates === 1 ? "" : "s"} flagged (kept, not removed)`}
+        {" · "}blank rows are skipped · no demo questions added.
+      </p>
+    </div>
+  );
+}
+
+// Department classification status. This is not the knowledge-match score,
+// which is only calculated in the next step.
+function ClassificationBadge({ q }: { q: MvpQuestion }) {
+  const [label, cls, title] =
+    q.department === TBD_DEPARTMENT
+      ? ["Needs department", "text-[#92400E] bg-[#FEF3C7] border-[#F59E0B]/40", "The AI classifier did not assign a department — pick one"]
+      : q.departmentSource === "Manual"
+        ? ["Set manually", "text-[#374151] bg-gray-50 border-gray-200", "A reviewer chose this department"]
+        : q.departmentSource === "Demo"
+          ? ["Demo data", "text-[#92400E] bg-[#FEF3C7] border-[#F59E0B]/40", "Department comes from the simulated demo set"]
+          : q.departmentSource === "AI"
+            ? ["AI classified", "text-[#4338CA] bg-[#EEF2FF] border-[#C7D2FE]", "Department chosen by the AI classifier from the question text (no confidence score is produced)"]
+            : ["Saved", "text-[#6B7280] bg-gray-50 border-gray-200", "Department saved on this ticket"];
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${cls}`}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -811,6 +961,10 @@ function ReviewPanel({
   };
 
   if (!q) return null;
+  // A weak match stays visible as related knowledge but is never offered as
+  // an answer that can be approved unchanged.
+  const support = matchSupport(q.confidence);
+  const offered = support === "related" ? undefined : q.suggested;
 
   return (
     <div className="flex flex-col gap-3">
@@ -908,7 +1062,7 @@ function ReviewPanel({
             {editing ? (
               <div className="bg-[#F5F4F1] rounded-xl p-4 flex flex-col gap-2">
                 <p className="text-[10px] font-black text-[#ABABAB] uppercase tracking-[0.14em]">
-                  {q.suggested ? "Edit answer" : "Manual answer"}
+                  {offered ? "Edit answer" : "Manual answer"}
                 </p>
                 <textarea
                   rows={6}
@@ -934,17 +1088,23 @@ function ReviewPanel({
                 </p>
                 <p className="text-[13px] text-[#1F2937] leading-relaxed">{q.finalAnswer.text}</p>
               </div>
-            ) : q.suggested ? (
+            ) : offered ? (
               <>
                 <div className="border border-[#F96702]/25 rounded-xl overflow-hidden">
                   <div className="px-3.5 py-2 bg-[#FFF4EC] flex items-center gap-2">
                     <Brain size={11} className="text-[#C05600]" />
                     <p className="text-[11px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
-                      AI Suggested Answer — best match
+                      {support === "partial"
+                        ? "AI Suggested Answer — partial match, verify before approving"
+                        : "AI Suggested Answer — best match"}
                     </p>
                     <ConfidenceBadge confidence={q.confidence} />
                   </div>
-                  <p className="px-3.5 py-3 text-[13px] text-[#1F2937] leading-relaxed">{q.suggested.text}</p>
+                  <p className="px-3.5 pt-2 text-[11px] text-[#9CA3AF]">
+                    Retrieved from approved knowledge, not written by AI — confirm it actually
+                    answers the question before approving.
+                  </p>
+                  <p className="px-3.5 py-3 text-[13px] text-[#1F2937] leading-relaxed">{offered.text}</p>
                   <div className="px-3.5 py-2 bg-[#FAFAFA] border-t border-border grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] text-[#6B7280]">
                     <p>
                       <strong>Source:</strong>{" "}
@@ -956,12 +1116,12 @@ function ReviewPanel({
                         >
                           {source.title}
                         </button>
-                      ) : q.suggested?.sourceTitle ? (
+                      ) : offered.sourceTitle ? (
                         <span
                           title="This entry is not in the currently loaded Knowledge Base list (the match may have been made in offline/demo mode, or the entry changed) — the title is shown for traceability but cannot be opened"
                           className="text-[#6B7280] font-semibold"
                         >
-                          {q.suggested.sourceTitle}
+                          {offered.sourceTitle}
                         </span>
                       ) : (
                         "Knowledge entry"
@@ -974,7 +1134,7 @@ function ReviewPanel({
                       <strong>Sharing:</strong> {q.sharingStatus ?? "—"}
                     </p>
                     <p>
-                      <strong>Why:</strong> {q.suggested.reasoning}
+                      <strong>Why:</strong> {offered.reasoning}
                     </p>
                   </div>
                 </div>
@@ -1018,6 +1178,31 @@ function ReviewPanel({
                   </div>
                 )}
               </>
+            ) : q.suggested ? (
+              <>
+                <div className="bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-xl px-4 py-3.5 text-[12px] text-[#92400E] flex items-start gap-2">
+                  <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                  <p>
+                    <strong>No sufficiently supported answer found. Manual review required.</strong>{" "}
+                    The closest approved entry only scored{" "}
+                    {Math.round((q.confidence ?? 0) * 100)}% and is shown below as related
+                    knowledge, not as an answer. Write the answer manually or route it to the{" "}
+                    {q.department} SME team.
+                  </p>
+                </div>
+                <div className="border border-border rounded-xl overflow-hidden">
+                  <div className="px-3.5 py-2 bg-[#F7F8FA] flex items-center gap-2">
+                    <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide flex-1">
+                      Related knowledge — not a verified answer
+                    </p>
+                    <ConfidenceBadge confidence={q.confidence} />
+                  </div>
+                  <p className="px-3.5 py-3 text-[12px] text-[#6B7280] leading-relaxed">{q.suggested.text}</p>
+                  <p className="px-3.5 pb-2.5 text-[11px] text-[#9CA3AF]">
+                    <strong>Source:</strong> {q.suggested.sourceTitle ?? source?.title ?? "Knowledge entry"}
+                  </p>
+                </div>
+              </>
             ) : (
               <div className="bg-[#F7F8FA] border border-border rounded-xl px-4 py-3.5 text-[12px] text-[#6B7280]">
                 No approved knowledge match — <strong>Research Required</strong>. Enter a manual
@@ -1057,14 +1242,14 @@ function ReviewPanel({
                           status: "Approved",
                           finalAnswer: {
                             text: draft.trim(),
-                            sourceType: q.suggested ? "AI Edited" : "Manual",
+                            sourceType: offered ? "AI Edited" : "Manual",
                           },
-                          reviewOutcome: q.suggested ? "EDITED" : undefined,
+                          reviewOutcome: offered ? "EDITED" : undefined,
                           reviewedAt: new Date().toISOString(),
                         },
-                        `${q.suggested ? "Edited and approved" : "Manually answered"} question #${q.row}`,
+                        `${offered ? "Edited and approved" : "Manually answered"} question #${q.row}`,
                       );
-                      syncFinalAnswer(q, draft.trim(), true, state.currentUser);
+                      syncFinalAnswer(offered ? q : { ...q, suggested: undefined }, draft.trim(), true, state.currentUser);
                       maybeSaveKb(draft.trim(), q);
                       actions.addToast("Answer approved.", "success");
                       advance();
@@ -1076,20 +1261,20 @@ function ReviewPanel({
                 </>
               ) : (
                 <>
-                  {q.suggested && !q.finalAnswer && q.status !== "SME Queued" && (
+                  {offered && !q.finalAnswer && q.status !== "SME Queued" && (
                     <button
                       onClick={() => {
                         update(
                           q.id,
                           {
                             status: "Approved",
-                            finalAnswer: { text: q.suggested!.text, sourceType: "AI" },
+                            finalAnswer: { text: offered.text, sourceType: "AI" },
                             reviewOutcome: "ACCEPTED",
                             reviewedAt: new Date().toISOString(),
                           },
                           `Approved AI answer for question #${q.row}`,
                         );
-                        syncFinalAnswer(q, q.suggested!.text, false, state.currentUser);
+                        syncFinalAnswer(q, offered.text, false, state.currentUser);
                         actions.addToast("Answer approved.", "success");
                         advance();
                       }}
@@ -1100,14 +1285,14 @@ function ReviewPanel({
                       <CheckCircle size={11} /> Approve
                     </button>
                   )}
-                  <span title={q.suggested || q.finalAnswer ? "Rewrite the answer before approving it" : "Write the answer yourself — no knowledge match was found"}>
+                  <span title={offered || q.finalAnswer ? "Rewrite the answer before approving it" : "Write the answer yourself — no knowledge match was found"}>
                     <BtnSecondary
                       onClick={() => {
-                        setDraft(q.finalAnswer?.text ?? q.suggested?.text ?? "");
+                        setDraft(q.finalAnswer?.text ?? offered?.text ?? "");
                         setEditing(true);
                       }}
                     >
-                      <Edit3 size={11} /> {q.suggested || q.finalAnswer ? "Edit" : "Manual Answer"}
+                      <Edit3 size={11} /> {offered || q.finalAnswer ? "Edit" : "Manual Answer"}
                     </BtnSecondary>
                   </span>
                   {q.status === "Approved" && q.finalAnswer && (
@@ -1145,7 +1330,7 @@ function ReviewPanel({
                           q.id,
                           {
                             status: "SME Queued",
-                            reviewOutcome: q.suggested ? "ESCALATED" : undefined,
+                            reviewOutcome: offered ? "ESCALATED" : undefined,
                             reviewedAt: new Date().toISOString(),
                           },
                           `Routed question #${q.row} to ${q.department} SME queue`,
@@ -1205,7 +1390,7 @@ function ReviewPanel({
                           q.id,
                           {
                             status: "Waiting AE",
-                            reviewOutcome: q.suggested ? "ESCALATED" : undefined,
+                            reviewOutcome: offered ? "ESCALATED" : undefined,
                             reviewedAt: requestedAt,
                             aeClarificationRequestedAt: requestedAt,
                           },
@@ -1258,6 +1443,24 @@ function ReviewPanel({
   );
 }
 
+// Record that the user sent a prepared SME draft from their own mail app.
+// This is the user's confirmation only: the app cannot see the mailbox.
+function confirmSmeSent(req: MvpSmeRequest, ticketId: string, actions: AppActions) {
+  const sentAt = new Date().toISOString();
+  actions.setSmeRequests((p) =>
+    p.map((r) => (r.id === req.id && r.status === "Draft Prepared" ? { ...r, status: "Requested", sentAt } : r)),
+  );
+  syncSmeRequest(req.backendId, { status: "Requested", sentAt });
+  actions.logActivity(
+    `Marked ${req.department} SME package as sent — confirmed by user, not verified by a mail service`,
+    ticketId,
+  );
+}
+
+// Demo-safe recipient: example.com is reserved and never delivers mail.
+const smeTeamAddress = (dept: string) =>
+  `${dept.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-team@example.com`;
+
 function SmePackagePanel({
   ticket,
   qs,
@@ -1279,7 +1482,17 @@ function SmePackagePanel({
   const [tab, setTab] = useState(depts[0] ?? "");
 
   const tabQueued = queued.filter((q) => q.department === tab);
-  const tabSent = tab !== "" && tabQueued.length === 0 && waiting.some((q) => q.department === tab);
+  const openReqFor = (dept: string) =>
+    state.smeRequests.find(
+      (r) => r.ticketId === ticket.id && r.department === dept && r.status !== "Returned",
+    );
+  // Registered = the package exists. It only counts as sent once the user
+  // confirms they sent the mail draft.
+  const tabRegistered =
+    tab !== "" && tabQueued.length === 0 && waiting.some((q) => q.department === tab);
+  const tabReq = openReqFor(tab);
+  const tabPrepared = tabRegistered && tabReq?.status === "Draft Prepared";
+  const tabSent = tabRegistered && !tabPrepared;
   const allSent = queued.length === 0;
   const unsentDepts = depts.filter((d) => queued.some((q) => q.department === d));
   const [selected, setSelected] = useState<string[]>([]);
@@ -1291,7 +1504,7 @@ function SmePackagePanel({
 
   const draftFor = (dept: string, req: MvpSmeRequest) => ({
     dept,
-    to: `${dept.toLowerCase()}-team@cloudera.com`,
+    to: smeTeamAddress(dept),
     subject: req.sentEmail?.subject ?? `ETA request — ${ticket.customer} customer form, ${dept} tab`,
     body:
       req.sentEmail?.body ??
@@ -1347,7 +1560,7 @@ function SmePackagePanel({
       department: dept,
       assignee: `${dept} Team`,
       eta: null,
-      status: "Requested",
+      status: "Draft Prepared",
       questionIds: deptQueued.map((q) => q.id),
       sentAt: new Date().toISOString(),
     };
@@ -1453,7 +1666,10 @@ function SmePackagePanel({
           : q,
       ),
     );
-    actions.logActivity(`Sent ${dept} SME package (${deptQueued.length} questions) — awaiting ETA`, ticket.id);
+    actions.logActivity(
+      `Prepared ${dept} SME package (${deptQueued.length} questions) and mail draft — awaiting manual send`,
+      ticket.id,
+    );
     return req;
   };
 
@@ -1477,10 +1693,13 @@ function SmePackagePanel({
           p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta", status: "Waiting SME" } : t)),
         );
         syncTicketStatus(ticket.backendId, "Waiting SME");
-        actions.addToast("All SME packages sent — track ETAs next.", "success");
+        actions.addToast(
+          "All SME packages prepared — send each mail draft, then mark it as sent in ETA Tracking.",
+          "success",
+        );
       } else {
         actions.addToast(
-          `${sent.length} SME package${sent.length === 1 ? "" : "s"} sent. ${remaining.join(", ")} still queued.`,
+          `${sent.length} SME package${sent.length === 1 ? "" : "s"} prepared. ${remaining.join(", ")} still queued.`,
           sent.length > 0 ? "info" : "warning",
         );
       }
@@ -1500,7 +1719,7 @@ function SmePackagePanel({
       const d = draftFor(tab, req);
       openMailDraft(d.to, d.subject, d.body);
       actions.addToast(
-        "Draft opened in your mail app — attach the downloaded Excel before sending.",
+        "Draft opened in your mail app — attach the downloaded package, send it, then click Mark as Sent.",
         "info",
       );
       const remaining = unsentDepts.filter((d) => d !== tab);
@@ -1509,7 +1728,10 @@ function SmePackagePanel({
           p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta", status: "Waiting SME" } : t)),
         );
         syncTicketStatus(ticket.backendId, "Waiting SME");
-        actions.addToast("All SME packages sent — track ETAs next.", "success");
+        actions.addToast(
+          "All SME packages prepared — send each mail draft, then mark it as sent in ETA Tracking.",
+          "success",
+        );
       }
     } finally {
       setBusy(false);
@@ -1580,7 +1802,9 @@ function SmePackagePanel({
             const count =
               queued.filter((q) => q.department === d).length ||
               waiting.filter((q) => q.department === d).length;
-            const sent = !queued.some((q) => q.department === d);
+            const registered = !queued.some((q) => q.department === d);
+            const prepared = registered && openReqFor(d)?.status === "Draft Prepared";
+            const sent = registered && !prepared;
             return (
               <button
                 key={d}
@@ -1592,6 +1816,7 @@ function SmePackagePanel({
                   {count}
                 </span>
                 {sent && <CheckCircle size={11} className="text-green-500" />}
+                {prepared && <Mail size={11} className="text-[#D97706]" />}
               </button>
             );
           })}
@@ -1640,14 +1865,22 @@ function SmePackagePanel({
               <Mail size={12} className="text-[#F96702]" />
               <p className="text-[11px] font-bold text-[#1F2937]">SME Email Draft — {tab} Team</p>
               {tabSent && (
-                <span className="ml-auto flex items-center gap-1 text-[11px] text-green-600 font-medium">
-                  <CheckCircle size={10} /> Sent
+                <span
+                  title="You confirmed this draft was sent from your mail app"
+                  className="ml-auto flex items-center gap-1 text-[11px] text-green-600 font-medium"
+                >
+                  <CheckCircle size={10} /> Sent (confirmed by you)
+                </span>
+              )}
+              {tabPrepared && (
+                <span className="ml-auto flex items-center gap-1 text-[11px] text-[#B45309] font-medium">
+                  <Clock size={10} /> Draft prepared — not sent yet
                 </span>
               )}
             </div>
             <div className="px-3.5 py-2.5 space-y-1 border-b border-border text-[11px]">
               {[
-                ["To", `${tab.toLowerCase()}-team@cloudera.com`],
+                ["To", smeTeamAddress(tab)],
                 ["Subject", `ETA request — ${ticket.customer} customer form, ${tab} tab`],
               ].map(([l, v]) => (
                 <div key={l} className="flex gap-2">
@@ -1664,7 +1897,7 @@ function SmePackagePanel({
                 return (
                   <div className="px-3.5 py-3 text-[11px] text-[#374151] leading-relaxed flex-1 whitespace-pre-wrap">
                     <p className="text-[10px] font-bold text-green-700 uppercase tracking-[0.1em] mb-1.5">
-                      Sent — composed by backend
+                      Email text — composed by backend
                     </p>
                     {sentReq.sentEmail.body}
                   </div>
@@ -1689,6 +1922,29 @@ function SmePackagePanel({
             </div>
             )}
             <div className="px-3.5 py-2.5 border-t border-border bg-[#F7F8FA]">
+              {tabPrepared && tabReq ? (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const d = draftFor(tab, tabReq);
+                      openMailDraft(d.to, d.subject, d.body);
+                    }}
+                    className="flex-1 flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold border border-[#F96702]/40 rounded-full justify-center text-[#C05600] hover:bg-[#FFF4EC] tracking-[0.06em] uppercase transition-all"
+                  >
+                    <Mail size={10} /> Open draft again
+                  </button>
+                  <button
+                    onClick={() => {
+                      confirmSmeSent(tabReq, ticket.id, actions);
+                      actions.addToast(`${tab} package marked as sent.`, "success");
+                    }}
+                    title="Only click after you have actually sent the email from your mail app — the app cannot check this for you"
+                    className="flex-1 flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full justify-center bg-[#F96702] text-white hover:bg-[#D95400] tracking-[0.06em] uppercase transition-all"
+                  >
+                    <CheckCircle size={10} /> I sent it — Mark as Sent
+                  </button>
+                </div>
+              ) : (
               <button
                 onClick={sendDept}
                 disabled={tabSent || busy}
@@ -1704,10 +1960,11 @@ function SmePackagePanel({
                   </>
                 ) : (
                   <>
-                    <Send size={10} /> Send {tab} SME Package
+                    <Send size={10} /> Prepare {tab} SME Package &amp; Draft
                   </>
                 )}
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -1770,9 +2027,22 @@ function SmePackagePanel({
                     <p className="text-[11px] text-[#9CA3AF] truncate">{d.subject}</p>
                   </div>
                   {d.opened ? (
-                    <span className="flex items-center gap-1 text-[11px] text-[#9CA3AF] font-medium whitespace-nowrap">
-                      Draft opened
-                    </span>
+                    (() => {
+                      const req = openReqFor(d.dept);
+                      return req?.status === "Draft Prepared" ? (
+                        <button
+                          onClick={() => confirmSmeSent(req, ticket.id, actions)}
+                          title="Only click after you have actually sent the email"
+                          className="flex items-center gap-1.5 px-3.5 py-1.5 text-[11px] font-bold border border-green-600/40 bg-green-50 text-green-700 rounded-full hover:bg-green-100 tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                        >
+                          <CheckCircle size={10} /> Mark as Sent
+                        </button>
+                      ) : (
+                        <span className="flex items-center gap-1 text-[11px] text-green-700 font-medium whitespace-nowrap">
+                          <CheckCircle size={10} /> Sent (confirmed)
+                        </span>
+                      );
+                    })()
                   ) : (
                     <button
                       onClick={() => {
@@ -1792,7 +2062,8 @@ function SmePackagePanel({
             <div className="px-5 py-3 border-t border-border bg-[#FAFAFA] flex items-center gap-2 shrink-0">
               <p className="text-[11px] text-[#6B7280] flex-1">
                 {batchDrafts.filter((d) => d.opened).length}/{batchDrafts.length} drafts opened —
-                packages stay registered either way.
+                packages stay registered; mark each one as sent after you send it (also possible
+                later in ETA Tracking).
               </p>
               <BtnSecondary onClick={() => setBatchDrafts(null)}>Done</BtnSecondary>
             </div>
@@ -1831,10 +2102,20 @@ function EtaPanel({
       return;
     }
     const iso = new Date(etaValue + ":00Z").toISOString();
+    // An SME can only reply with an ETA to an email that was sent, so recording
+    // one also confirms a still-pending draft as sent.
+    const sentAt = etaModal.status === "Draft Prepared" ? new Date().toISOString() : undefined;
     actions.setSmeRequests((p) =>
-      p.map((r) => (r.id === etaModal.id ? { ...r, eta: iso, status: "ETA Set" } : r)),
+      p.map((r) =>
+        r.id === etaModal.id ? { ...r, eta: iso, status: "ETA Set", ...(sentAt ? { sentAt } : {}) } : r,
+      ),
     );
-    syncSmeRequest(etaModal.backendId, { eta: iso, status: "ETA Set", confirmedBy: confirmedBy || null });
+    syncSmeRequest(etaModal.backendId, {
+      eta: iso,
+      status: "ETA Set",
+      confirmedBy: confirmedBy || null,
+      ...(sentAt ? { sentAt } : {}),
+    });
     actions.logActivity(
       `ETA recorded for ${etaModal.department}: ${fmtDateTime(iso)}${confirmedBy ? ` — ${confirmedBy}` : ""}`,
       ticket.id,
@@ -1945,6 +2226,18 @@ function EtaPanel({
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-1.5 flex-wrap">
+                      {r.status === "Draft Prepared" && (
+                        <button
+                          onClick={() => {
+                            confirmSmeSent(r, ticket.id, actions);
+                            actions.addToast(`${r.department} package marked as sent.`, "success");
+                          }}
+                          title="The mail draft was prepared but nobody has confirmed sending it. Click only after you sent it."
+                          className="px-3 py-1 text-[10px] font-bold border border-[#F96702]/40 bg-[#FFF4EC] rounded-full text-[#C05600] hover:bg-[#FFE8D0] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
+                        >
+                          <CheckCircle size={9} className="inline mr-0.5" /> Mark as Sent
+                        </button>
+                      )}
                       {r.status !== "Returned" && (
                         <>
                           <button
@@ -2358,7 +2651,7 @@ function NudgeModal({
     },
   };
   const t = templates[variant];
-  const to = `${req.department.toLowerCase()}-team@cloudera.com`;
+  const to = smeTeamAddress(req.department);
   const [subject, setSubject] = useState(t.subject);
   const [body, setBody] = useState(
     [...t.lines, "", "Thanks,", "Sarah Chen, GOM Analyst"].join("\n"),

@@ -4,6 +4,8 @@ import {
   fmtDateTime,
   isDueToday,
   isOverdueTicket,
+  demoDeadline,
+  nextLocalTicketId,
 } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { NewRequestFlow } from "./NewRequestFlow";
@@ -130,10 +132,8 @@ export function TicketsPage({
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                const num =
-                  Math.max(...tickets.map((t) => parseInt(t.id.slice(3), 10))) +
-                  1;
-                const id = `TK-${num}`;
+                const id = nextLocalTicketId(tickets);
+                const num = Number(id.slice(3));
                 actions.setTickets((p) => [
                   {
                     id,
@@ -142,7 +142,7 @@ export function TicketsPage({
                     owner: state.currentUser,
                     status: "New",
                     stage: "intake",
-                    due: "2026-07-28",
+                    due: demoDeadline(),
                     created: new Date().toISOString().slice(0, 10),
                     urgency: "Medium",
                     nda: "In Place",

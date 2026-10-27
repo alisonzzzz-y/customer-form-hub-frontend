@@ -57,7 +57,8 @@ if (!acceptDisabled) errors.push("Review: NDA block not enforcing disabled Appro
 await page.click('nav >> text=AI Search');
 await page.fill('input[placeholder*="Ask a question"]', "Do we hold ISO 27001 certification?");
 await page.press('input[placeholder*="Ask a question"]', "Enter");
-await page.waitForSelector("text=Best match — answer drafted from approved knowledge");
+// a hit is labelled by how well it supports an answer; a weak hit must say so
+await page.waitForSelector("text=/Closest approved passage|Related knowledge only/");
 if (!(await page.isVisible("text=Last updated:"))) errors.push("AI Search: metadata missing");
 await page.fill('input[placeholder*="Ask a question"]', "quantum blockchain llama farming");
 await page.press('input[placeholder*="Ask a question"]', "Enter");

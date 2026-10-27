@@ -62,6 +62,7 @@ export type KnowledgeStatus =
   | "Archived";
 
 export type SmeStatus =
+  | "Draft Prepared" // package registered and mail draft opened; not yet confirmed as sent
   | "Requested"
   | "ETA Set"
   | "In Progress"
@@ -129,6 +130,15 @@ export type MvpTicket = {
   ae?: string;
   notes?: string;
   files: MvpFile[];
+  // What the last "Analyse Form" step actually used, shown on the grouping step.
+  formImport?: {
+    source: "file" | "demo";
+    fileName?: string;
+    questionCount: number;
+    sections: string[];
+    reused: number; // questions already saved for this ticket by an earlier parse
+    at: string;
+  };
 };
 
 export type MvpQuestion = {
@@ -139,9 +149,12 @@ export type MvpQuestion = {
   original: string;
   normalised: string;
   department: string;
+  // Where the department came from. Undefined for questions loaded from the
+  // backend, which does not record whether a person changed it.
+  departmentSource?: "AI" | "Manual" | "Demo";
   risk: "Low" | "Medium" | "High";
   status: QuestionStatus;
-  confidence: number | null; // null = no knowledge match
+  confidence: number | null; // knowledge-match similarity; null = not searched or no match
   suggested?: { text: string; knowledgeId: number; reasoning: string; sourceTitle?: string };
   // Other matching knowledge entries.
   alternatives?: {
@@ -176,7 +189,7 @@ export type MvpSmeRequest = {
   eta: string | null; // ISO datetime
   status: SmeStatus;
   questionIds: number[];
-  sentAt: string;
+  sentAt: string; // registration time while "Draft Prepared", then the user-confirmed send time
   returnedAt?: string;
 };
 
@@ -280,6 +293,55 @@ export function isOverdueSmeRequest(r: MvpSmeRequest): boolean {
 
 // Suggestions below this score require review.
 export const SUGGESTED_THRESHOLD = 0.6;
+// Below this score a match is only related knowledge, not a supported answer.
+// Keep in sync with RetrievalService.PARTIAL_THRESHOLD on the backend.
+export const RELATED_ONLY_THRESHOLD = 0.5;
+
+export type MatchSupport = "supported" | "partial" | "related" | "none";
+
+export function matchSupport(c: number | null): MatchSupport {
+  if (c === null) return "none";
+  if (c >= SUGGESTED_THRESHOLD) return "supported";
+  if (c >= RELATED_ONLY_THRESHOLD) return "partial";
+  return "related";
+}
+
+// Backend tickets are shown as TK-<9000 + database id> everywhere.
+export const BACKEND_TICKET_OFFSET = 9000;
+
+export function ticketIdForBackend(backendId: number): string {
+  return `TK-${BACKEND_TICKET_OFFSET + backendId}`;
+}
+
+// Next free numeric ID for a ticket that exists only in this browser session.
+// IDs that are not TK-<number> (for example TK-DEMO-01) are ignored, so the
+// result is always a valid number and never repeats an existing ID.
+export function nextLocalTicketId(tickets: Pick<MvpTicket, "id">[]): string {
+  const taken = new Set(tickets.map((t) => t.id));
+  const numbers = tickets
+    .map((t) => /^TK-(\d+)$/.exec(t.id)?.[1])
+    .filter((n): n is string => n !== undefined)
+    .map(Number);
+  let next = Math.max(1000, ...numbers) + 1;
+  while (taken.has(`TK-${next}`)) next++;
+  return `TK-${next}`;
+}
+
+// Case, spacing and punctuation-insensitive text used to flag repeated questions.
+export function duplicateKey(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+// Default demo deadline: ten days from today, as an ISO date.
+export function demoDeadline(from: Date = new Date()): string {
+  const d = new Date(from);
+  d.setUTCDate(d.getUTCDate() + 10);
+  return d.toISOString().slice(0, 10);
+}
+
+export function isPastDate(iso: string, now: Date = new Date()): boolean {
+  return !!iso && iso < now.toISOString().slice(0, 10);
+}
 
 export function confidenceBand(c: number | null): "high" | "medium" | "low" | "none" {
   if (c === null) return "none";

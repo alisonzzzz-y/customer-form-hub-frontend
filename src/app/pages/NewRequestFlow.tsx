@@ -10,10 +10,18 @@ import {
   X,
 } from "lucide-react";
 import { BtnPrimary, BtnSecondary } from "../components/ui";
-import { MvpTicket, NdaStatus, Urgency, pendingForms } from "../data/model";
+import {
+  MvpTicket,
+  NdaStatus,
+  Urgency,
+  nextLocalTicketId,
+  pendingForms,
+  ticketIdForBackend,
+} from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { openMailDraft } from "../components/ui";
-import { SAMPLE_AE_EMAIL, parseIntakeEmail } from "../services/simulation";
+import { createBackendTicket } from "../services/backend";
+import { parseIntakeEmail, sampleAeEmail } from "../services/simulation";
 
 // Create a ticket from pasted request details.
 
@@ -31,64 +39,76 @@ export function NewRequestFlow({
   const [attached, setAttached] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const runExtraction = () => {
+  const runExtraction = async () => {
+    if (extracting) return;
     if (!emailText.trim()) {
       actions.addToast("Paste the AE email first (or use the sample).", "warning");
       return;
     }
     setExtracting(true);
-    setTimeout(() => {
-      const f = parseIntakeEmail(emailText);
-      const missing: string[] = [];
-      if (!f.customer.trim()) missing.push("customer");
-      if (!f.due) missing.push("due");
-      if (!f.urgency) missing.push("urgency");
-      if (!f.nda || f.nda === "Unknown") missing.push("nda");
-      if (!f.businessImpact.trim()) missing.push("impact");
+    const f = parseIntakeEmail(emailText);
+    const missing: string[] = [];
+    if (!f.customer.trim()) missing.push("customer");
+    if (!f.due) missing.push("due");
+    if (!f.urgency) missing.push("urgency");
+    if (!f.nda || f.nda === "Unknown") missing.push("nda");
+    if (!f.businessImpact.trim()) missing.push("impact");
 
-      const num = Math.max(...state.tickets.map((t) => parseInt(t.id.slice(3), 10))) + 1;
-      const id = `TK-${num}`;
-      const ticket: MvpTicket = {
-        id,
-        customer: f.customer.trim() || "New Customer",
-        sorId: "—",
-        owner: state.currentUser,
-        status: "Intake Review",
-        stage: "intake",
-        intakeMissing: missing,
-        due: f.due,
-        created: new Date().toISOString().slice(0, 10),
-        urgency: (f.urgency || "Medium") as Urgency,
-        nda: (f.nda || "Unknown") as NdaStatus,
-        region: "EMEA",
-        source: "Email",
-        ae: f.ae.trim() || undefined,
-        aeEmail: f.aeEmail.trim() || undefined,
-        businessImpact: f.businessImpact.trim() || undefined,
-        notes: f.requestType ? `Request type: ${f.requestType}` : undefined,
-        files: attached
-          ? [{
-              name: attached.name,
-              size: `${Math.max(1, Math.round(attached.size / 1024))} KB`,
-              kind: "Customer form",
-              uploaded: new Date().toISOString().slice(0, 10),
-              status: "Uploaded",
-            }]
-          : [],
-      };
-      if (attached) pendingForms.set(id, attached);
-      actions.setTickets((p) => [ticket, ...p]);
-      actions.logActivity("Created request from pasted AE email — intake check pending", id);
+    const draft: MvpTicket = {
+      id: "",
+      customer: f.customer.trim() || "New Customer",
+      sorId: "—",
+      owner: state.currentUser,
+      status: "Intake Review",
+      stage: "intake",
+      intakeMissing: missing,
+      due: f.due,
+      created: new Date().toISOString().slice(0, 10),
+      urgency: (f.urgency || "Medium") as Urgency,
+      nda: (f.nda || "Unknown") as NdaStatus,
+      region: "EMEA",
+      source: "Email",
+      ae: f.ae.trim() || undefined,
+      aeEmail: f.aeEmail.trim() || undefined,
+      businessImpact: f.businessImpact.trim() || undefined,
+      notes: f.requestType ? `Request type: ${f.requestType}` : undefined,
+      files: attached
+        ? [{
+            name: attached.name,
+            size: `${Math.max(1, Math.round(attached.size / 1024))} KB`,
+            kind: "Customer form",
+            uploaded: new Date().toISOString().slice(0, 10),
+            status: "Uploaded",
+          }]
+        : [],
+    };
+
+    // The backend database ID is the ticket's identity, so the same TK number
+    // appears before and after a page refresh. Offline, the ticket is kept in
+    // this browser only, with the next free local number.
+    const backendId = await createBackendTicket(draft);
+    const ticket: MvpTicket = backendId
+      ? { ...draft, id: ticketIdForBackend(backendId), backendId }
+      : { ...draft, id: nextLocalTicketId(state.tickets) };
+    const id = ticket.id;
+
+    if (attached) pendingForms.set(id, attached);
+    actions.setTickets((p) => [ticket, ...p.filter((t) => t.id !== id)]);
+    actions.logActivity("Created request from pasted AE email — intake check pending", id);
+    if (!backendId)
       actions.addToast(
-        missing.length === 0
-          ? "Intake extracted — all fields found. Review and analyse."
-          : `Intake extracted — ${missing.length} field${missing.length === 1 ? "" : "s"} need attention.`,
-        missing.length === 0 ? "success" : "warning",
+        `The backend could not save this request — ${id} exists only in this browser until intake is confirmed.`,
+        "warning",
       );
-      setExtracting(false);
-      close();
-      actions.openTicket(id);
-    }, 0);
+    actions.addToast(
+      missing.length === 0
+        ? "Intake extracted — all fields found. Review and analyse."
+        : `Intake extracted — ${missing.length} field${missing.length === 1 ? "" : "s"} need attention.`,
+      missing.length === 0 ? "success" : "warning",
+    );
+    setExtracting(false);
+    close();
+    actions.openTicket(id);
   };
 
   return (
@@ -121,7 +141,7 @@ export function NewRequestFlow({
             className="w-full border border-border rounded-lg px-3 py-2.5 text-[13px] leading-relaxed resize-y focus:outline-none focus:border-[#F96702]/50 focus:ring-2 focus:ring-[#F96702]/20 font-mono"
           />
           <button
-            onClick={() => setEmailText(SAMPLE_AE_EMAIL)}
+            onClick={() => setEmailText(sampleAeEmail())}
             className="flex items-center gap-1.5 text-[11px] font-semibold text-[#C05600] hover:underline self-start"
           >
             <ClipboardPaste size={11} /> Use sample email (demo)
@@ -238,7 +258,7 @@ export function ClarificationEmailModal({
     "Sarah Chen, GOM Analyst",
   ].join("\n");
 
-  const [to, setTo] = useState(aeEmail || "ae@cloudera.com");
+  const [to, setTo] = useState(aeEmail || "ae@example.com");
   const [subject, setSubject] = useState(`RE: ${customer} request — missing intake details`);
   const [body, setBody] = useState(defaultBody);
   const [sent, setSent] = useState(false);
@@ -251,8 +271,8 @@ export function ClarificationEmailModal({
             Clarification email to AE — auto-drafted, editable
           </p>
           {sent ? (
-            <span className="text-[11px] text-green-600 font-medium flex items-center gap-1">
-              <CheckCircle size={10} /> Sent
+            <span className="text-[11px] text-[#6B7280] font-medium flex items-center gap-1">
+              <CheckCircle size={10} /> Draft opened
             </span>
           ) : (
             <button onClick={close} className="text-gray-400 hover:text-gray-600">
@@ -295,8 +315,8 @@ export function ClarificationEmailModal({
                   onClick={() => {
                     openMailDraft(to, subject, body);
                     setSent(true);
-                    actions.logActivity("Sent clarification email to AE for missing intake fields");
-                    actions.addToast("Draft opened in your mail app.", "info");
+                    actions.logActivity("Opened clarification email draft to AE for missing intake fields (send it from your mail app)");
+                    actions.addToast("Draft opened in your mail app — send it from there.", "info");
                   }}
                 >
                   Open in Mail App

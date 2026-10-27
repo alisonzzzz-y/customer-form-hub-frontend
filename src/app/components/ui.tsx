@@ -27,6 +27,7 @@ const STATUS_STYLES: Record<string, string> = {
   "SME Complete": "bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]",
   Ready: "bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]",
   Rejected: "bg-[#FEF2F2] text-[#991B1B] border-[#FCA5A5]/50",
+  "Draft Prepared": "bg-[#FEF3C7] text-[#92400E] border-[#F59E0B]/30",
   Requested: "bg-[#F5F5F5] text-[#374151] border-[rgba(0,0,0,0.1)]",
   "ETA Set": "bg-[#FFF4EC] text-[#C05600] border-[#F96702]/25",
   Returned: "bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]",
