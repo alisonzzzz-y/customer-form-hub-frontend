@@ -303,11 +303,7 @@ async function postTicket(t: MvpTicket): Promise<number | null> {
 const ticketSyncTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const ticketSyncPending = new Map<number, Record<string, unknown>>();
 
-export function syncTicketFields(
-  backendId: number | undefined,
-  t: Partial<MvpTicket>,
-) {
-  if (!backendId) return;
+function ticketFieldsPayload(t: Partial<MvpTicket>): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
   if (t.customer !== undefined) payload.customerName = t.customer;
   if (t.ae !== undefined) payload.createdBy = t.ae ?? undefined;
@@ -317,6 +313,25 @@ export function syncTicketFields(
     payload.ndaStatus = NDA_TO_BACKEND[t.nda] ?? "Unknown";
   if (t.businessImpact !== undefined)
     payload.businessImpact = t.businessImpact ?? undefined;
+  return payload;
+}
+
+// Save every intake field of a ticket now. Used after a create succeeds on a
+// retry: the backend then returns the ticket saved by the first attempt,
+// with the values from that time, not the ones edited since.
+export async function saveTicketFields(backendId: number, t: MvpTicket): Promise<boolean> {
+  clearTimeout(ticketSyncTimers.get(backendId));
+  ticketSyncTimers.delete(backendId);
+  ticketSyncPending.delete(backendId);
+  return (await put(`/tickets/${backendId}`, ticketFieldsPayload(t))) !== null;
+}
+
+export function syncTicketFields(
+  backendId: number | undefined,
+  t: Partial<MvpTicket>,
+) {
+  if (!backendId) return;
+  const payload = ticketFieldsPayload(t);
   if (Object.keys(payload).length === 0) return;
 
   ticketSyncPending.set(backendId, {

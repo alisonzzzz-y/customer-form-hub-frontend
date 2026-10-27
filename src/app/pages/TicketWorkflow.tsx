@@ -60,6 +60,7 @@ import {
   syncQuestionDepartment,
   syncTicketFields,
   flushTicketFields,
+  saveTicketFields,
   syncFinalAnswer,
   syncQuestionStatus,
   syncSmeAnswer,
@@ -309,17 +310,24 @@ function IntakePanel({
     patch({ status: "AI Processing" });
     actions.logActivity("Confirmed intake complete — AI analysis started", ticket.id);
 
-    // A ticket created while the backend was unreachable gets saved now. Its
-    // temporary number is replaced by the backend one everywhere (rekeyTicket),
-    // so the number stays the same after a refresh.
     // Intake edits are saved after a short typing pause; save any still
     // waiting now, so the analysed ticket has them even after a quick refresh.
     await flushTicketFields(ticket.backendId);
+    // A ticket created while the backend was unreachable gets saved now. Its
+    // temporary number is replaced by the backend one everywhere (rekeyTicket),
+    // so the number stays the same after a refresh.
     let backendId = ticket.backendId ?? null;
     let tid = ticket.id;
     if (!backendId) {
       backendId = await createBackendTicket({ ...ticket });
       if (backendId) {
+        // If the first create did reach the backend, this returned that ticket
+        // with the values from then; save what the intake check shows now.
+        if (!(await saveTicketFields(backendId, ticket)))
+          actions.addToast(
+            "The ticket was saved, but its latest intake details could not be — check them after analysis.",
+            "warning",
+          );
         tid = ticketIdForBackend(backendId);
         actions.rekeyTicket(ticket.id, tid, backendId);
         actions.setTickets((p) =>

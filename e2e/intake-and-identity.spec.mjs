@@ -90,9 +90,13 @@ const heading = await page.locator("h1").first().textContent();
 const tempId = heading?.match(/TK-\d+/)?.[0];
 if (!tempId || !/^TK-1\d{3}$/.test(tempId)) errors.push(`Offline: expected a temporary TK-1xxx number, got ${heading}`);
 await page.waitForSelector("text=All required intake fields resolved");
+// Edited while the ticket exists only in this browser; the retry must save it.
+await page.fill('tr:has-text("Deadline") input[type="date"]', "2026-12-01");
 await page.click("text=Next: Analyse Form");
 await page.waitForSelector("text=Department Grouping — 8 questions", { timeout: 15000 });
 const after = await backendTickets();
+if (after[after.length - 1]?.deadline?.slice(0, 10) !== "2026-12-01")
+  errors.push(`Offline: deadline edited before the retry was not saved (${after[after.length - 1]?.deadline})`);
 if (after.length !== 2) errors.push(`Offline: expected 2 backend tickets after the retry, found ${after.length}`);
 const savedId = `TK-${9000 + after[after.length - 1].id}`;
 if (!(await page.locator("h1").first().textContent())?.includes(savedId))
