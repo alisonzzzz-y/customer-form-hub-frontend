@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -31,12 +31,13 @@ import {
   MvpTicket,
   TicketStage,
   SUGGESTED_THRESHOLD,
-  duplicateKey,
   fmtDate,
   fmtDateTime,
   isOverdueSmeRequest,
   isPastDate,
-  matchSupport,
+  answerSupportOf,
+  mergeImportedQuestions,
+  ticketIdForBackend,
   pendingForms,
   smeRequestReferenceNow,
   withCurrentDeadline,
@@ -49,6 +50,7 @@ import {
   createBackendTicket,
   downloadTicketExport,
   parseQuestionnaire,
+  sectionOf,
   fetchSmeEmail,
   packageBackendQuestions,
   ragSearchAll,
@@ -57,6 +59,7 @@ import {
   revertFinalAnswer,
   syncQuestionDepartment,
   syncTicketFields,
+  flushTicketFields,
   syncFinalAnswer,
   syncQuestionStatus,
   syncSmeAnswer,
@@ -69,6 +72,9 @@ import { attachSuggestions, extractQuestionsFor, smeAnswerFor } from "../service
 import { Card, ConfidenceBadge, Pill, SharingBadge, Th, openMailDraft } from "../components/ui";
 
 // Manages the ticket workflow from intake to completion.
+
+// Questions whose knowledge matches were looked up again in this session.
+const rematched = new Set<number>();
 
 const STAGES: { id: TicketStage; label: string }[] = [
   { id: "intake", label: "Intake" },
@@ -284,7 +290,10 @@ function IntakePanel({
   ];
 
   const isMissing = (key: string) =>
-    missing.includes(key) || (key === "nda" && ticket.nda === "Unknown") || (key === "due" && !ticket.due);
+    missing.includes(key) ||
+    (key === "customer" && !ticket.customer.trim()) ||
+    (key === "nda" && ticket.nda === "Unknown") ||
+    (key === "due" && !ticket.due);
   const requiredMissing = ["customer", "due", "urgency", "nda"].filter(isMissing);
   const ready = requiredMissing.length === 0;
 
@@ -300,14 +309,32 @@ function IntakePanel({
     patch({ status: "AI Processing" });
     actions.logActivity("Confirmed intake complete — AI analysis started", ticket.id);
 
+    // A ticket created while the backend was unreachable gets saved now. Its
+    // temporary number is replaced by the backend one everywhere (rekeyTicket),
+    // so the number stays the same after a refresh.
+    // Intake edits are saved after a short typing pause; save any still
+    // waiting now, so the analysed ticket has them even after a quick refresh.
+    await flushTicketFields(ticket.backendId);
     let backendId = ticket.backendId ?? null;
+    let tid = ticket.id;
     if (!backendId) {
       backendId = await createBackendTicket({ ...ticket });
-      if (backendId) patch({ backendId });
+      if (backendId) {
+        tid = ticketIdForBackend(backendId);
+        actions.rekeyTicket(ticket.id, tid, backendId);
+        actions.setTickets((p) =>
+          p.map((t) => (t.id === tid ? { ...t, savedStage: ticket.stage } : t)),
+        );
+        if (tid !== ticket.id)
+          actions.logActivity(`Saved to the backend — ${ticket.id} is now ${tid}`, tid);
+      }
     }
+    const setThisTicket = (p: Partial<MvpTicket>) =>
+      actions.setTickets((prev) => prev.map((t) => (t.id === tid ? { ...t, ...p } : t)));
 
     const base = Math.max(0, ...state.questions.map((q) => q.id));
     const existing = state.questions.filter((q) => q.ticketId === ticket.id);
+    let merged: MvpQuestion[] | null = null; // replaces this ticket's questions when set
     let newQs: MvpQuestion[] = [];
     let live = false;
     let formImport: NonNullable<MvpTicket["formImport"]>;
@@ -316,9 +343,9 @@ function IntakePanel({
       const parsed = await parseQuestionnaire(file, backendId);
       const fail = (message: string, log: string) => {
         setProcessing(false);
-        patch({ status: "Intake Review" });
+        setThisTicket({ status: "Intake Review" });
         actions.addToast(message, "warning");
-        actions.logActivity(log, ticket.id);
+        actions.logActivity(log, tid);
       };
       if (parsed.kind === "rejected") {
         fail(
@@ -342,45 +369,24 @@ function IntakePanel({
         return;
       }
       live = true;
-      pendingForms.delete(ticket.id);
-      // Flag questions the customer form itself repeats; they are kept, not deleted.
-      const firstByText = new Map<string, number>();
-      newQs = parsed.questions.map((pq, i) => {
-        const id = base + i + 1;
-        const key = duplicateKey(pq.text);
-        const duplicateOf = firstByText.get(key);
-        if (duplicateOf === undefined) firstByText.set(key, id);
-        return {
-          id,
-          backendId: pq.backendId,
-          ticketId: ticket.id,
-          row: i + 1,
-          original: pq.text,
-          normalised: pq.text,
-          department: pq.department,
-          departmentSource: "AI" as const,
-          risk: "Medium" as const,
-          status: "AI Analysed" as const,
-          confidence: null,
-          duplicateOf,
-        };
-      });
+      pendingForms.delete(tid);
+      const result = mergeImportedQuestions(existing, parsed.questions, tid, base + 1);
+      merged = result.questions;
+      const summary = parsed.summary;
       formImport = {
         source: "file",
-        fileName: file.name,
-        questionCount: newQs.length,
-        // Multi-sheet imports prefix each section with its sheet name ("InfoSec / …").
-        sections: [
-          ...new Set(
-            parsed.questions.map((pq) => pq.section.split(/ \/ |!/)[0].trim()).filter(Boolean),
-          ),
-        ],
-        reused: parsed.reused ? newQs.length : 0,
+        fileName: summary?.fileName ?? file.name,
+        questionCount: merged.length,
+        sections: [...new Set(parsed.questions.map((pq) => sectionOf(pq.section)).filter(Boolean))],
+        reused: result.reused,
         at: new Date().toISOString(),
+        outcome: summary?.outcome ?? (existing.length === 0 ? "created" : "updated"),
+        added: summary?.added ?? merged.length - result.reused,
+        retired: summary?.retired ?? existing.length - result.reused,
       };
     } else {
       // Analysing the same ticket twice must not add a second demo set.
-      newQs = existing.length > 0 ? [] : extractQuestionsFor(ticket.id, base);
+      newQs = existing.length > 0 ? [] : extractQuestionsFor(tid, base);
       formImport = {
         source: "demo",
         questionCount: existing.length || newQs.length,
@@ -392,44 +398,54 @@ function IntakePanel({
     }
 
     setTimeout(() => {
-      // Merge by backend ID so a repeated analysis never shows a question twice;
-      // questions already on this ticket keep their review state.
-      actions.setQuestions((p) => {
-        const known = new Set(
-          p.filter((q) => q.ticketId === ticket.id && q.backendId).map((q) => q.backendId),
-        );
-        return [...p, ...newQs.filter((q) => !q.backendId || !known.has(q.backendId))];
-      });
+      actions.setQuestions((p) =>
+        merged
+          ? [...p.filter((q) => q.ticketId !== tid), ...merged]
+          : [...p, ...newQs],
+      );
       actions.setTickets((p) =>
         p.map((t) =>
-          t.id === ticket.id
+          t.id === tid
             ? {
                 ...t,
                 status: "In Progress",
                 stage: "grouping",
                 formImport,
-                files: t.files.map((fl) =>
-                  fl.kind === "Customer form" && (!file || fl.name === file.name)
-                    ? { ...fl, status: "Processed" }
-                    : fl,
-                ),
+                files: [
+                  // The file actually parsed is the ticket's current form.
+                  ...t.files.filter((fl) => fl.kind !== "Customer form" || !file),
+                  ...(file
+                    ? [{
+                        name: file.name,
+                        size: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+                        kind: "Customer form",
+                        uploaded: new Date().toISOString().slice(0, 10),
+                        status: "Processed" as const,
+                      }]
+                    : t.files
+                        .filter((fl) => fl.kind === "Customer form")
+                        .map((fl) => ({ ...fl, status: "Processed" as const }))),
+                ],
               }
             : t,
         ),
       );
       syncTicketStatus(backendId ?? undefined, "In Progress");
+      const fi = formImport;
       actions.logActivity(
         live
-          ? formImport.reused > 0
-            ? `Re-analysed ${file!.name}: reused the ${formImport.questionCount} questions already saved for this ticket (nothing inserted twice)`
-            : `AI parsed ${file!.name}: ${formImport.questionCount} questions across ${Math.max(1, formImport.sections.length)} sheet(s)/section(s), departments classified by AI`
-          : `Loaded ${formImport.questionCount} simulated demo questions (no customer form attached)`,
-        ticket.id,
+          ? fi.outcome === "unchanged"
+            ? `Re-analysed ${fi.fileName}: same file as before, ${fi.questionCount} questions kept (nothing inserted twice)`
+            : fi.outcome === "updated"
+              ? `Imported new version ${fi.fileName}: ${fi.questionCount} questions — ${fi.reused} kept with their review state, ${fi.added} new, ${fi.retired} no longer in the form (kept as retired, not deleted)`
+              : `AI parsed ${fi.fileName}: ${fi.questionCount} questions across ${Math.max(1, fi.sections.length)} sheet(s)/section(s), departments classified by AI`
+          : `Loaded ${fi.questionCount} simulated demo questions (no customer form attached)`,
+        tid,
       );
       actions.addToast(
         live
-          ? `${formImport.questionCount} questions parsed from ${file!.name} — review the department grouping.`
-          : `${formImport.questionCount} demo questions loaded — review the department grouping.`,
+          ? `${fi.questionCount} questions from ${fi.fileName} — review the department grouping.`
+          : `${fi.questionCount} demo questions loaded — review the department grouping.`,
         "success",
       );
     }, live ? 0 : 1400);
@@ -618,7 +634,7 @@ function GroupingPanel({
     actions.setQuestions((p) =>
       p.map((x) => (x.id === q.id ? { ...x, department: dept, departmentSource: "Manual" } : x)),
     );
-    syncQuestionDepartment(q.backendId, dept);
+    syncQuestionDepartment(q.backendId, dept, "Manual");
     actions.logActivity(`Moved question #${q.row} to ${dept}`, ticket.id);
   };
 
@@ -805,7 +821,13 @@ function ImportSummary({ ticket, qs }: { ticket: MvpTicket; qs: MvpQuestion[] })
         {info.questionCount === 1 ? "" : "s"}
         {info.sections.length > 1 &&
           ` across ${info.sections.length} sheets/sections (${info.sections.join(", ")})`}
-        {info.reused > 0 && " · already saved for this ticket, so nothing was imported twice"}
+        {info.outcome === "unchanged" && " · same file as before, nothing was imported twice"}
+        {info.outcome === "updated" &&
+          ` · new version: ${info.reused} kept with their review state, ${info.added ?? 0} new` +
+            ((info.retired ?? 0) > 0
+              ? `, ${info.retired} no longer in the form (kept as retired, not deleted)`
+              : "")}
+        {info.outcome === undefined && info.reused > 0 && " · already saved for this ticket, so nothing was imported twice"}
         {duplicates > 0 &&
           ` · ${duplicates} possible duplicate${duplicates === 1 ? "" : "s"} flagged (kept, not removed)`}
         {" · "}blank rows are skipped · no demo questions added.
@@ -826,7 +848,7 @@ function ClassificationBadge({ q }: { q: MvpQuestion }) {
           ? ["Demo data", "text-[#92400E] bg-[#FEF3C7] border-[#F59E0B]/40", "Department comes from the simulated demo set"]
           : q.departmentSource === "AI"
             ? ["AI classified", "text-[#4338CA] bg-[#EEF2FF] border-[#C7D2FE]", "Department chosen by the AI classifier from the question text (no confidence score is produced)"]
-            : ["Saved", "text-[#6B7280] bg-gray-50 border-gray-200", "Department saved on this ticket"];
+            : ["Saved", "text-[#6B7280] bg-gray-50 border-gray-200", "Department saved before the app recorded whether AI or a reviewer chose it"];
   return (
     <span
       title={title}
@@ -854,6 +876,43 @@ function ReviewPanel({
   const [draft, setDraft] = useState("");
   const [saveToKb, setSaveToKb] = useState(false);
   const [showAlternatives, setShowAlternatives] = useState(true);
+  const [rematching, setRematching] = useState(false);
+
+  // Knowledge matches are not saved, so after a refresh the open questions on
+  // this step come back without them. Look them up again for exactly those
+  // questions; decisions already made are not touched.
+  useEffect(() => {
+    if (!ticket.backendId) return;
+    const unmatched = qs.filter(
+      (x) =>
+        !x.finalAnswer &&
+        !x.suggested &&
+        x.confidence === null &&
+        ["AI Analysed", "Needs Review"].includes(x.status) &&
+        !rematched.has(x.id),
+    );
+    if (unmatched.length === 0) return;
+    unmatched.forEach((x) => rematched.add(x.id));
+    setRematching(true);
+    void ragSearchAll(unmatched.map((x) => ({ id: x.id, text: x.normalised || x.original })))
+      .then((results) => {
+        if (results === null) {
+          actions.addToast("Knowledge matches could not be reloaded — the backend did not answer.", "warning");
+          unmatched.forEach((x) => rematched.delete(x.id));
+          return;
+        }
+        actions.setQuestions((p) =>
+          p.map((x) => {
+            const r = results.get(x.id);
+            // Skip anything a reviewer changed while the search was running.
+            if (!r || x.finalAnswer || x.suggested || !["AI Analysed", "Needs Review"].includes(x.status)) return x;
+            return applyRagResult(x, r);
+          }),
+        );
+      })
+      .finally(() => setRematching(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket.id]);
 
   const customs = [...new Set(qs.map((x) => x.department))].filter((d) => !QUESTION_DEPARTMENTS.includes(d));
   const depts = [...QUESTION_DEPARTMENTS, ...customs].filter((d) => qs.some((x) => x.department === d));
@@ -946,15 +1005,27 @@ function ReviewPanel({
           reasoning: q.suggested.reasoning,
           sourceTitle: q.suggested.sourceTitle,
           sharingStatus: q.sharingStatus,
+          support: q.answerSupport,
+          evidence: q.evidence,
+          supportReason: q.supportReason,
         }]
       : [];
+    // Each match keeps its own support level, so switching never turns related
+    // knowledge into a suggested answer.
+    const altSupport = alt.support ?? "related";
     update(
       q.id,
       {
         suggested: { text: alt.text, knowledgeId: alt.knowledgeId, reasoning: alt.reasoning, sourceTitle: alt.sourceTitle },
         confidence: alt.confidence,
+        answerSupport: altSupport,
+        evidence: alt.evidence,
+        supportReason: alt.supportReason,
         sharingStatus: alt.sharingStatus ?? q.sharingStatus,
         alternatives: [...q.alternatives.filter((_, i) => i !== altIndex), ...demoted],
+        ...(q.status === "Suggested" || q.status === "Needs Review"
+          ? { status: altSupport === "supported" ? ("Suggested" as const) : ("Needs Review" as const) }
+          : {}),
       },
       `Switched question #${q.row} to an alternative knowledge match`,
     );
@@ -962,14 +1033,19 @@ function ReviewPanel({
   };
 
   if (!q) return null;
-  // A weak match stays visible as related knowledge but is never offered as
-  // an answer that can be approved unchanged.
-  const support = matchSupport(q.confidence);
+  // A passage that does not answer the question stays visible as related
+  // knowledge but is never offered as an answer that can be approved unchanged.
+  const support = answerSupportOf(q);
   const offered = support === "related" ? undefined : q.suggested;
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3 flex-wrap">
+        {rematching && (
+          <span className="inline-flex items-center gap-1.5 text-[12px] text-[#6B7280]">
+            <Loader2 size={11} className="animate-spin" /> Reloading knowledge matches…
+          </span>
+        )}
         <p className="text-[13px] text-[#6B7280]">
           <strong className="text-[#1F2937]">{resolved.length}</strong> of{" "}
           <strong className="text-[#1F2937]">{qs.length}</strong> resolved ·{" "}
@@ -1096,16 +1172,26 @@ function ReviewPanel({
                     <Brain size={11} className="text-[#C05600]" />
                     <p className="text-[11px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
                       {support === "partial"
-                        ? "AI Suggested Answer — partial match, verify before approving"
-                        : "AI Suggested Answer — best match"}
+                        ? "AI Suggested Answer — needs checking before approving"
+                        : "AI Suggested Answer — supported by the source"}
                     </p>
                     <ConfidenceBadge confidence={q.confidence} />
                   </div>
                   <p className="px-3.5 pt-2 text-[11px] text-[#9CA3AF]">
-                    Retrieved from approved knowledge, not written by AI — confirm it actually
-                    answers the question before approving.
+                    Retrieved from approved knowledge, not written by AI. The score shows how
+                    related the source is; the evidence below shows where it answers the question.
                   </p>
                   <p className="px-3.5 py-3 text-[13px] text-[#1F2937] leading-relaxed">{offered.text}</p>
+                  {(q.evidence || q.supportReason) && (
+                    <div className="mx-3.5 mb-3 rounded-lg bg-[#F7F8FA] border border-border px-3 py-2 text-[11px] text-[#374151] flex flex-col gap-1">
+                      {q.evidence && (
+                        <p>
+                          <strong>Evidence:</strong> “{q.evidence}”
+                        </p>
+                      )}
+                      {q.supportReason && <p className="text-[#6B7280]">{q.supportReason}</p>}
+                    </div>
+                  )}
                   <div className="px-3.5 py-2 bg-[#FAFAFA] border-t border-border grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] text-[#6B7280]">
                     <p>
                       <strong>Source:</strong>{" "}
@@ -1164,6 +1250,14 @@ function ReviewPanel({
                               Match {i + 2}
                             </span>
                             <ConfidenceBadge confidence={alt.confidence} />
+                            {(alt.support ?? "related") === "related" && (
+                              <span
+                                title={alt.supportReason ?? "This source does not answer the question"}
+                                className="text-[10px] font-bold text-[#92400E] bg-[#FEF3C7] rounded-full px-1.5 py-0.5 whitespace-nowrap"
+                              >
+                                Related only
+                              </span>
+                            )}
                             <span className="text-[11px] text-[#9CA3AF] flex-1">{alt.reasoning}</span>
                             <button
                               onClick={() => useAlternative(i)}
@@ -1185,10 +1279,10 @@ function ReviewPanel({
                   <AlertTriangle size={13} className="shrink-0 mt-0.5" />
                   <p>
                     <strong>No sufficiently supported answer found. Manual review required.</strong>{" "}
-                    The closest approved entry only scored{" "}
-                    {Math.round((q.confidence ?? 0) * 100)}% and is shown below as related
-                    knowledge, not as an answer. Write the answer manually or route it to the{" "}
-                    {q.department} SME team.
+                    {q.supportReason ??
+                      `The closest approved entry only scored ${Math.round((q.confidence ?? 0) * 100)}%.`}{" "}
+                    It is shown below as related knowledge, not as an answer. Write the answer
+                    manually or route it to the {q.department} SME team.
                   </p>
                 </div>
                 <div className="border border-border rounded-xl overflow-hidden">
@@ -1446,15 +1540,72 @@ function ReviewPanel({
 
 // Record that the user sent a prepared SME draft from their own mail app.
 // This is the user's confirmation only: the app cannot see the mailbox.
-function confirmSmeSent(req: MvpSmeRequest, ticketId: string, actions: AppActions) {
-  const sentAt = new Date().toISOString();
-  actions.setSmeRequests((p) =>
-    p.map((r) => (r.id === req.id && r.status === "Draft Prepared" ? { ...r, status: "Requested", sentAt } : r)),
-  );
-  syncSmeRequest(req.backendId, { status: "Requested", sentAt });
-  actions.logActivity(
-    `Marked ${req.department} SME package as sent — confirmed by user, not verified by a mail service`,
-    ticketId,
+// Nothing changes on screen until the backend has saved it; a failed save
+// leaves the request as "Draft prepared" so the user can try again.
+const sentSaving = new Set<number>();
+async function confirmSmeSent(
+  req: MvpSmeRequest,
+  ticketId: string,
+  actions: AppActions,
+): Promise<boolean> {
+  if (sentSaving.has(req.id)) return false;
+  sentSaving.add(req.id);
+  try {
+    const sentAt = new Date().toISOString();
+    const saved = await syncSmeRequest(req.backendId, { status: "Requested", sentAt });
+    if (!saved) {
+      actions.addToast(
+        `${req.department}: "sent" was not saved — the backend did not confirm it. Nothing was changed; try again.`,
+        "warning",
+      );
+      return false;
+    }
+    actions.setSmeRequests((p) =>
+      p.map((r) => (r.id === req.id && r.status === "Draft Prepared" ? { ...r, status: "Requested", sentAt } : r)),
+    );
+    actions.logActivity(
+      `Marked ${req.department} SME package as sent — confirmed by user, not verified by a mail service`,
+      ticketId,
+    );
+    actions.addToast(`${req.department} package marked as sent.`, "success");
+    return true;
+  } finally {
+    sentSaving.delete(req.id);
+  }
+}
+
+function MarkSentButton({
+  req,
+  ticketId,
+  actions,
+  className,
+  title,
+  children,
+}: {
+  req: MvpSmeRequest;
+  ticketId: string;
+  actions: AppActions;
+  className: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  const [saving, setSaving] = useState(false);
+  return (
+    <button
+      disabled={saving}
+      onClick={async () => {
+        setSaving(true);
+        try {
+          await confirmSmeSent(req, ticketId, actions);
+        } finally {
+          setSaving(false);
+        }
+      }}
+      title={title}
+      className={`${className} disabled:opacity-60 disabled:cursor-wait`}
+    >
+      {saving ? "Saving…" : children}
+    </button>
   );
 }
 
@@ -1499,6 +1650,7 @@ function SmePackagePanel({
   const [selected, setSelected] = useState<string[]>([]);
   // Disable controls while requests are being created.
   const [busy, setBusy] = useState(false);
+  const [advanceAfterDrafts, setAdvanceAfterDrafts] = useState(false);
   const [batchDrafts, setBatchDrafts] = useState<
     { dept: string; to: string; subject: string; body: string; opened: boolean }[] | null
   >(null);
@@ -1693,9 +1845,16 @@ function SmePackagePanel({
       setSelected([]);
       const remaining = unsentDepts.filter((d) => !sent.includes(d));
       if (remaining.length === 0) {
+        // Stay on this step while the draft list is open, so each draft can be
+        // opened; Done then moves on to ETA Tracking.
         actions.setTickets((p) =>
-          p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta", status: "Waiting SME" } : t)),
+          p.map((t) =>
+            t.id === ticket.id
+              ? { ...t, status: "Waiting SME", ...(drafts.length > 0 ? {} : { stage: "eta" as const }) }
+              : t,
+          ),
         );
+        if (drafts.length > 0) setAdvanceAfterDrafts(true);
         syncTicketStatus(ticket.backendId, "Waiting SME");
         actions.addToast(
           "All SME packages prepared — send each mail draft, then mark it as sent in ETA Tracking.",
@@ -1939,16 +2098,15 @@ function SmePackagePanel({
                   >
                     <Mail size={10} /> Open draft again
                   </button>
-                  <button
-                    onClick={() => {
-                      confirmSmeSent(tabReq, ticket.id, actions);
-                      actions.addToast(`${tab} package marked as sent.`, "success");
-                    }}
+                  <MarkSentButton
+                    req={tabReq}
+                    ticketId={ticket.id}
+                    actions={actions}
                     title="Only click after you have actually sent the email from your mail app — the app cannot check this for you"
                     className="flex-1 flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full justify-center bg-[#F96702] text-white hover:bg-[#D95400] tracking-[0.06em] uppercase transition-all"
                   >
                     <CheckCircle size={10} /> I sent it — Mark as Sent
-                  </button>
+                  </MarkSentButton>
                 </div>
               ) : (
               <button
@@ -2036,13 +2194,15 @@ function SmePackagePanel({
                     (() => {
                       const req = openReqFor(d.dept);
                       return req?.status === "Draft Prepared" ? (
-                        <button
-                          onClick={() => confirmSmeSent(req, ticket.id, actions)}
+                        <MarkSentButton
+                          req={req}
+                          ticketId={ticket.id}
+                          actions={actions}
                           title="Only click after you have actually sent the email"
                           className="flex items-center gap-1.5 px-3.5 py-1.5 text-[11px] font-bold border border-green-600/40 bg-green-50 text-green-700 rounded-full hover:bg-green-100 tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                         >
                           <CheckCircle size={10} /> Mark as Sent
-                        </button>
+                        </MarkSentButton>
                       ) : (
                         <span className="flex items-center gap-1 text-[11px] text-green-700 font-medium whitespace-nowrap">
                           <CheckCircle size={10} /> Sent (confirmed)
@@ -2071,7 +2231,19 @@ function SmePackagePanel({
                 packages stay registered; mark each one as sent after you send it (also possible
                 later in ETA Tracking).
               </p>
-              <BtnSecondary onClick={() => setBatchDrafts(null)}>Done</BtnSecondary>
+              <BtnSecondary
+                onClick={() => {
+                  setBatchDrafts(null);
+                  if (advanceAfterDrafts) {
+                    setAdvanceAfterDrafts(false);
+                    actions.setTickets((p) =>
+                      p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta" } : t)),
+                    );
+                  }
+                }}
+              >
+                Done
+              </BtnSecondary>
             </div>
           </div>
         </div>
@@ -2101,8 +2273,11 @@ function EtaPanel({
   const allReturned = reqs.length > 0 && reqs.every((r) => r.status === "Returned");
   const waitingAe = qs.filter((q) => q.status === "Waiting AE");
 
-  const saveEta = () => {
-    if (!etaModal) return;
+  const [savingEta, setSavingEta] = useState(false);
+  // The ETA is shown as recorded only after the backend saved it. If the save
+  // fails, the dialog stays open with the entered values so it can be retried.
+  const saveEta = async () => {
+    if (!etaModal || savingEta) return;
     if (!etaValue) {
       actions.addToast("Please pick an ETA date and time.", "warning");
       return;
@@ -2111,23 +2286,35 @@ function EtaPanel({
     // An SME can only reply with an ETA to an email that was sent, so recording
     // one also confirms a still-pending draft as sent.
     const sentAt = etaModal.status === "Draft Prepared" ? new Date().toISOString() : undefined;
-    actions.setSmeRequests((p) =>
-      p.map((r) =>
-        r.id === etaModal.id ? { ...r, eta: iso, status: "ETA Set", ...(sentAt ? { sentAt } : {}) } : r,
-      ),
-    );
-    syncSmeRequest(etaModal.backendId, {
-      eta: iso,
-      status: "ETA Set",
-      confirmedBy: confirmedBy || null,
-      ...(sentAt ? { sentAt } : {}),
-    });
-    actions.logActivity(
-      `ETA recorded for ${etaModal.department}: ${fmtDateTime(iso)}${confirmedBy ? ` — ${confirmedBy}` : ""}`,
-      ticket.id,
-    );
-    actions.addToast(`ETA recorded for ${etaModal.department}.`, "success");
-    setEtaModal(null);
+    setSavingEta(true);
+    try {
+      const saved = await syncSmeRequest(etaModal.backendId, {
+        eta: iso,
+        status: "ETA Set",
+        confirmedBy: confirmedBy || null,
+        ...(sentAt ? { sentAt } : {}),
+      });
+      if (!saved) {
+        actions.addToast(
+          `The ETA for ${etaModal.department} was not saved — the backend did not confirm it. Your entry is kept; try again.`,
+          "warning",
+        );
+        return;
+      }
+      actions.setSmeRequests((p) =>
+        p.map((r) =>
+          r.id === etaModal.id ? { ...r, eta: iso, status: "ETA Set", ...(sentAt ? { sentAt } : {}) } : r,
+        ),
+      );
+      actions.logActivity(
+        `ETA recorded for ${etaModal.department}: ${fmtDateTime(iso)}${confirmedBy ? ` — ${confirmedBy}` : ""}`,
+        ticket.id,
+      );
+      actions.addToast(`ETA recorded for ${etaModal.department}.`, "success");
+      setEtaModal(null);
+    } finally {
+      setSavingEta(false);
+    }
   };
 
   const undoReturned = async (request: MvpSmeRequest) => {
@@ -2233,16 +2420,15 @@ function EtaPanel({
                   <td className="px-4 py-2.5">
                     <div className="flex gap-1.5 flex-wrap">
                       {r.status === "Draft Prepared" && (
-                        <button
-                          onClick={() => {
-                            confirmSmeSent(r, ticket.id, actions);
-                            actions.addToast(`${r.department} package marked as sent.`, "success");
-                          }}
+                        <MarkSentButton
+                          req={r}
+                          ticketId={ticket.id}
+                          actions={actions}
                           title="The mail draft was prepared but nobody has confirmed sending it. Click only after you sent it."
                           className="px-3 py-1 text-[10px] font-bold border border-[#F96702]/40 bg-[#FFF4EC] rounded-full text-[#C05600] hover:bg-[#FFE8D0] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                         >
                           <CheckCircle size={9} className="inline mr-0.5" /> Mark as Sent
-                        </button>
+                        </MarkSentButton>
                       )}
                       {r.status !== "Returned" && (
                         <>
@@ -2374,7 +2560,9 @@ function EtaPanel({
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <BtnSecondary onClick={() => setEtaModal(null)}>Cancel</BtnSecondary>
-              <BtnPrimary onClick={saveEta}>Save ETA</BtnPrimary>
+              <BtnPrimary onClick={saveEta} disabled={savingEta}>
+                {savingEta ? "Saving…" : "Save ETA"}
+              </BtnPrimary>
             </div>
           </div>
         </div>

@@ -34,13 +34,18 @@ const row = page.locator('tr:has-text("TK-9001")').first();
 if (!(await row.textContent())?.includes("Vandelay Industries")) errors.push("Persist: TK-9001 is not the Vandelay ticket");
 if ((await page.locator('tr:has-text("TK-NaN")').count()) > 0) errors.push("Persist: TK-NaN in ticket list");
 
-// 3) hydrated ticket continues the workflow: regenerate suggestions via grouping
+// 3) the saved step, file and classification source come back after a reload
 await row.click();
-await page.waitForSelector("text=Back: Grouping");
-await page.click("text=Back: Grouping");
 await page.waitForSelector("text=Department Grouping — 8 questions");
+if (!(await page.isVisible("text=Vandelay_Security_Q.xlsx")))
+  errors.push("Persist: import summary lost the file name after reload");
+if ((await page.locator("text=AI classified").count()) === 0)
+  errors.push("Persist: classification source lost after reload");
+await page.click("text=Files");
+if (!(await page.isVisible("text=Vandelay_Security_Q.xlsx"))) errors.push("Persist: file missing from Files tab");
+await page.click("text=Workflow");
 await page.click("text=Next: Match Knowledge Answers");
-await page.waitForSelector("text=AI Suggested Answer — best match", { timeout: 15000 });
+await page.waitForSelector("text=AI Suggested Answer — supported by the source", { timeout: 15000 });
 
 // 4) KB module now shows live backend entries
 await page.click('nav >> text=Knowledge Base');

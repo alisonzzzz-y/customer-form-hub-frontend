@@ -130,6 +130,10 @@ export type MvpTicket = {
   ae?: string;
   notes?: string;
   files: MvpFile[];
+  // Sent with the backend create so a retried create returns the same ticket.
+  clientRef?: string;
+  // Workflow step the backend has saved; AppShell writes stage changes.
+  savedStage?: TicketStage;
   // What the last "Analyse Form" step actually used, shown on the grouping step.
   formImport?: {
     source: "file" | "demo";
@@ -138,6 +142,11 @@ export type MvpTicket = {
     sections: string[];
     reused: number; // questions already saved for this ticket by an earlier parse
     at: string;
+    // How the backend reconciled the file with what the ticket already had:
+    // created = first import, unchanged = same file again, updated = new version.
+    outcome?: "created" | "unchanged" | "updated";
+    added?: number; // new questions from this file
+    retired?: number; // questions the new version no longer contains (kept, not deleted)
   };
 };
 
@@ -149,13 +158,19 @@ export type MvpQuestion = {
   original: string;
   normalised: string;
   department: string;
-  // Where the department came from. Undefined for questions loaded from the
-  // backend, which does not record whether a person changed it.
+  // Where the department came from. Undefined for older backend rows saved
+  // before the source was recorded.
   departmentSource?: "AI" | "Manual" | "Demo";
   risk: "Low" | "Medium" | "High";
   status: QuestionStatus;
   confidence: number | null; // knowledge-match similarity; null = not searched or no match
   suggested?: { text: string; knowledgeId: number; reasoning: string; sourceTitle?: string };
+  // Whether the source answers the question, decided by the backend support
+  // check, separately from the similarity score. evidence is the sentence in
+  // the source that answers it; supportReason says why this level was given.
+  answerSupport?: Exclude<MatchSupport, "none">;
+  evidence?: string;
+  supportReason?: string;
   // Other matching knowledge entries.
   alternatives?: {
     text: string;
@@ -164,6 +179,9 @@ export type MvpQuestion = {
     reasoning: string;
     sourceTitle?: string;
     sharingStatus?: SharingStatus;
+    support?: Exclude<MatchSupport, "none">;
+    evidence?: string;
+    supportReason?: string;
   }[];
   sharingStatus?: SharingStatus;
   finalAnswer?: {
@@ -299,11 +317,24 @@ export const RELATED_ONLY_THRESHOLD = 0.5;
 
 export type MatchSupport = "supported" | "partial" | "related" | "none";
 
+// Score bands for the hand-written demo suggestions only. Knowledge matches
+// from the backend carry their own support level (supportFromBackend).
 export function matchSupport(c: number | null): MatchSupport {
   if (c === null) return "none";
   if (c >= SUGGESTED_THRESHOLD) return "supported";
   if (c >= RELATED_ONLY_THRESHOLD) return "partial";
   return "related";
+}
+
+// A missing or unknown level is treated as related knowledge, never as an answer.
+export function supportFromBackend(level: string | null | undefined): Exclude<MatchSupport, "none"> {
+  if (level === "SUPPORTED") return "supported";
+  if (level === "PARTIAL") return "partial";
+  return "related";
+}
+
+export function answerSupportOf(q: Pick<MvpQuestion, "answerSupport" | "confidence">): MatchSupport {
+  return q.answerSupport ?? matchSupport(q.confidence);
 }
 
 // Backend tickets are shown as TK-<9000 + database id> everywhere.
@@ -316,12 +347,16 @@ export function ticketIdForBackend(backendId: number): string {
 // Next free numeric ID for a ticket that exists only in this browser session.
 // IDs that are not TK-<number> (for example TK-DEMO-01) are ignored, so the
 // result is always a valid number and never repeats an existing ID.
+// Temporary numbers stay below the TK-9000+ range used for backend tickets,
+// so a ticket created offline can never take the number the backend will
+// give another ticket.
 export function nextLocalTicketId(tickets: Pick<MvpTicket, "id">[]): string {
   const taken = new Set(tickets.map((t) => t.id));
   const numbers = tickets
     .map((t) => /^TK-(\d+)$/.exec(t.id)?.[1])
     .filter((n): n is string => n !== undefined)
-    .map(Number);
+    .map(Number)
+    .filter((n) => n < BACKEND_TICKET_OFFSET);
   let next = Math.max(1000, ...numbers) + 1;
   while (taken.has(`TK-${next}`)) next++;
   return `TK-${next}`;
@@ -385,4 +420,66 @@ export function confidenceBand(c: number | null): "high" | "medium" | "low" | "n
   if (c >= 0.9) return "high";
   if (c >= 0.7) return "medium";
   return "low";
+}
+
+// When a ticket created offline is saved later, its temporary TK-10xx number
+// becomes the backend-based TK-90xx number. Everything that points at the
+// ticket by its number moves with it, so nothing is left attached to the old one.
+export function rekeyTicketRefs<T extends { ticketId?: string }>(
+  items: T[],
+  oldId: string,
+  newId: string,
+): T[] {
+  return items.map((i) => (i.ticketId === oldId ? { ...i, ticketId: newId } : i));
+}
+
+// Lay an imported file's questions over the ticket's current ones. A question
+// the ticket already has (same backend row, or same text when parsed offline)
+// keeps its id and review state; new ones start unreviewed; questions the file
+// no longer contains are left out (the backend keeps them as retired). Repeats
+// inside the file are flagged with duplicateOf, never removed.
+export function mergeImportedQuestions(
+  existing: MvpQuestion[],
+  imported: { backendId?: number; text: string; department: string }[],
+  ticketId: string,
+  firstFreeId: number,
+): { questions: MvpQuestion[]; reused: number } {
+  const byBackend = new Map(
+    existing.filter((q) => q.backendId !== undefined).map((q) => [q.backendId!, q]),
+  );
+  const used = new Set<number>();
+  const firstByText = new Map<string, number>();
+  let nextId = firstFreeId;
+  let reused = 0;
+  const questions = imported.map((pq, i) => {
+    const key = duplicateKey(pq.text);
+    const match =
+      pq.backendId !== undefined
+        ? byBackend.get(pq.backendId)
+        : existing.find((q) => !used.has(q.id) && duplicateKey(q.original) === key);
+    let q: MvpQuestion;
+    if (match && !used.has(match.id)) {
+      used.add(match.id);
+      reused++;
+      q = { ...match, row: i + 1 };
+    } else {
+      q = {
+        id: nextId++,
+        backendId: pq.backendId,
+        ticketId,
+        row: i + 1,
+        original: pq.text,
+        normalised: pq.text,
+        department: pq.department,
+        departmentSource: "AI",
+        risk: "Medium",
+        status: "AI Analysed",
+        confidence: null,
+      };
+    }
+    const duplicateOf = firstByText.get(key);
+    if (duplicateOf === undefined) firstByText.set(key, q.id);
+    return { ...q, duplicateOf };
+  });
+  return { questions, reused };
 }

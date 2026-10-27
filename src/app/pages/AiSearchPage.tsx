@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AlertTriangle, Copy, ExternalLink, History, Loader2, Lock, Search, Sparkles, X } from "lucide-react";
-import { MvpKnowledgeEntry, matchSupport } from "../data/model";
+import { MatchSupport, MvpKnowledgeEntry, supportFromBackend } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { mapSharing, ragSearch } from "../services/backend";
 import { Card, ConfidenceBadge, EmptyState, SharingBadge } from "../components/ui";
@@ -8,7 +8,16 @@ import { Card, ConfidenceBadge, EmptyState, SharingBadge } from "../components/u
 type ScoredEntry = { entry: MvpKnowledgeEntry; confidence: number };
 
 type SearchOutcome =
-  | { kind: "hit"; entry: MvpKnowledgeEntry; confidence: number; related: ScoredEntry[] }
+  | {
+      kind: "hit";
+      entry: MvpKnowledgeEntry;
+      confidence: number;
+      // Whether the passage answers the question (backend support check), not its score.
+      support: Exclude<MatchSupport, "none">;
+      evidence?: string;
+      reason?: string;
+      related: ScoredEntry[];
+    }
   | { kind: "miss" };
 
 // Example searches backed by approved knowledge entries.
@@ -92,11 +101,20 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
           tags: [],
           owner: r.department,
         });
+        // Lead with the passage that best answers the question, not the highest score.
+        const rank = { supported: 0, partial: 1, related: 2 } as const;
+        const ordered = [...usable].sort(
+          (a, b) => rank[supportFromBackend(a.supportLevel)] - rank[supportFromBackend(b.supportLevel)],
+        );
+        const top = ordered[0];
         setResult({
           kind: "hit",
-          entry: toEntry(usable[0]),
-          confidence: usable[0].similarityScore ?? 0.5,
-          related: usable
+          entry: toEntry(top),
+          confidence: top.similarityScore ?? 0,
+          support: supportFromBackend(top.supportLevel),
+          evidence: top.evidence || undefined,
+          reason: top.supportReason || undefined,
+          related: ordered
             .slice(1, 3)
             .map((r) => ({ entry: toEntry(r), confidence: r.similarityScore ?? 0 })),
         });
@@ -120,6 +138,8 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
           kind: "hit",
           entry: top.k,
           confidence: Math.min(0.97, 0.55 + top.s * 0.4),
+          support: "related",
+          reason: "Offline keyword match — not checked against the question.",
           related: ranked
             .slice(1, 3)
             .map((x) => ({ entry: x.k, confidence: Math.min(0.97, 0.55 + x.s * 0.4) })),
@@ -240,25 +260,37 @@ export function AiSearchPage({ state, actions }: { state: AppState; actions: App
                 <div className="px-4 py-2.5 bg-[#FFF4EC] flex items-center gap-2">
                   <Sparkles size={12} className="text-[#C05600]" />
                   <p className="text-[11px] font-bold text-[#C05600] uppercase tracking-wide flex-1">
-                    {matchSupport(result.confidence) === "related"
+                    {result.support === "related"
                       ? "Related knowledge only — no sufficiently supported answer"
-                      : "Closest approved passage — check it answers the question"}
+                      : result.support === "partial"
+                        ? "Possible answer — check it answers the question"
+                        : "Approved passage that answers the question"}
                   </p>
                   <ConfidenceBadge confidence={result.confidence} />
                   <SharingBadge status={result.entry.sharingStatus} />
                 </div>
-                {matchSupport(result.confidence) === "related" && (
+                {result.support === "related" && (
                   <div className="mx-4 mt-3 bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-md px-3 py-2 flex items-start gap-2">
                     <AlertTriangle size={11} className="text-[#92400E] shrink-0 mt-0.5" />
                     <p className="text-[12px] text-[#92400E]">
-                      No sufficiently supported answer found. Manual review required — this
-                      entry is only loosely related to the question.
+                      No sufficiently supported answer found. Manual review required
+                      {result.reason ? ` — ${result.reason}` : " — this entry is only related to the question."}
                     </p>
                   </div>
                 )}
                 <div className="px-4 py-3.5 text-sm text-[#374151] leading-relaxed">
                   {result.entry.content}
                 </div>
+                {result.support !== "related" && (result.evidence || result.reason) && (
+                  <div className="mx-4 mb-3 rounded-md bg-[#F7F8FA] border border-border px-3 py-2 text-[12px] text-[#374151] flex flex-col gap-1">
+                    {result.evidence && (
+                      <p>
+                        <strong>Evidence:</strong> “{result.evidence}”
+                      </p>
+                    )}
+                    {result.reason && <p className="text-[#6B7280]">{result.reason}</p>}
+                  </div>
+                )}
                 {result.entry.sharingStatus === "NDA Required" && (
                   <div className="mx-4 mb-3 bg-[#FEF2F2] border border-[#FCA5A5]/50 rounded-md px-3 py-2 flex items-start gap-2">
                     <Lock size={11} className="text-[#991B1B] shrink-0 mt-0.5" />

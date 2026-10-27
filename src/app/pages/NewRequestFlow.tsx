@@ -25,6 +25,13 @@ import { parseIntakeEmail, sampleAeEmail } from "../services/simulation";
 
 // Create a ticket from pasted request details.
 
+// Lets the backend recognise a retried create of the same ticket.
+function newClientRef(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function NewRequestFlow({
   state,
   actions,
@@ -41,12 +48,15 @@ export function NewRequestFlow({
 
   const runExtraction = async () => {
     if (extracting) return;
-    if (!emailText.trim()) {
-      actions.addToast("Paste the AE email first (or use the sample).", "warning");
+    const hasEmail = emailText.trim() !== "";
+    // Either is enough to start: without an email, the intake check asks the
+    // user for the customer, deadline and other details; nothing is invented.
+    if (!hasEmail && !attached) {
+      actions.addToast("Paste the AE email or attach the customer form first.", "warning");
       return;
     }
     setExtracting(true);
-    const f = parseIntakeEmail(emailText);
+    const f = parseIntakeEmail(hasEmail ? emailText : "");
     const missing: string[] = [];
     if (!f.customer.trim()) missing.push("customer");
     if (!f.due) missing.push("due");
@@ -56,7 +66,7 @@ export function NewRequestFlow({
 
     const draft: MvpTicket = {
       id: "",
-      customer: f.customer.trim() || "New Customer",
+      customer: f.customer.trim(),
       sorId: "—",
       owner: state.currentUser,
       status: "Intake Review",
@@ -67,7 +77,8 @@ export function NewRequestFlow({
       urgency: (f.urgency || "Medium") as Urgency,
       nda: (f.nda || "Unknown") as NdaStatus,
       region: "EMEA",
-      source: "Email",
+      source: hasEmail ? "Email" : "Upload",
+      clientRef: newClientRef(),
       ae: f.ae.trim() || undefined,
       aeEmail: f.aeEmail.trim() || undefined,
       businessImpact: f.businessImpact.trim() || undefined,
@@ -88,13 +99,18 @@ export function NewRequestFlow({
     // this browser only, with the next free local number.
     const backendId = await createBackendTicket(draft);
     const ticket: MvpTicket = backendId
-      ? { ...draft, id: ticketIdForBackend(backendId), backendId }
+      ? { ...draft, id: ticketIdForBackend(backendId), backendId, savedStage: draft.stage }
       : { ...draft, id: nextLocalTicketId(state.tickets) };
     const id = ticket.id;
 
     if (attached) pendingForms.set(id, attached);
     actions.setTickets((p) => [ticket, ...p.filter((t) => t.id !== id)]);
-    actions.logActivity("Created request from pasted AE email — intake check pending", id);
+    actions.logActivity(
+      hasEmail
+        ? "Created request from pasted AE email — intake check pending"
+        : `Created request from uploaded ${attached!.name} without an AE email — intake details to be filled in`,
+      id,
+    );
     if (!backendId)
       actions.addToast(
         `The backend could not save this request — ${id} exists only in this browser until intake is confirmed.`,
@@ -131,6 +147,7 @@ export function NewRequestFlow({
           <p className="text-[13px] text-[#6B7280]">
             Paste the email you received from the AE. AI extracts the customer, urgency, NDA
             status, deadline and deal value — you review everything on the intake check next.
+            No email? Attach just the customer form and fill in the details on the intake check.
           </p>
           <textarea
             value={emailText}

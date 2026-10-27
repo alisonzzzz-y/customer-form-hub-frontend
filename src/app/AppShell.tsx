@@ -24,7 +24,10 @@ import {
   MvpKnowledgeEntry,
   MvpNotification,
   MvpActivity,
+  TicketStage,
   ToastMsg,
+  pendingForms,
+  rekeyTicketRefs,
 } from "./data/model";
 import {
   SEED_ACTIVITY,
@@ -36,7 +39,14 @@ import {
   STARTUP_TICKETS,
 } from "./data/seeds";
 import { Toast } from "./components/ui";
-import { loadBackendKnowledge, loadBackendWorld, onBackendStatus, onWriteFailure, pingBackend } from "./services/backend";
+import {
+  loadBackendKnowledge,
+  loadBackendWorld,
+  onBackendStatus,
+  onWriteFailure,
+  pingBackend,
+  syncTicketStage,
+} from "./services/backend";
 import { DashboardPage } from "./pages/DashboardPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TicketsPage, TicketFilters, EMPTY_FILTERS } from "./pages/TicketsPage";
@@ -94,6 +104,8 @@ export type AppActions = {
   addToast: (m: string, t?: ToastMsg["type"]) => void;
   logActivity: (action: string, ticketId?: string) => void;
   openNewTicket: () => void;
+  // Give a ticket created offline its backend identity (see rekeyTicketRefs).
+  rekeyTicket: (oldId: string, newId: string, backendId: number) => void;
 };
 
 export default function AppShell() {
@@ -248,6 +260,19 @@ export default function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendLive]);
 
+  // Save each ticket's workflow step whenever it changes, so a refresh
+  // reopens the same step. The first time a ticket is seen, the step the
+  // backend already has is taken as saved.
+  const syncedStages = useRef(new Map<number, TicketStage>());
+  useEffect(() => {
+    for (const t of tickets) {
+      if (!t.backendId || t.isStartupDemo) continue;
+      const last = syncedStages.current.get(t.backendId) ?? t.savedStage;
+      syncedStages.current.set(t.backendId, t.stage);
+      if (last !== undefined && last !== t.stage) syncTicketStage(t.backendId, t.stage);
+    }
+  }, [tickets]);
+
   const [toasts, setToasts] = useState<ToastMsg[]>([]);
   const idRef = useRef(0);
   const addToast = (message: string, type: ToastMsg["type"] = "success") => {
@@ -290,6 +315,23 @@ export default function AppShell() {
       openNewTicket: () => {
         setModule("tickets");
         setNewTicketOpen(true);
+      },
+      rekeyTicket: (oldId, newId, backendId) => {
+        setTickets((p) =>
+          p.map((t) => (t.id === oldId ? { ...t, id: newId, backendId } : t)),
+        );
+        if (oldId === newId) return;
+        setQuestions((p) => rekeyTicketRefs(p, oldId, newId));
+        setSmeRequests((p) => rekeyTicketRefs(p, oldId, newId));
+        setNotifications((p) => rekeyTicketRefs(p, oldId, newId));
+        setActivity((p) => rekeyTicketRefs(p, oldId, newId));
+        setActiveTicketId((id) => (id === oldId ? newId : id));
+        setKbReturnTicket((id) => (id === oldId ? newId : id));
+        const file = pendingForms.get(oldId);
+        if (file) {
+          pendingForms.delete(oldId);
+          pendingForms.set(newId, file);
+        }
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps

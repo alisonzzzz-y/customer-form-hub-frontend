@@ -14,7 +14,7 @@ await page.waitForSelector("text=Good morning, Sarah");
 // 1) Unapprove: TK-1027 approve then undo
 await page.click('nav >> text=Tickets');
 await page.click('tr:has-text("TK-1027")');
-await page.waitForSelector("text=AI Suggested Answer — best match");
+await page.waitForSelector("text=AI Suggested Answer — supported by the source");
 await page.getByRole("button", { name: "Approve", exact: true }).click();
 await page.waitForSelector("text=Answer approved.");
 // go back to the approved question (advance moved selection)
@@ -22,7 +22,7 @@ await page.click("text=Do you hold ISO27001?");
 await page.waitForSelector('button:has-text("Unapprove")');
 await page.click('button:has-text("Unapprove")');
 await page.waitForSelector("text=Approval undone — the question is back in review.");
-if (!(await page.isVisible("text=AI Suggested Answer — best match"))) errors.push("Unapprove: suggestion not restored");
+if (!(await page.isVisible("text=AI Suggested Answer — supported by the source"))) errors.push("Unapprove: suggestion not restored");
 
 // 2) KB source link → back-to-ticket banner
 await page.click("text=ISO 27001 & SOC 2"); // resolves to the live KB entry title when backend is up

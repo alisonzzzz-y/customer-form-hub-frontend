@@ -24,7 +24,7 @@ await page.getByRole("button", { name: "Close", exact: true }).click();
 // review sticky bar: TK-1027, actions visible without scrolling
 await page.click('nav >> text=Tickets');
 await page.click('tr:has-text("TK-1027")');
-await page.waitForSelector("text=AI Suggested Answer — best match");
+await page.waitForSelector("text=AI Suggested Answer — supported by the source");
 const nextBtn = page.getByRole("button", { name: /Next Question/ });
 if (!(await nextBtn.isVisible())) errors.push("Review: Next Question not visible without scroll");
 console.log(errors.length ? "FAIL:\n" + errors.join("\n") : "REPORT/STICKY OK");

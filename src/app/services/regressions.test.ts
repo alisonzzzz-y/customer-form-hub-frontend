@@ -5,13 +5,15 @@ import {
   duplicateKey,
   isPastDate,
   matchSupport,
+  mergeImportedQuestions,
+  rekeyTicketRefs,
   nextLocalTicketId,
   restoredWorkflow,
   ticketIdForBackend,
   withCurrentDeadline,
 } from "../data/model";
 import { STARTUP_TICKETS } from "../data/seeds";
-import { applyRagResult } from "./backend";
+import { applyRagResult, sectionOf } from "./backend";
 import { extractQuestionsFor, parseIntakeEmail, sampleAeEmail } from "./simulation";
 
 describe("ticket IDs", () => {
@@ -28,6 +30,12 @@ describe("ticket IDs", () => {
     const second = nextLocalTicketId([...tickets, { id: first }]);
     expect(first).toBe("TK-1028");
     expect(second).toBe("TK-1029");
+  });
+
+  it("never gives an offline ticket a number from the backend range", () => {
+    // With TK-9001 loaded from the backend, the next local number must not be
+    // TK-9002, which the backend will give the next ticket it saves.
+    expect(nextLocalTicketId([{ id: "TK-9001" }, { id: "TK-1027" }])).toBe("TK-1028");
   });
 
   it("shows backend tickets with the same ID before and after a refresh", () => {
@@ -69,11 +77,15 @@ describe("knowledge match support", () => {
     status: "AI Analysed",
     confidence: null,
   };
-  const hit = (score: number) => ({
+  const hit = (
+    score: number,
+    supportLevel?: string,
+    content = "Cloudera maintains SOC 2 Type II and ISO/IEC 27001 certification…",
+  ) => ({
     id: 7,
     documentTitle: "Compliance and Certifications Summary",
     sectionTitle: "Certifications held",
-    content: "Cloudera maintains SOC 2 Type II and ISO/IEC 27001 certification…",
+    content,
     source: "",
     sourceKey: "",
     lastUpdated: "2025-09-15T00:00:00",
@@ -81,21 +93,47 @@ describe("knowledge match support", () => {
     department: "Compliance",
     approved: true,
     similarityScore: score,
+    supportLevel,
+    supportReason: supportLevel === "RELATED" ? "The source does not mention DPA, which the question asks about." : undefined,
   });
 
   it("treats a 36% match as related knowledge, not a reviewable answer", () => {
-    const q = applyRagResult(question, [hit(0.36)]);
-    expect(matchSupport(q.confidence)).toBe("related");
+    const q = applyRagResult(question, [hit(0.36, "RELATED")]);
+    expect(q.answerSupport).toBe("related");
     expect(q.status).toBe("Needs Review");
   });
 
-  it("keeps strong matches as suggestions", () => {
-    const q = applyRagResult(question, [hit(0.82)]);
-    expect(matchSupport(q.confidence)).toBe("supported");
-    expect(q.status).toBe("Suggested");
+  it("does not offer a high-scoring passage that does not answer the question", () => {
+    // 82% similar, but a certifications summary is not a DPA.
+    const q = applyRagResult(question, [hit(0.82, "RELATED")]);
+    expect(q.confidence).toBe(0.82);
+    expect(q.answerSupport).toBe("related");
+    expect(q.status).toBe("Needs Review");
+    expect(q.supportReason).toContain("DPA");
   });
 
-  it("marks mid-range matches as partial", () => {
+  it("treats a result without a support level as related knowledge", () => {
+    const q = applyRagResult(question, [hit(0.9)]);
+    expect(q.answerSupport).toBe("related");
+    expect(q.status).toBe("Needs Review");
+  });
+
+  it("offers a supported passage with its evidence, even when another scores higher", () => {
+    const dpa = {
+      ...hit(0.71, "SUPPORTED", "Cloudera offers a standard Data Processing Addendum (DPA) to customers."),
+      id: 9,
+      sectionTitle: "Data processing",
+      evidence: "Cloudera offers a standard Data Processing Addendum (DPA) to customers.",
+    };
+    const q = applyRagResult(question, [hit(0.82, "RELATED"), dpa]);
+    expect(q.status).toBe("Suggested");
+    expect(q.answerSupport).toBe("supported");
+    expect(q.suggested?.knowledgeId).toBe(9);
+    expect(q.evidence).toContain("Data Processing Addendum");
+    expect(q.alternatives?.[0].support).toBe("related");
+  });
+
+  it("keeps score bands only for hand-written demo suggestions", () => {
     expect(matchSupport(0.55)).toBe("partial");
     expect(matchSupport(null)).toBe("none");
   });
@@ -168,5 +206,76 @@ describe("archive and restore", () => {
       status: "In Progress",
       stage: "review",
     });
+  });
+});
+
+describe("importing a new version of the customer form", () => {
+  const q = (id: number, text: string, extra: Partial<MvpQuestion> = {}): MvpQuestion => ({
+    id,
+    backendId: id,
+    ticketId: "TK-9001",
+    row: id,
+    original: text,
+    normalised: text,
+    department: "InfoSec",
+    risk: "Medium",
+    status: "AI Analysed",
+    confidence: null,
+    ...extra,
+  });
+
+  it("keeps reviewed questions, adds new ones and leaves out removed ones", () => {
+    const existing = [
+      q(1, "Is data encrypted in transit?", { status: "Approved", finalAnswer: { text: "TLS 1.2+", sourceType: "AI" } }),
+      q(2, "Do you hold ISO 27001?", { status: "Approved" }),
+    ];
+    const { questions, reused } = mergeImportedQuestions(
+      existing,
+      [
+        { backendId: 1, text: "Is data encrypted in transit?", department: "InfoSec" },
+        { backendId: 3, text: "Is MFA enforced for admins?", department: "InfoSec" },
+      ],
+      "TK-9001",
+      50,
+    );
+    expect(reused).toBe(1);
+    expect(questions.map((x) => x.backendId)).toEqual([1, 3]);
+    expect(questions[0].finalAnswer?.text).toBe("TLS 1.2+");
+    expect(questions[1]).toMatchObject({ id: 50, status: "AI Analysed", departmentSource: "AI" });
+  });
+
+  it("flags repeats inside the file instead of dropping them", () => {
+    const { questions } = mergeImportedQuestions(
+      [],
+      [
+        { backendId: 1, text: "Is data encrypted in transit?", department: "InfoSec" },
+        { backendId: 2, text: "Is data encrypted in transit?", department: "InfoSec" },
+      ],
+      "TK-9001",
+      1,
+    );
+    expect(questions).toHaveLength(2);
+    expect(questions[1].duplicateOf).toBe(questions[0].id);
+  });
+
+  it("names sheets the same way before and after a refresh", () => {
+    expect(sectionOf("InfoSec / Access control")).toBe("InfoSec");
+    expect(sectionOf("Legal!B4")).toBe("Legal");
+    expect(sectionOf(null)).toBe("");
+  });
+});
+
+describe("saving a ticket that was created offline", () => {
+  it("moves every reference from the temporary number to the backend number", () => {
+    const items = [
+      { id: 1, ticketId: "TK-1028" },
+      { id: 2, ticketId: "TK-1027" },
+      { id: 3, ticketId: undefined },
+    ];
+    expect(rekeyTicketRefs(items, "TK-1028", "TK-9012").map((i) => i.ticketId)).toEqual([
+      "TK-9012",
+      "TK-1027",
+      undefined,
+    ]);
   });
 });

@@ -1,5 +1,6 @@
 // In-memory backend used for local frontend tests.
 import http from "node:http";
+import { createHash } from "node:crypto";
 
 const PORT = Number(process.env.MOCK_PORT ?? 8080);
 
@@ -66,6 +67,27 @@ function score(question, entry) {
   return Math.min(0.97, (hits / words.length) * 0.95 + 0.02);
 }
 
+// Contract stand-in for the backend support check: a passage that does not
+// name what the question asks about (DPA, ISO, SOC, SSO) is related knowledge
+// only, whatever its score. The real check lives in AnswerSupportService.
+const IDENTIFIERS = [
+  ["dpa", /\bdpa\b|data processing (agreement|addendum)/],
+  ["iso", /\biso\b|iso\d/],
+  ["soc", /\bsoc\b|soc\s?2/],
+  ["sso", /\bsso\b|single sign-on/],
+];
+function support(question, entry, similarity) {
+  const q = question.toLowerCase();
+  const text = `${entry.sectionTitle} ${entry.content}`.toLowerCase();
+  const missing = IDENTIFIERS.find(([, re]) => re.test(q) && !re.test(text));
+  if (similarity < 0.5) return { supportLevel: "RELATED", evidence: "", supportReason: "Similarity is too low for this to be used as an answer." };
+  if (missing) return { supportLevel: "RELATED", evidence: "", supportReason: `The source does not mention ${missing[0].toUpperCase()}, which the question asks about.` };
+  const evidence = entry.content.split(/(?<=[.;])\s+/)[0];
+  return similarity >= 0.6
+    ? { supportLevel: "SUPPORTED", evidence, supportReason: "The source states the answer directly." }
+    : { supportLevel: "PARTIAL", evidence, supportReason: "The source answers only part of the question. Check before approving." };
+}
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
@@ -85,7 +107,11 @@ http
       (calls[`${req.method} ${path.replace(/\/\d+/g, "/{id}")}`] ?? 0) + 1;
 
     let body = "";
-    req.on("data", (c) => (body += c));
+    const raw = createHash("sha256");
+    req.on("data", (c) => {
+      body += c;
+      raw.update(c);
+    });
     req.on("end", () => {
       const parse = () => { try { return JSON.parse(body); } catch { return {}; } };
       let m;
@@ -111,9 +137,17 @@ http
       // ── tickets ──
       if (path === "/api/tickets" && req.method === "GET") return json(res, 200, tickets);
       if (path === "/api/tickets" && req.method === "POST") {
-        const t = { id: ticketSeq++, ...parse() };
+        const input = parse();
+        // A retried create with the same clientRef returns the saved ticket.
+        const existing = input.clientRef && tickets.find((x) => x.clientRef === input.clientRef);
+        if (existing) return json(res, 200, existing);
+        const t = { id: ticketSeq++, ...input };
         tickets.push(t);
         return json(res, 200, t);
+      }
+      if ((m = path.match(/^\/api\/tickets\/(\d+)$/)) && req.method === "GET") {
+        const t = tickets.find((x) => x.id === +m[1]);
+        return t ? json(res, 200, t) : json(res, 404, {});
       }
       if ((m = path.match(/^\/api\/tickets\/(\d+)$/)) && req.method === "PUT") {
         const t = tickets.find((x) => x.id === +m[1]);
@@ -140,30 +174,58 @@ http
         return json(res, 200, QUESTION_TEMPLATES.map((q) => ({ ...q })));
       if (path === "/api/questionnaire/import" && req.method === "POST") {
         const ticketId = +(url.searchParams.get("ticketId") ?? 0);
-        // Mirrors the real backend: importing the same file again reuses rows.
-        const already = questions.filter((q) => q.ticketId === ticketId);
-        if (already.length > 0) return json(res, 200, already);
-        const saved = QUESTION_TEMPLATES.map((q) => ({
-          id: questionSeq++,
-          ticketId,
-          questionText: q.questionText,
-          department: q.department,
-          status: "Needs Review",
-          riskLevel: null,
-          rowReference: q.section,
-          createdAt: new Date().toISOString(),
-          aiSuggestionSourceId: null,
-          reviewOutcome: null,
-          reviewedAt: null,
-          aeClarificationRequestedAt: null,
-        }));
-        questions.push(...saved);
-        return json(res, 200, saved);
+        const ticket = tickets.find((x) => x.id === ticketId);
+        if (!ticket) return json(res, 404, { message: `Ticket ${ticketId} does not exist.` });
+        // Mirrors the real backend: the same file again inserts nothing; a
+        // different file is reconciled by question text, and rows it no longer
+        // contains are retired, not deleted. The mock always "parses" the same
+        // template questions, so only the file hash differs between versions.
+        const hash = raw.digest("hex");
+        const fileName = body.match(/filename="([^"]+)"/)?.[1] ?? "upload.xlsx";
+        const active = questions.filter((q) => q.ticketId === ticketId && !q.retiredAt);
+        const firstImport = !ticket.formFileHash && active.length === 0;
+        const sameFile = ticket.formFileHash === hash;
+        const pool = [...active];
+        let added = 0;
+        const result = QUESTION_TEMPLATES.map((tpl) => {
+          const i = pool.findIndex((q) => q.questionText === tpl.questionText && q.rowReference === tpl.section);
+          if (i >= 0) return pool.splice(i, 1)[0];
+          added++;
+          const q = {
+            id: questionSeq++,
+            ticketId,
+            questionText: tpl.questionText,
+            department: tpl.department,
+            departmentSource: "AI",
+            status: "Needs Review",
+            riskLevel: null,
+            rowReference: tpl.section,
+            createdAt: new Date().toISOString(),
+            aiSuggestionSourceId: null,
+            reviewOutcome: null,
+            reviewedAt: null,
+            aeClarificationRequestedAt: null,
+            retiredAt: null,
+          };
+          questions.push(q);
+          return q;
+        });
+        const retired = !sameFile && !firstImport ? pool : [];
+        for (const q of retired) q.retiredAt = new Date().toISOString();
+        Object.assign(ticket, {
+          formFileName: fileName,
+          formFileHash: hash,
+          formImportedAt: new Date().toISOString(),
+          formImportOutcome: firstImport ? "CREATED" : sameFile ? "UNCHANGED" : "UPDATED",
+          formQuestionsAdded: added,
+          formQuestionsRetired: retired.length,
+        });
+        return json(res, 200, result);
       }
 
       // ── read endpoints used by the app's startup load ──
       if ((m = path.match(/^\/api\/questions\/ticket\/(\d+)$/)) && req.method === "GET")
-        return json(res, 200, questions.filter((q) => q.ticketId === +m[1]));
+        return json(res, 200, questions.filter((q) => q.ticketId === +m[1] && !q.retiredAt));
       if ((m = path.match(/^\/api\/sme-requests\/ticket\/(\d+)$/)) && req.method === "GET")
         return json(res, 200, smeRequests.filter((r) => r.ticketId === +m[1]));
       if ((m = path.match(/^\/api\/sme-request-questions\/request\/(\d+)$/)) && req.method === "GET")
@@ -171,7 +233,7 @@ http
       if ((m = path.match(/^\/api\/final-review\/ticket\/(\d+)$/)) && req.method === "GET") {
         const tid = +m[1];
         return json(res, 200, questions
-          .filter((q) => q.ticketId === tid)
+          .filter((q) => q.ticketId === tid && !q.retiredAt)
           .map((q) => {
             const fa = finalAnswers.filter((f) => f.questionId === q.id).pop();
             return {
@@ -262,7 +324,8 @@ http
           .map((e) => ({ ...e, similarityScore: score(question ?? "", e) }))
           .filter((e) => e.similarityScore >= 0.35)
           .sort((a, b) => b.similarityScore - a.similarityScore)
-          .slice(0, 5);
+          .slice(0, 5)
+          .map((e) => ({ ...e, ...support(question ?? "", e, e.similarityScore) }));
         return json(res, 200, ranked);
       }
       if (path === "/api/knowledge-base" && req.method === "POST") {

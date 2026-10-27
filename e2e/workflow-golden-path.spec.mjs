@@ -13,6 +13,25 @@ page.on("console", (m) => {
     errors.push("console: " + m.text());
 });
 
+// Reload the app and reopen the ticket: it must come back on the same step.
+async function reopenTicket() {
+  await page.goto(BASE_URL);
+  await page.waitForSelector("text=Live data:", { timeout: 15000 });
+  await page.click('nav >> text=Tickets');
+  await page.click('tr:has-text("TK-9001")');
+}
+
+// Make the next save to an SME request fail the given way, then behave normally.
+async function failNextSmeSave(how) {
+  let failed = false;
+  await page.route("**/api/sme-requests/*", async (route) => {
+    if (failed || route.request().method() !== "PUT") return route.fallback();
+    failed = true;
+    if (how === "offline") return route.abort("internetdisconnected");
+    return route.fulfill({ status: 500, body: "{}" });
+  });
+}
+
 await fetch(`${API_URL}/api/_debug/reset`).catch(() => {});
 await page.goto(BASE_URL);
 await page.waitForSelector("text=Good morning, Sarah");
@@ -69,7 +88,7 @@ await page.waitForSelector("text=Knowledge matches ready — review each answer.
 await page.waitForSelector("text=of");
 
 // ── Review: approve first (high-confidence), route one to SME ──
-await page.waitForSelector("text=AI Suggested Answer — best match");
+await page.waitForSelector("text=AI Suggested Answer — supported by the source");
 await page.getByRole("button", { name: "Approve", exact: true }).click();
 await page.waitForSelector("text=Answer approved.");
 // Ask AE ends the current question review but keeps the ticket open; reopening
@@ -123,17 +142,50 @@ await page.click('button:has-text("Next: SME Package")');
 
 // ── SME package: batch send all departments at once ──
 await page.waitForSelector("text=SMEs don't log in — send each department");
+await reopenTicket();
+await page.waitForSelector("text=SMEs don't log in — send each department");
 await page.click('button:has-text("Send All")');
 // preparing a package only opens mail drafts — nothing may claim it was sent yet
 await page.waitForSelector("text=All SME packages prepared", { timeout: 15000 });
-await page.click('div.fixed >> text=Done');
+// the draft list stays open so each department's draft can be opened
+await page.waitForSelector("text=Packages registered — open each email draft");
+await page.getByRole("button", { name: "Done", exact: true }).click();
 await page.waitForSelector("text=SME ETA Tracking — this ticket");
 if ((await page.locator('button:has-text("Mark as Sent")').count()) === 0)
   errors.push("SME: prepared drafts were not left pending a manual send");
+
+// A refresh keeps the step and the drafts as not yet sent.
+await reopenTicket();
+await page.waitForSelector("text=SME ETA Tracking — this ticket");
+const pendingSends = await page.locator('button:has-text("Mark as Sent")').count();
+if (pendingSends === 0) errors.push("SME: drafts showed as sent after a refresh");
+
+// A failed save must not show the package as sent; the retry then works once.
+await failNextSmeSave("500");
+await page.click('button:has-text("Mark as Sent") >> nth=0');
+await page.waitForSelector('text="sent" was not saved');
+if ((await page.locator("text=package marked as sent").count()) > 0) errors.push("SME: success shown for a failed save");
+if ((await page.locator('button:has-text("Mark as Sent")').count()) !== pendingSends)
+  errors.push("SME: a failed save changed the request on screen");
 await page.click('button:has-text("Mark as Sent") >> nth=0');
 await page.waitForSelector("text=package marked as sent");
+const sentReqs = (await (await fetch(`${API_URL}/api/sme-requests/ticket/1`)).json()).filter((r) => r.sentAt);
+if (sentReqs.length !== 1) errors.push(`SME: expected 1 request with sentAt, found ${sentReqs.length}`);
 
 // ── ETA tracking: record ETA, mark returned ──
+await page.waitForSelector("text=SME ETA Tracking — this ticket");
+// A failed ETA save keeps the dialog and the entered value for a retry.
+await failNextSmeSave("offline");
+await page.click('button:has-text("Record ETA") >> nth=0');
+await page.fill('input[type="datetime-local"]', "2026-07-15T15:00");
+await page.click("text=Save ETA");
+await page.waitForSelector("text=was not saved");
+if ((await page.locator("text=ETA recorded for").count()) > 0) errors.push("ETA: success shown for a failed save");
+if ((await page.inputValue('input[type="datetime-local"]')) !== "2026-07-15T15:00")
+  errors.push("ETA: entered value lost after a failed save");
+await page.click("text=Save ETA");
+await page.waitForSelector("text=ETA recorded for");
+await reopenTicket();
 await page.waitForSelector("text=SME ETA Tracking — this ticket");
 while ((await page.locator('button:has-text("Record ETA")').count()) > 0) {
   await page.click('button:has-text("Record ETA") >> nth=0');

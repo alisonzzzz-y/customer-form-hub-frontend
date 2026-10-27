@@ -4,15 +4,16 @@ import {
   MvpQuestion,
   MvpTicket,
   KnowledgeStatus,
-  SUGGESTED_THRESHOLD,
   SharingStatus,
   TBD_DEPARTMENT,
-  matchSupport,
+  TicketStage,
+  duplicateKey,
   stageFromQuestions,
+  supportFromBackend,
   ticketIdForBackend,
 } from "../data/model";
 
-interface SearchResult {
+export interface SearchResult {
   id: number;
   documentTitle: string;
   sectionTitle: string;
@@ -25,6 +26,10 @@ interface SearchResult {
   approved: boolean;
   status?: string;
   similarityScore: number | null;
+  relevanceLevel?: string; // HIGH / MEDIUM / LOW, from the score only
+  supportLevel?: string; // SUPPORTED / PARTIAL / RELATED, from the support check
+  evidence?: string;
+  supportReason?: string;
 }
 
 interface FormQuestion {
@@ -40,6 +45,7 @@ interface FormQuestion {
   reviewOutcome: "ACCEPTED" | "EDITED" | "ESCALATED" | null;
   reviewedAt: string | null;
   aeClarificationRequestedAt: string | null;
+  departmentSource?: string | null;
 }
 
 interface FinalAnswerInput {
@@ -157,12 +163,16 @@ async function attempt<T>(p: Promise<T>, mutation = false): Promise<T | null> {
   }
 }
 
+// A save that hangs is reported as failed instead of leaving the UI waiting.
+const WRITE_TIMEOUT_MS = 20_000;
+
 async function post<T>(path: string, body: unknown): Promise<T | null> {
   return attempt(
     fetch(`${BASE}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
     }).then((r) => {
       if (!r.ok) throw new Error(String(r.status));
       return r.json() as Promise<T>;
@@ -177,6 +187,7 @@ async function put<T>(path: string, body: unknown): Promise<T | null> {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
     }).then((r) => {
       if (!r.ok) throw new Error(String(r.status));
       return r.json() as Promise<T>;
@@ -191,6 +202,7 @@ async function patch<T>(path: string, body: unknown): Promise<T | null> {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
     }).then((r) => {
       if (!r.ok) throw new Error(String(r.status));
       return r.json() as Promise<T>;
@@ -258,10 +270,23 @@ export function mapSharing(raw: string | null | undefined): SharingStatus {
 
 type BackendTicket = { id: number };
 
-export async function createBackendTicket(
-  t: MvpTicket,
-): Promise<number | null> {
+// One create per ticket at a time. The clientRef makes a retry after a lost
+// response return the ticket the backend already saved.
+const creating = new Map<string, Promise<number | null>>();
+
+export function createBackendTicket(t: MvpTicket): Promise<number | null> {
+  const key = t.clientRef ?? t.id;
+  const running = creating.get(key);
+  if (running) return running;
+  const p = postTicket(t).finally(() => creating.delete(key));
+  creating.set(key, p);
+  return p;
+}
+
+async function postTicket(t: MvpTicket): Promise<number | null> {
   const created = await post<BackendTicket>("/tickets", {
+    clientRef: t.clientRef ?? null,
+    workflowStage: t.stage,
     customerName: t.customer,
     createdBy: t.ae ?? null,
     assignedTo: t.owner,
@@ -301,22 +326,49 @@ export function syncTicketFields(
   clearTimeout(ticketSyncTimers.get(backendId));
   ticketSyncTimers.set(
     backendId,
-    setTimeout(() => {
-      const merged = ticketSyncPending.get(backendId);
-      ticketSyncPending.delete(backendId);
-      if (merged) void put(`/tickets/${backendId}`, merged);
-    }, 600),
+    setTimeout(() => void flushTicketFields(backendId), 600),
   );
+}
+
+// Send a ticket's waiting edits now instead of after the typing pause, e.g.
+// before analysis starts. Resolves false if the backend did not save them.
+export async function flushTicketFields(backendId: number | undefined): Promise<boolean> {
+  if (!backendId) return true;
+  clearTimeout(ticketSyncTimers.get(backendId));
+  ticketSyncTimers.delete(backendId);
+  const merged = ticketSyncPending.get(backendId);
+  ticketSyncPending.delete(backendId);
+  if (!merged) return true;
+  return (await put(`/tickets/${backendId}`, merged)) !== null;
+}
+
+// Edits still waiting for the typing pause when the page is closed or
+// reloaded are sent with keepalive, so the browser delivers them anyway.
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => {
+    for (const [backendId, merged] of ticketSyncPending) {
+      clearTimeout(ticketSyncTimers.get(backendId));
+      void fetch(`${BASE}/tickets/${backendId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(merged),
+        keepalive: true,
+      }).catch(() => {});
+    }
+    ticketSyncPending.clear();
+  });
 }
 
 // Keep question departments in sync for SME packages.
 export async function syncQuestionDepartment(
   backendId: number | undefined,
   department: string,
+  source?: "Manual",
 ): Promise<boolean> {
   if (!backendId) return true;
   return (await put(`/questions/${backendId}`, {
     department: questionDeptToBackend(department),
+    ...(source ? { departmentSource: source } : {}),
   })) !== null;
 }
 
@@ -338,6 +390,13 @@ export async function createBackendQuestion(
   return created?.id ?? null;
 }
 
+// Step changes are single clicks, so they are saved at once rather than
+// debounced: a refresh right after the click still reopens the new step.
+export function syncTicketStage(backendId: number | undefined, stage: TicketStage) {
+  if (!backendId) return;
+  void put(`/tickets/${backendId}`, { workflowStage: stage });
+}
+
 export function syncTicketStatus(
   backendId: number | undefined,
   status: string,
@@ -353,49 +412,59 @@ export type ParsedBackendQuestion = {
   section: string;
 };
 
+// How the backend reconciled an imported file with what the ticket had.
+export type ImportSummary = {
+  fileName: string;
+  outcome: "created" | "unchanged" | "updated";
+  added: number;
+  retired: number;
+};
+
 export type ParseOutcome =
-  // reused = the ticket already had saved questions, so nothing was re-imported
-  | { kind: "ok"; questions: ParsedBackendQuestion[]; reused?: boolean }
+  | { kind: "ok"; questions: ParsedBackendQuestion[]; summary?: ImportSummary }
   | { kind: "rejected"; message: string } // backend alive but refused the file
   | { kind: "offline" };
+
+type ImportedTicket = {
+  formFileName: string | null;
+  formImportOutcome: string | null;
+  formQuestionsAdded: number | null;
+  formQuestionsRetired: number | null;
+};
+
+function importSummaryOf(t: ImportedTicket | null): ImportSummary | undefined {
+  if (!t?.formFileName || !t.formImportOutcome) return undefined;
+  return {
+    fileName: t.formFileName,
+    outcome: t.formImportOutcome.toLowerCase() as ImportSummary["outcome"],
+    added: t.formQuestionsAdded ?? 0,
+    retired: t.formQuestionsRetired ?? 0,
+  };
+}
 
 export async function parseQuestionnaire(
   file: File,
   backendTicketId: number | null,
 ): Promise<ParseOutcome> {
   if (backendTicketId !== null) {
-    // Reuse saved questions to avoid duplicate uploads.
-    const existing = await get<FormQuestion[]>(
-      `/questions/ticket/${backendTicketId}`,
-    );
-    if (existing === null) return { kind: "offline" };
-    if (existing.length > 0) {
-      return {
-        kind: "ok",
-        reused: true,
-        questions: existing.map((fq) => ({
-          backendId: fq.id,
-          text: fq.questionText,
-          department: questionDeptFromBackend(fq.department),
-          section: fq.rowReference ?? "",
-        })),
-      };
-    }
+    // Always send the file. The backend decides whether it is the same file
+    // again (nothing inserted) or a new version (reconciled, nothing deleted).
     const imported = await postFile<FormQuestion[]>(
       `/questionnaire/import?ticketId=${backendTicketId}`,
       file,
     );
-    if (imported.kind === "ok")
-      return {
-        kind: "ok",
-        questions: imported.data.map((fq) => ({
-          backendId: fq.id,
-          text: fq.questionText,
-          department: questionDeptFromBackend(fq.department),
-          section: fq.rowReference ?? "",
-        })),
-      };
-    return imported;
+    if (imported.kind !== "ok") return imported;
+    const ticket = await get<ImportedTicket>(`/tickets/${backendTicketId}`);
+    return {
+      kind: "ok",
+      summary: importSummaryOf(ticket),
+      questions: imported.data.map((fq) => ({
+        backendId: fq.id,
+        text: fq.questionText,
+        department: questionDeptFromBackend(fq.department),
+        section: fq.rowReference ?? "",
+      })),
+    };
   }
   const classified = await postFile<ClassifiedQuestion[]>(
     "/questionnaire/classify",
@@ -447,7 +516,10 @@ export async function ragSearchAll(
   return out;
 }
 
-// Use the best match as the main suggestion and keep two alternatives.
+// Offer the best-supported passage as the suggestion and keep the others as
+// alternatives. Whether a passage answers the question comes from the
+// backend support check, not from its similarity score: a high score on a
+// passage about a related topic stays related knowledge.
 export function applyRagResult(
   q: MvpQuestion,
   results: SearchResult[],
@@ -455,14 +527,19 @@ export function applyRagResult(
   const hits = results.slice(0, 3);
   const describe = (r: SearchResult) =>
     `Matched "${r.documentTitle} — ${r.sectionTitle}" (${Math.round((r.similarityScore ?? 0) * 100)}% similarity, updated ${r.lastUpdated?.slice(0, 10) ?? "n/a"})`;
-  const top = hits[0];
-  if (!top) return { ...q, status: "New", confidence: null };
-  const score = top.similarityScore ?? 0;
-  // A weak match is kept for reference, but it is not offered as an answer.
-  const support = matchSupport(score);
+  if (hits.length === 0)
+    return { ...q, status: "New", confidence: null, answerSupport: undefined, evidence: undefined, supportReason: undefined };
+  const rank = { supported: 0, partial: 1, related: 2 } as const;
+  const top = [...hits].sort(
+    (a, b) => rank[supportFromBackend(a.supportLevel)] - rank[supportFromBackend(b.supportLevel)],
+  )[0];
+  const support = supportFromBackend(top.supportLevel);
   return {
     ...q,
-    confidence: score,
+    confidence: top.similarityScore ?? 0,
+    answerSupport: support,
+    evidence: top.evidence || undefined,
+    supportReason: top.supportReason || undefined,
     sharingStatus: mapSharing(top.sharingStatus),
     suggested: {
       text: top.content,
@@ -470,15 +547,20 @@ export function applyRagResult(
       reasoning: describe(top),
       sourceTitle: `${top.documentTitle} — ${top.sectionTitle}`,
     },
-    alternatives: hits.slice(1).map((r) => ({
-      text: r.content,
-      knowledgeId: r.id,
-      confidence: r.similarityScore ?? 0,
-      reasoning: describe(r),
-      sourceTitle: `${r.documentTitle} — ${r.sectionTitle}`,
-      sharingStatus: mapSharing(r.sharingStatus),
-    })),
-    status: support === "supported" && score >= SUGGESTED_THRESHOLD ? "Suggested" : "Needs Review",
+    alternatives: hits
+      .filter((r) => r !== top)
+      .map((r) => ({
+        text: r.content,
+        knowledgeId: r.id,
+        confidence: r.similarityScore ?? 0,
+        reasoning: describe(r),
+        sourceTitle: `${r.documentTitle} — ${r.sectionTitle}`,
+        sharingStatus: mapSharing(r.sharingStatus),
+        support: supportFromBackend(r.supportLevel),
+        evidence: r.evidence || undefined,
+        supportReason: r.supportReason || undefined,
+      })),
+    status: support === "supported" ? "Suggested" : "Needs Review",
   };
 }
 
@@ -495,6 +577,13 @@ type BackendTicketFull = {
   deadline: string | null;
   businessImpact: string | null;
   createdAt: string | null;
+  workflowStage?: string | null;
+  clientRef?: string | null;
+  formFileName?: string | null;
+  formImportedAt?: string | null;
+  formImportOutcome?: string | null;
+  formQuestionsAdded?: number | null;
+  formQuestionsRetired?: number | null;
 };
 type BackendSmeRequestFull = {
   id: number;
@@ -561,6 +650,21 @@ function knowledgeStatusFromBackend(
     return raw as KnowledgeStatus;
   }
   return approved ? "Approved" : "Pending Review";
+}
+
+const WORKFLOW_STAGES: TicketStage[] = [
+  "intake",
+  "grouping",
+  "review",
+  "sme",
+  "eta",
+  "final",
+  "done",
+];
+
+// "InfoSec / Access" and "InfoSec!B4" both belong to the InfoSec sheet.
+export function sectionOf(rowReference: string | null | undefined): string {
+  return (rowReference ?? "").split(/ \/ |!/)[0].trim();
 }
 
 export type BackendWorld = {
@@ -646,6 +750,7 @@ export async function loadBackendWorld(
         });
     });
 
+    const firstByText = new Map<string, number>();
     const localQs: MvpQuestion[] = bqs.map((q, i) => {
       const fa = answerByQ.get(q.id);
       const link = linkByQ.get(q.id);
@@ -661,6 +766,10 @@ export async function loadBackendWorld(
         status = link ? "Waiting SME" : "SME Queued";
       else if (q.status === "Waiting AE") status = "Waiting AE";
       else status = "Needs Review";
+      // Questions the customer form itself repeats are flagged again on reload.
+      const key = duplicateKey(q.questionText);
+      const duplicateOf = firstByText.get(key);
+      if (duplicateOf === undefined) firstByText.set(key, 100000 + q.id);
       return {
         id: 100000 + q.id,
         backendId: q.id,
@@ -669,6 +778,11 @@ export async function loadBackendWorld(
         original: q.questionText,
         normalised: q.questionText,
         department: questionDeptFromBackend(q.department),
+        departmentSource:
+          q.departmentSource === "AI" || q.departmentSource === "Manual"
+            ? q.departmentSource
+            : undefined,
+        duplicateOf,
         risk: (q.riskLevel as MvpQuestion["risk"]) ?? "Medium",
         status,
         confidence: null,
@@ -715,6 +829,10 @@ export async function loadBackendWorld(
     });
 
     const hydratedStatus = ticketStatusFromBackend(bt.status);
+    // The saved step wins; older tickets without one are inferred from data.
+    const savedStage = WORKFLOW_STAGES.includes(bt.workflowStage as TicketStage)
+      ? (bt.workflowStage as TicketStage)
+      : undefined;
     const stage: MvpTicket["stage"] = [
       "Approved",
       "Sent",
@@ -722,9 +840,15 @@ export async function loadBackendWorld(
       "Archived",
     ].includes(hydratedStatus)
       ? "done"
-      : hydratedStatus === "Ready for Review"
-        ? "final"
-        : stageFromQuestions(localQs);
+      : (savedStage ??
+        (hydratedStatus === "Ready for Review" ? "final" : stageFromQuestions(localQs)));
+    const summary = importSummaryOf({
+      formFileName: bt.formFileName ?? null,
+      formImportOutcome: bt.formImportOutcome ?? null,
+      formQuestionsAdded: bt.formQuestionsAdded ?? null,
+      formQuestionsRetired: bt.formQuestionsRetired ?? null,
+    });
+    const importedAt = bt.formImportedAt ?? bt.createdAt ?? "";
 
     world.tickets.push({
       id: localId,
@@ -744,7 +868,30 @@ export async function loadBackendWorld(
       region: "—",
       source: "Backend",
       ae: bt.createdBy ?? undefined,
-      files: [],
+      clientRef: bt.clientRef ?? undefined,
+      savedStage: savedStage ?? stage,
+      files: summary
+        ? [{
+            name: summary.fileName,
+            size: "—",
+            kind: "Customer form",
+            uploaded: importedAt.slice(0, 10),
+            status: "Processed",
+          }]
+        : [],
+      formImport: summary
+        ? {
+            source: "file",
+            fileName: summary.fileName,
+            questionCount: localQs.length,
+            sections: [...new Set(bqs.map((q) => sectionOf(q.rowReference)).filter(Boolean))],
+            reused: summary.outcome === "created" ? 0 : localQs.length - summary.added,
+            at: importedAt,
+            outcome: summary.outcome,
+            added: summary.added,
+            retired: summary.retired,
+          }
+        : undefined,
     });
     world.questions.push(...localQs);
     world.smeRequests.push(...localReqs);
@@ -960,7 +1107,9 @@ export async function fetchSmeEmail(
   return composed ? { subject: composed.subject, body: composed.body } : null;
 }
 
-export function syncSmeRequest(
+// Resolves true once the backend saved the change (or there is nothing to
+// save it to), false if it failed, so callers can confirm or roll back.
+export async function syncSmeRequest(
   backendId: number | undefined,
   patch: {
     eta?: string | null;
@@ -969,8 +1118,8 @@ export function syncSmeRequest(
     returnedAt?: string | null;
     sentAt?: string | null;
   },
-) {
-  if (!backendId) return;
+): Promise<boolean> {
+  if (!backendId) return true;
   // Only send status values supported by the backend.
   const statusMap: Record<string, string> = {
     "Draft Prepared": "Draft Prepared",
@@ -979,7 +1128,7 @@ export function syncSmeRequest(
     Overdue: "Overdue",
     Returned: "Returned",
   };
-  void put(`/sme-requests/${backendId}`, {
+  return (await put(`/sme-requests/${backendId}`, {
     ...patch,
     status: patch.status ? statusMap[patch.status] : undefined,
     eta: patch.eta ? patch.eta.slice(0, 19) : patch.eta,
@@ -987,7 +1136,7 @@ export function syncSmeRequest(
       ? patch.returnedAt.slice(0, 19)
       : patch.returnedAt,
     sentAt: patch.sentAt ? patch.sentAt.slice(0, 19) : patch.sentAt,
-  });
+  })) !== null;
 }
 
 export async function unreturnBackendSmeRequest(

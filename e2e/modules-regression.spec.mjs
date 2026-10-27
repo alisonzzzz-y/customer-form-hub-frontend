@@ -39,7 +39,7 @@ await page.click('button:has-text("Workflow")');
 
 // Workflow tab: answer review stage with card + approve
 await page.waitForSelector("text=Answer Review");
-await page.waitForSelector("text=AI Suggested Answer — best match");
+await page.waitForSelector("text=AI Suggested Answer — supported by the source");
 if (!(await page.isVisible("text=Why:"))) errors.push("Review: reasoning missing");
 await page.getByRole("button", { name: "Approve", exact: true }).click();
 await page.waitForSelector("text=Answer approved.");
