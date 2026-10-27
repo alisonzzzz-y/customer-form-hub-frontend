@@ -39,6 +39,7 @@ import {
   matchSupport,
   pendingForms,
   smeRequestReferenceNow,
+  withCurrentDeadline,
 } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import {
@@ -1507,7 +1508,10 @@ function SmePackagePanel({
     to: smeTeamAddress(dept),
     subject: req.sentEmail?.subject ?? `ETA request — ${ticket.customer} customer form, ${dept} tab`,
     body:
-      req.sentEmail?.body ??
+      (req.sentEmail &&
+        (req.status === "Draft Prepared"
+          ? withCurrentDeadline(req.sentEmail.body, ticket.due)
+          : req.sentEmail.body)) ??
       [
         `Hi ${dept} Team,`,
         "",
@@ -1899,7 +1903,9 @@ function SmePackagePanel({
                     <p className="text-[10px] font-bold text-green-700 uppercase tracking-[0.1em] mb-1.5">
                       Email text — composed by backend
                     </p>
-                    {sentReq.sentEmail.body}
+                    {sentReq.status === "Draft Prepared"
+                      ? withCurrentDeadline(sentReq.sentEmail.body, ticket.due)
+                      : sentReq.sentEmail.body}
                   </div>
                 );
               return null;

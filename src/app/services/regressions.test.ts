@@ -7,6 +7,7 @@ import {
   matchSupport,
   nextLocalTicketId,
   ticketIdForBackend,
+  withCurrentDeadline,
 } from "../data/model";
 import { STARTUP_TICKETS } from "../data/seeds";
 import { applyRagResult } from "./backend";
@@ -112,5 +113,30 @@ describe("questions", () => {
     expect(duplicateKey("Do you hold ISO27001?")).not.toBe(
       duplicateKey("Do you currently hold ISO/IEC 27001 certification?"),
     );
+  });
+});
+
+describe("SME draft deadline", () => {
+  const body = [
+    "Hi Legal Team,",
+    "The GOM team is completing a customer questionnaire for Vandelay and needs your department's input on the questions below.",
+    "Customer deadline: 2026-11-06 (UTC)",
+    "1. Is a DPA available?",
+  ].join("\n\n");
+
+  it("follows a deadline edited after the package was prepared", () => {
+    const updated = withCurrentDeadline(body, "2026-11-13");
+    expect(updated).toContain("Customer deadline: 2026-11-13 (UTC)");
+    expect(updated).not.toContain("2026-11-06");
+  });
+
+  it("adds the deadline when the package was prepared without one", () => {
+    const noDeadline = body.replace("\n\nCustomer deadline: 2026-11-06 (UTC)", "");
+    const updated = withCurrentDeadline(noDeadline, "2026-11-13");
+    expect(updated.split("\n\n")[2]).toBe("Customer deadline: 2026-11-13 (UTC)");
+  });
+
+  it("leaves the body alone when the ticket has no deadline", () => {
+    expect(withCurrentDeadline(body, "")).toBe(body);
   });
 });

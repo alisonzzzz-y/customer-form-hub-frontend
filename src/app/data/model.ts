@@ -343,6 +343,21 @@ export function isPastDate(iso: string, now: Date = new Date()): boolean {
   return !!iso && iso < now.toISOString().slice(0, 10);
 }
 
+// The backend composes the SME email when the package is prepared. Until the
+// user confirms the send, keep its deadline line in step with the ticket so a
+// later deadline edit reaches the draft.
+const DEADLINE_LINE = /^Customer deadline: \d{4}-\d{2}-\d{2} \(UTC\)$/m;
+export function withCurrentDeadline(body: string, due: string): string {
+  if (!due) return body;
+  const line = `Customer deadline: ${due} (UTC)`;
+  if (DEADLINE_LINE.test(body)) return body.replace(DEADLINE_LINE, line);
+  const paras = body.split("\n\n");
+  const intro = paras.findIndex((p) => p.startsWith("The GOM team"));
+  if (intro === -1) return body;
+  paras.splice(intro + 1, 0, line);
+  return paras.join("\n\n");
+}
+
 export function confidenceBand(c: number | null): "high" | "medium" | "low" | "none" {
   if (c === null) return "none";
   if (c >= 0.9) return "high";
