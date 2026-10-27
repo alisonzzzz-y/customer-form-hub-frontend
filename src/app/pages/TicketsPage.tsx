@@ -1,4 +1,4 @@
-import { Inbox, Plus, Search, X } from "lucide-react";
+import { Archive, ArchiveRestore, Inbox, Plus, Search, X } from "lucide-react";
 import {
   fmtDate,
   fmtDateTime,
@@ -9,6 +9,7 @@ import {
 } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { NewRequestFlow } from "./NewRequestFlow";
+import { archiveTicket, restoreTicket } from "./TicketDetailPage";
 import {
   EmptyState,
   FilterSelect,
@@ -251,6 +252,7 @@ export function TicketsPage({
                     <Th>NDA</Th>
                     <Th>SME Pending</Th>
                     <Th>Last Activity</Th>
+                    <Th>{null}</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -292,6 +294,24 @@ export function TicketsPage({
                       </td>
                       <td className="px-4 py-2.5 text-[11px] text-[#9CA3AF] whitespace-nowrap">
                         {lastActivity(t.id)}
+                      </td>
+                      <td className="px-2 py-2.5 text-right">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (t.status === "Archived") restoreTicket(t, state, actions);
+                            else archiveTicket(t, actions);
+                          }}
+                          title={
+                            t.status === "Archived"
+                              ? "Restore this ticket"
+                              : "Archive this ticket (hidden, not deleted)"
+                          }
+                          aria-label={t.status === "Archived" ? `Restore ${t.id}` : `Archive ${t.id}`}
+                          className="p-1.5 rounded text-[#9CA3AF] hover:text-[#C05600] hover:bg-[#FFF4EC] transition-colors"
+                        >
+                          {t.status === "Archived" ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+                        </button>
                       </td>
                     </tr>
                   ))}

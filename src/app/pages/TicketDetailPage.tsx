@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
 import {
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   Brain,
   CheckCircle,
@@ -13,6 +15,8 @@ import {
   fmtDate,
   fmtDateTime,
   isOverdueSmeRequest,
+  MvpTicket,
+  restoredWorkflow,
 } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
 import { WorkflowTab } from "./TicketWorkflow";
@@ -20,6 +24,34 @@ import { Card, Pill } from "../components/ui";
 import { syncTicketStatus } from "../services/backend";
 
 type Tab = "Overview" | "Workflow" | "Files" | "Timeline" | "Activity";
+
+// Archiving hides a ticket from the list and reports; nothing is deleted, so
+// its questions, SME requests and answers come back on restore.
+export function archiveTicket(ticket: MvpTicket, actions: AppActions): boolean {
+  if (
+    !window.confirm(
+      `Archive ${ticket.id} · ${ticket.customer}?\n\nIt will be hidden from the ticket list and reports. Nothing is deleted — tick "Include archived" to find and restore it.`,
+    )
+  )
+    return false;
+  actions.setTickets((p) =>
+    p.map((t) => (t.id === ticket.id ? { ...t, status: "Archived", stage: "done" } : t)),
+  );
+  syncTicketStatus(ticket.backendId, "Archived");
+  actions.logActivity(`Archived ticket (was ${ticket.status})`, ticket.id);
+  actions.addToast(`${ticket.id} archived.`, "success");
+  return true;
+}
+
+export function restoreTicket(ticket: MvpTicket, state: AppState, actions: AppActions) {
+  const next = restoredWorkflow(state.questions.filter((q) => q.ticketId === ticket.id));
+  actions.setTickets((p) =>
+    p.map((t) => (t.id === ticket.id ? { ...t, ...next, closed: undefined } : t)),
+  );
+  syncTicketStatus(ticket.backendId, next.status);
+  actions.logActivity(`Restored ticket from archive (now ${next.status})`, ticket.id);
+  actions.addToast(`${ticket.id} restored — ${next.status}.`, "success");
+}
 
 export function TicketDetailPage({
   state,
@@ -63,6 +95,23 @@ export function TicketDetailPage({
           </div>
           <div className="flex items-center gap-2 mt-1">
             <Pill value={ticket.status} />
+            {ticket.status === "Archived" ? (
+              <span title="Bring the ticket back to the list at the stage its questions are in">
+                <BtnSecondary onClick={() => restoreTicket(ticket, state, actions)}>
+                  <ArchiveRestore size={11} /> Restore
+                </BtnSecondary>
+              </span>
+            ) : (
+              <span title="Hide this ticket from the list and reports. Nothing is deleted; it can be restored.">
+                <BtnSecondary
+                  onClick={() => {
+                    if (archiveTicket(ticket, actions)) actions.go("tickets");
+                  }}
+                >
+                  <Archive size={11} /> Archive
+                </BtnSecondary>
+              </span>
+            )}
             {["Approved", "Sent", "Closed"].includes(ticket.status) && (
               <span title="Reopen the ticket — it returns to Final Review so answers can be revisited">
                 <BtnSecondary

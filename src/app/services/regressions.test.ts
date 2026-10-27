@@ -6,6 +6,7 @@ import {
   isPastDate,
   matchSupport,
   nextLocalTicketId,
+  restoredWorkflow,
   ticketIdForBackend,
   withCurrentDeadline,
 } from "../data/model";
@@ -138,5 +139,34 @@ describe("SME draft deadline", () => {
 
   it("leaves the body alone when the ticket has no deadline", () => {
     expect(withCurrentDeadline(body, "")).toBe(body);
+  });
+});
+
+describe("archive and restore", () => {
+  const qs = (...statuses: MvpQuestion["status"][]) => statuses.map((status) => ({ status }));
+
+  it("sends an empty ticket back to intake", () => {
+    expect(restoredWorkflow([])).toEqual({ status: "Intake Review", stage: "intake" });
+  });
+
+  it("puts a ticket waiting on SMEs back in ETA tracking", () => {
+    expect(restoredWorkflow(qs("Approved", "Waiting SME"))).toEqual({
+      status: "Waiting SME",
+      stage: "eta",
+    });
+  });
+
+  it("puts a fully answered ticket back in final review", () => {
+    expect(restoredWorkflow(qs("Approved", "SME Complete"))).toEqual({
+      status: "Ready for Review",
+      stage: "final",
+    });
+  });
+
+  it("puts a ticket mid-review back in review", () => {
+    expect(restoredWorkflow(qs("Suggested", "Approved"))).toEqual({
+      status: "In Progress",
+      stage: "review",
+    });
   });
 });

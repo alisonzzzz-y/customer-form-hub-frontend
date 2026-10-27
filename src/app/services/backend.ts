@@ -8,6 +8,7 @@ import {
   SharingStatus,
   TBD_DEPARTMENT,
   matchSupport,
+  stageFromQuestions,
   ticketIdForBackend,
 } from "../data/model";
 
@@ -713,12 +714,6 @@ export async function loadBackendWorld(
       };
     });
 
-    // Derive the workflow stage from the loaded data.
-    const allDone =
-      localQs.length > 0 &&
-      localQs.every((q) => ["Approved", "SME Complete"].includes(q.status));
-    const anyWaiting = localQs.some((q) => q.status === "Waiting SME");
-    const anyQueued = localQs.some((q) => q.status === "SME Queued");
     const hydratedStatus = ticketStatusFromBackend(bt.status);
     const stage: MvpTicket["stage"] = [
       "Approved",
@@ -729,15 +724,7 @@ export async function loadBackendWorld(
       ? "done"
       : hydratedStatus === "Ready for Review"
         ? "final"
-        : localQs.length === 0
-          ? "intake"
-          : allDone
-            ? "final"
-            : anyWaiting
-              ? "eta"
-              : anyQueued
-                ? "sme"
-                : "review";
+        : stageFromQuestions(localQs);
 
     world.tickets.push({
       id: localId,

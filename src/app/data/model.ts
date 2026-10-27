@@ -343,6 +343,28 @@ export function isPastDate(iso: string, now: Date = new Date()): boolean {
   return !!iso && iso < now.toISOString().slice(0, 10);
 }
 
+// Workflow stage implied by a ticket's questions. Used when loading tickets
+// from the backend and when restoring an archived ticket.
+export function stageFromQuestions(qs: Pick<MvpQuestion, "status">[]): TicketStage {
+  if (qs.length === 0) return "intake";
+  if (qs.every((q) => ["Approved", "SME Complete"].includes(q.status))) return "final";
+  if (qs.some((q) => q.status === "Waiting SME")) return "eta";
+  if (qs.some((q) => q.status === "SME Queued")) return "sme";
+  return "review";
+}
+
+// Archiving only hides a ticket; restoring puts it back where its questions
+// say the work stands.
+export function restoredWorkflow(
+  qs: Pick<MvpQuestion, "status">[],
+): { status: MvpTicket["status"]; stage: TicketStage } {
+  const stage = stageFromQuestions(qs);
+  if (stage === "intake") return { status: "Intake Review", stage };
+  if (stage === "final") return { status: "Ready for Review", stage };
+  if (stage === "eta") return { status: "Waiting SME", stage };
+  return { status: "In Progress", stage };
+}
+
 // The backend composes the SME email when the package is prepared. Until the
 // user confirms the send, keep its deadline line in step with the ticket so a
 // later deadline edit reaches the draft.
