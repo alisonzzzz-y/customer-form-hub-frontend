@@ -26,10 +26,13 @@ import {
   DEPARTMENTS,
   QUESTION_DEPARTMENTS,
   TBD_DEPARTMENT,
+  hasQuestionDepartment,
+  MvpKnowledgeEntry,
   MvpQuestion,
   MvpSmeRequest,
   MvpTicket,
   TicketStage,
+  localKnowledgeId,
   SUGGESTED_THRESHOLD,
   fmtDate,
   fmtDateTime,
@@ -64,11 +67,13 @@ import {
   syncFinalAnswer,
   syncQuestionStatus,
   syncSmeAnswer,
+  previewSmeAnswers,
   syncSmeRequest,
   syncTicketStatus,
   unreturnBackendSmeRequest,
 } from "../services/backend";
 import { ClarificationEmailModal } from "./NewRequestFlow";
+import { syncKnowledgeEntry } from "./KnowledgeBasePage";
 import { attachSuggestions, extractQuestionsFor, smeAnswerFor } from "../services/simulation";
 import { Card, ConfidenceBadge, Pill, SharingBadge, Th, openMailDraft } from "../components/ui";
 
@@ -629,6 +634,9 @@ function GroupingPanel({
   const [tab, setTab] = useState("");
   const [customFor, setCustomFor] = useState<number | null>(null);
   const [customName, setCustomName] = useState("");
+  const savingDepartmentIds = useRef(new Set<number>());
+  const [savingDepartments, setSavingDepartments] = useState(0);
+  const unassigned = qs.filter((q) => !hasQuestionDepartment(q.department));
 
   const customs = [...new Set(qs.map((q) => q.department))].filter(
     (d) => !QUESTION_DEPARTMENTS.includes(d),
@@ -638,15 +646,33 @@ function GroupingPanel({
   const active = depts.includes(tab) ? tab : (depts[0] ?? "");
   const dq = qs.filter((q) => q.department === active);
 
-  const moveDept = (q: MvpQuestion, dept: string) => {
-    actions.setQuestions((p) =>
-      p.map((x) => (x.id === q.id ? { ...x, department: dept, departmentSource: "Manual" } : x)),
-    );
-    syncQuestionDepartment(q.backendId, dept, "Manual");
-    actions.logActivity(`Moved question #${q.row} to ${dept}`, ticket.id);
+  const moveDept = async (q: MvpQuestion, dept: string) => {
+    if (savingDepartmentIds.current.has(q.id)) return;
+    savingDepartmentIds.current.add(q.id);
+    setSavingDepartments(savingDepartmentIds.current.size);
+    try {
+      const saved = await syncQuestionDepartment(q.backendId, dept, "Manual");
+      if (!saved) {
+        actions.addToast(`The department for question #${q.row} was not saved. Please try again.`, "warning");
+        return;
+      }
+      actions.setQuestions((p) =>
+        p.map((x) => (x.id === q.id ? { ...x, department: dept, departmentSource: "Manual" } : x)),
+      );
+      actions.logActivity(`Moved question #${q.row} to ${dept}`, ticket.id);
+    } finally {
+      savingDepartmentIds.current.delete(q.id);
+      setSavingDepartments(savingDepartmentIds.current.size);
+    }
   };
 
   const confirm = async () => {
+    if (processing || savingDepartmentIds.current.size > 0) return;
+    if (qs.length === 0 || unassigned.length > 0) {
+      actions.addToast("Assign an owning department to every question before matching answers.", "warning");
+      if (unassigned[0]) setTab(unassigned[0].department);
+      return;
+    }
     setProcessing(true);
     actions.logActivity("Confirmed department grouping — matching approved knowledge", ticket.id);
     const pending = qs.filter((q) => !q.finalAnswer && q.status !== "SME Queued");
@@ -697,12 +723,12 @@ function GroupingPanel({
       }
     >
       <ImportSummary ticket={ticket} qs={qs} />
-      {qs.some((q) => q.department === TBD_DEPARTMENT) && (
+      {unassigned.length > 0 && (
         <div className="bg-[#FEF3C7] border-b border-[#F59E0B]/30 px-4 py-2.5 flex items-center gap-2">
           <AlertTriangle size={13} className="text-[#92400E] shrink-0" />
           <p className="text-[12px] text-[#92400E] font-medium">
-            The AI could not route the <strong>TBD</strong> questions to a department — pick the
-            owning team for each one. TBD questions cannot be sent to an SME.
+            Assign the owning department for <strong>{unassigned.length} TBD question{unassigned.length === 1 ? "" : "s"}</strong> before
+            continuing to Answer Review. Pick the team responsible for each question; this also enables SME routing.
           </p>
         </div>
       )}
@@ -737,6 +763,7 @@ function GroupingPanel({
             <ClassificationBadge q={q} />
             <select
               value={q.department}
+              disabled={savingDepartmentIds.current.has(q.id)}
               title="Change which department this question belongs to"
               onChange={(e) => {
                 if (e.target.value === "__custom__") {
@@ -757,11 +784,12 @@ function GroupingPanel({
         ))}
       </div>
       <div className="px-4 py-3 border-t border-border bg-[#FAFAFA]">
-        <span title="AI retrieves approved knowledge and drafts an answer for every question">
-          <BtnPrimary onClick={confirm}>
+        <span title={unassigned.length > 0 ? "Assign every TBD question to a department first" : "Search approved knowledge for answers; questions without a supported answer can be routed to SME"}>
+          <BtnPrimary onClick={confirm} disabled={qs.length === 0 || unassigned.length > 0 || savingDepartments > 0}>
             Next: Match Knowledge Answers <ChevronRight size={11} />
           </BtnPrimary>
         </span>
+        {savingDepartments > 0 && <p className="text-[12px] text-[#6B7280] mt-2">Saving department assignments…</p>}
       </div>
 
       {customFor !== null && (
@@ -777,7 +805,7 @@ function GroupingPanel({
               value={customName}
               onChange={(e) => setCustomName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && customName.trim()) {
+                if (e.key === "Enter" && hasQuestionDepartment(customName)) {
                   const q = qs.find((x) => x.id === customFor);
                   if (q) moveDept(q, customName.trim());
                   setCustomFor(null);
@@ -789,7 +817,7 @@ function GroupingPanel({
             <div className="flex justify-end gap-2 mt-4">
               <BtnSecondary onClick={() => setCustomFor(null)}>Cancel</BtnSecondary>
               <BtnPrimary
-                disabled={!customName.trim()}
+                disabled={!hasQuestionDepartment(customName)}
                 onClick={() => {
                   const q = qs.find((x) => x.id === customFor);
                   if (q) moveDept(q, customName.trim());
@@ -867,6 +895,10 @@ function ClassificationBadge({ q }: { q: MvpQuestion }) {
   );
 }
 
+const REVIEW_RESOLVED_STATUSES: MvpQuestion["status"][] = [
+  "Approved", "Ready", "SME Queued", "Waiting SME", "SME Complete", "Waiting AE", "Rejected",
+];
+
 function ReviewPanel({
   ticket,
   qs,
@@ -879,12 +911,18 @@ function ReviewPanel({
   actions: AppActions;
 }) {
   const [deptTab, setDeptTab] = useState("All");
-  const [selectedId, setSelectedId] = useState<number | null>(qs[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<number | null>(
+    qs.find((x) => !REVIEW_RESOLVED_STATUSES.includes(x.status))?.id ?? qs[0]?.id ?? null,
+  );
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saveToKb, setSaveToKb] = useState(false);
   const [showAlternatives, setShowAlternatives] = useState(true);
   const [rematching, setRematching] = useState(false);
+  const [savingReview, setSavingReview] = useState(false);
+  const reviewSavePending = useRef(false);
+  const questionListRef = useRef<HTMLDivElement>(null);
+  const answerPanelRef = useRef<HTMLDivElement>(null);
 
   // Knowledge matches are not saved, so after a refresh the open questions on
   // this step come back without them. Look them up again for exactly those
@@ -927,17 +965,57 @@ function ReviewPanel({
   const visible = deptTab === "All" ? qs : qs.filter((x) => x.department === deptTab);
 
   const q = visible.find((x) => x.id === selectedId) ?? visible[0] ?? qs[0];
-  const RESOLVED = ["Approved", "Ready", "SME Queued", "Waiting SME", "SME Complete", "Waiting AE", "Rejected"];
+  const RESOLVED = REVIEW_RESOLVED_STATUSES;
   const resolved = qs.filter((x) => RESOLVED.includes(x.status));
   const queued = qs.filter((x) => x.status === "SME Queued");
+  const waitingSme = qs.filter((x) => x.status === "Waiting SME");
   const waitingAe = qs.filter((x) => x.status === "Waiting AE");
+  const unassigned = qs.filter((x) => !hasQuestionDepartment(x.department));
   const allResolved = qs.length > 0 && resolved.length === qs.length;
+  const remaining = qs.length - resolved.length;
+  const waitingOnlyForAe = queued.length === 0 && waitingSme.length === 0 && waitingAe.length > 0;
+  const canContinue = allResolved && unassigned.length === 0 && !waitingOnlyForAe && !editing && !savingReview;
+  const continueLabel = queued.length > 0
+    ? `Next: SME Package (${queued.length})`
+    : waitingSme.length > 0
+      ? "Next: ETA Tracking"
+      : "Next: Final Review";
   const isResolvedDept = (d: string) =>
     qs.filter((x) => x.department === d).every((x) => RESOLVED.includes(x.status));
+
+  // Keep the selected row visible within its list and start each new answer
+  // at the top, without scrolling the page's progress and continue controls.
+  useEffect(() => {
+    const list = questionListRef.current;
+    const selected = list?.querySelector<HTMLButtonElement>('[aria-current="true"]');
+    if (list && selected) {
+      const listBox = list.getBoundingClientRect();
+      const rowBox = selected.getBoundingClientRect();
+      if (rowBox.top < listBox.top) list.scrollTop += rowBox.top - listBox.top;
+      else if (rowBox.bottom > listBox.bottom) list.scrollTop += rowBox.bottom - listBox.bottom;
+    }
+    answerPanelRef.current?.scrollTo({ top: 0 });
+  }, [q?.id, deptTab]);
 
   const update = (id: number, patch: Partial<MvpQuestion>, log: string) => {
     actions.setQuestions((p) => p.map((x) => (x.id === id ? { ...x, ...patch } : x)));
     actions.logActivity(log, ticket.id);
+  };
+
+  const persistReview = async (save: () => Promise<boolean>, onSaved: () => void) => {
+    if (reviewSavePending.current) return;
+    reviewSavePending.current = true;
+    setSavingReview(true);
+    try {
+      if (!(await save())) {
+        actions.addToast("The review decision was not saved. Your work is kept here; please try again.", "warning");
+        return;
+      }
+      onSaved();
+    } finally {
+      reviewSavePending.current = false;
+      setSavingReview(false);
+    }
   };
 
   const select = (id: number) => {
@@ -947,11 +1025,18 @@ function ReviewPanel({
   };
 
   const advance = () => {
-    const next =
-      visible.find((x) => x.id !== q?.id && !RESOLVED.includes(x.status)) ??
-      qs.find((x) => x.id !== q?.id && !RESOLVED.includes(x.status));
-    if (next) select(next.id);
-    else setEditing(false);
+    // Search forward from the question just handled, then wrap around. Finish
+    // this department first; when it is done, switch the tab along with the
+    // selected question so the new selection is actually displayed.
+    const currentIndex = qs.findIndex((x) => x.id === q?.id);
+    const pending = [...qs.slice(currentIndex + 1), ...qs.slice(0, currentIndex)]
+      .filter((x) => x.id !== q?.id && !RESOLVED.includes(x.status));
+    const next = (deptTab === "All" ? pending[0] : pending.find((x) => x.department === deptTab))
+      ?? pending[0];
+    if (next) {
+      if (deptTab !== "All" && next.department !== deptTab) setDeptTab(next.department);
+      select(next.id);
+    } else setEditing(false);
   };
 
   const nextQuestion = () => {
@@ -962,32 +1047,45 @@ function ReviewPanel({
 
   const maybeSaveKb = (answerText: string, question: MvpQuestion) => {
     if (!saveToKb) return;
-    actions.setKnowledge((p) => [
-      {
-        id: Math.max(...p.map((k) => k.id)) + 1,
-        title: question.normalised,
-        content: answerText,
-        department: DEPARTMENTS.includes(question.department) ? question.department : "General",
-        source: `Ticket ${ticket.id}`,
-        lastUpdated: new Date().toISOString().slice(0, 10),
-        sharingStatus: question.sharingStatus ?? "Internal",
-        status: "Pending Review",
-        tags: [question.department],
-        owner: state.currentUser,
-      },
-      ...p,
-    ]);
-    actions.addToast("Saved to Knowledge Base as Pending Review.", "info");
+    const entry: MvpKnowledgeEntry = {
+      id: localKnowledgeId(),
+      localOnly: true,
+      title: `${ticket.customer} questionnaire — ${question.normalised}`,
+      content: answerText,
+      department: DEPARTMENTS.includes(question.department) ? question.department : "General",
+      source: `Ticket ${ticket.id}`,
+      lastUpdated: new Date().toISOString().slice(0, 10),
+      // A reviewer-written answer is not tied to the matched passage's sharing level.
+      sharingStatus: "Internal",
+      status: "Pending Review",
+      tags: [question.department],
+      owner: state.currentUser,
+    };
+    actions.setKnowledge((p) => [entry, ...p]);
     setSaveToKb(false);
+    void syncKnowledgeEntry(entry, actions).then((saved) =>
+      actions.addToast(
+        saved
+          ? "Saved to Knowledge Base as Pending Review."
+          : "Added to the Knowledge Base list here, but it could not be saved to the backend — it will be retried when the entry is next saved.",
+        saved ? "info" : "warning",
+      ),
+    );
   };
 
   const source = q?.suggested ? state.knowledge.find((k) => k.id === q.suggested!.knowledgeId) : undefined;
-  const ndaBlocked = q?.sharingStatus === "NDA Required" && ticket.nda !== "In Place";
+  const ndaRestrictedSource = q?.sharingStatus === "NDA Required" && ticket.nda !== "In Place";
+  const returnToGrouping = () => actions.setTickets((p) =>
+    p.map((t) => t.id === ticket.id ? { ...t, stage: "grouping" } : t),
+  );
 
   const continueNext = () => {
+    if (!canContinue) return;
     if (queued.length > 0) {
       actions.setTickets((p) => p.map((t) => (t.id === ticket.id ? { ...t, stage: "sme" } : t)));
       actions.logActivity(`Answer review complete — ${queued.length} question(s) queued for SME`, ticket.id);
+    } else if (waitingSme.length > 0) {
+      actions.setTickets((p) => p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta" } : t)));
     } else if (waitingAe.length === 0) {
       actions.setTickets((p) =>
         p.map((t) => (t.id === ticket.id ? { ...t, stage: "final", status: "Ready for Review" } : t)),
@@ -1045,35 +1143,66 @@ function ReviewPanel({
   // knowledge but is never offered as an answer that can be approved unchanged.
   const support = answerSupportOf(q);
   const offered = support === "related" ? undefined : q.suggested;
+  // Only an answer built on the NDA-restricted passage needs the NDA. When the
+  // passage is merely related, the reviewer's own answer does not use it.
+  const ndaBlocked = !!offered && ndaRestrictedSource;
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3 flex-wrap">
-        {rematching && (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-[#6B7280]">
-            <Loader2 size={11} className="animate-spin" /> Reloading knowledge matches…
+    <fieldset disabled={savingReview} className="flex flex-col gap-3 min-w-0">
+      <div className="sticky top-0 z-10 bg-[#F5F4F1] py-2 flex flex-col gap-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          {rematching && (
+            <span className="inline-flex items-center gap-1.5 text-[12px] text-[#6B7280]">
+              <Loader2 size={11} className="animate-spin" /> Reloading knowledge matches…
+            </span>
+          )}
+          <p className="text-[13px] text-[#6B7280]">
+            <strong className="text-[#1F2937]">{resolved.length}</strong> of{" "}
+            <strong className="text-[#1F2937]">{qs.length}</strong> resolved ·{" "}
+            <strong className="text-[#C05600]">{queued.length}</strong> queued for SME ·{" "}
+            <strong className="text-[#C05600]">{waitingAe.length}</strong> waiting for AE
+          </p>
+          <span className="flex-1" />
+          <span title="Go back and adjust the department grouping — decisions made here are kept">
+            <BtnSecondary
+              onClick={() =>
+                actions.setTickets((p) =>
+                  p.map((t) => (t.id === ticket.id ? { ...t, stage: "grouping" } : t)),
+                )
+              }
+            >
+              <ArrowLeft size={11} /> Back: Grouping
+            </BtnSecondary>
           </span>
-        )}
-        <p className="text-[13px] text-[#6B7280]">
-          <strong className="text-[#1F2937]">{resolved.length}</strong> of{" "}
-          <strong className="text-[#1F2937]">{qs.length}</strong> resolved ·{" "}
-          <strong className="text-[#C05600]">{queued.length}</strong> queued for SME ·{" "}
-          <strong className="text-[#C05600]">{waitingAe.length}</strong> waiting for AE
+          <BtnPrimary onClick={continueNext} disabled={!canContinue}>
+            {continueLabel} <ChevronRight size={11} />
+          </BtnPrimary>
+        </div>
+        <p
+          role="status"
+          aria-live="polite"
+          className={`text-[12px] px-3.5 py-2 rounded-lg border ${allResolved ? "text-[#166534] bg-[#F0FDF4] border-green-200" : "text-[#6B7280] bg-[#F7F8FA] border-border"}`}
+        >
+          {unassigned.length > 0
+            ? `Assign departments to ${unassigned.length} question(s) in Grouping before continuing. Existing answers are kept.`
+            : allResolved
+            ? waitingOnlyForAe
+              ? `All questions reviewed. Waiting for AE clarification on ${waitingAe.length} question(s); reopen them after the reply to continue.`
+              : editing
+                ? "All questions reviewed. Save or cancel the current edit before continuing."
+                : "All questions reviewed. Use the Next button above to continue."
+            : `${remaining} question${remaining === 1 ? "" : "s"} left to review across all departments. Approve, route to SME, or request AE clarification for each one to continue.`}
         </p>
-        <span className="flex-1" />
-        <span title="Go back and adjust the department grouping — decisions made here are kept">
-          <BtnSecondary
-            onClick={() =>
-              actions.setTickets((p) =>
-                p.map((t) => (t.id === ticket.id ? { ...t, stage: "grouping" } : t)),
-              )
-            }
-          >
-            <ArrowLeft size={11} /> Back: Grouping
-          </BtnSecondary>
-        </span>
       </div>
-      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100vh-330px)]">
+      {unassigned.length > 0 && (
+        <div role="alert" className="bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-lg px-4 py-3 flex items-center gap-3 flex-wrap">
+          <p className="text-[12px] text-[#92400E] flex-1">
+            This ticket still has questions without an owning department. Assign them in Grouping so they can be routed to SME if the knowledge base has no supported answer.
+          </p>
+          <BtnPrimary onClick={returnToGrouping}>Assign missing departments</BtnPrimary>
+        </div>
+      )}
+      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100dvh-390px)] md:min-h-[360px]">
         <div className="flex border-b border-border overflow-x-auto shrink-0">
           {["All", ...depts].map((d) => {
             const count = d === "All" ? qs.length : qs.filter((x) => x.department === d).length;
@@ -1083,7 +1212,8 @@ function ReviewPanel({
                 key={d}
                 onClick={() => {
                   setDeptTab(d);
-                  const first = (d === "All" ? qs : qs.filter((x) => x.department === d))[0];
+                  const inDept = d === "All" ? qs : qs.filter((x) => x.department === d);
+                  const first = inDept.find((x) => !RESOLVED.includes(x.status)) ?? inDept[0];
                   if (first) select(first.id);
                 }}
                 title={d === "All" ? "Review every question in one list" : `Review only the ${d} questions`}
@@ -1106,10 +1236,11 @@ function ReviewPanel({
           })}
         </div>
         <div className="flex flex-col md:flex-row flex-1 min-h-0">
-          <div className="w-full md:w-72 max-h-40 md:max-h-none border-b md:border-b-0 md:border-r border-[rgba(0,0,0,0.06)] overflow-y-auto shrink-0 bg-[#FAFAF9]">
+          <div ref={questionListRef} className="w-full md:w-72 max-h-40 md:max-h-none border-b md:border-b-0 md:border-r border-[rgba(0,0,0,0.06)] overflow-y-auto shrink-0 bg-[#FAFAF9]">
             {visible.map((item) => (
               <button
                 key={item.id}
+                aria-current={item.id === q.id ? "true" : undefined}
                 onClick={() => select(item.id)}
                 className={`w-full text-left px-4 py-3 border-b border-[rgba(0,0,0,0.04)] flex flex-col gap-1.5 transition-all border-l-[3px] ${item.id === q.id ? "bg-[#FFF7F0] border-l-[#F96702]" : "hover:bg-white border-l-transparent"}`}
               >
@@ -1121,8 +1252,8 @@ function ReviewPanel({
               </button>
             ))}
           </div>
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="flex-1 md:overflow-y-auto p-6 flex flex-col gap-4 [&>*]:shrink-0">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
+            <div ref={answerPanelRef} className="flex-1 min-h-0 md:overflow-y-auto p-6 flex flex-col gap-4 [&>*]:shrink-0">
             <div className="flex items-start justify-between gap-4 pb-4 border-b border-[rgba(0,0,0,0.06)]">
               <div>
                 <h3 className="text-base font-bold text-[#0A0A0A] leading-snug tracking-tight">
@@ -1331,31 +1462,37 @@ function ReviewPanel({
 
             </div>
             <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-t border-[rgba(0,0,0,0.06)] bg-[#FAFAFA] shrink-0">
-              {editing ? (
+              {!hasQuestionDepartment(q.department) ? (
+                <BtnPrimary onClick={returnToGrouping}>Assign department in Grouping</BtnPrimary>
+              ) : editing ? (
                 <>
                   <BtnPrimary
+                    disabled={ndaBlocked}
                     onClick={() => {
+                      if (ndaBlocked) return;
                       if (!draft.trim()) {
                         actions.addToast("Answer text cannot be empty.", "warning");
                         return;
                       }
-                      update(
-                        q.id,
-                        {
-                          status: "Approved",
-                          finalAnswer: {
-                            text: draft.trim(),
-                            sourceType: offered ? "AI Edited" : "Manual",
+                      void persistReview(() => syncFinalAnswer(offered ? q : { ...q, suggested: undefined }, draft.trim(), true, state.currentUser), () => {
+                        update(
+                          q.id,
+                          {
+                            status: "Approved",
+                            finalAnswer: {
+                              text: draft.trim(),
+                              sourceType: offered ? "AI Edited" : "Manual",
+                            },
+                            reviewOutcome: offered ? "EDITED" : undefined,
+                            reviewedAt: new Date().toISOString(),
                           },
-                          reviewOutcome: offered ? "EDITED" : undefined,
-                          reviewedAt: new Date().toISOString(),
-                        },
-                        `${offered ? "Edited and approved" : "Manually answered"} question #${q.row}`,
-                      );
-                      syncFinalAnswer(offered ? q : { ...q, suggested: undefined }, draft.trim(), true, state.currentUser);
-                      maybeSaveKb(draft.trim(), q);
-                      actions.addToast("Answer approved.", "success");
-                      advance();
+                          `${offered ? "Edited and approved" : "Manually answered"} question #${q.row}`,
+                        );
+
+                        maybeSaveKb(draft.trim(), q);
+                        actions.addToast("Answer approved.", "success");
+                        advance();
+                      });
                     }}
                   >
                     <CheckCircle size={11} /> Save &amp; Approve
@@ -1366,7 +1503,7 @@ function ReviewPanel({
                 <>
                   {offered && !q.finalAnswer && q.status !== "SME Queued" && (
                     <button
-                      onClick={() => {
+                      onClick={() => void persistReview(() => syncFinalAnswer(q, offered.text, false, state.currentUser), () => {
                         update(
                           q.id,
                           {
@@ -1377,10 +1514,10 @@ function ReviewPanel({
                           },
                           `Approved AI answer for question #${q.row}`,
                         );
-                        syncFinalAnswer(q, offered.text, false, state.currentUser);
+
                         actions.addToast("Answer approved.", "success");
                         advance();
-                      }}
+                      })}
                       disabled={ndaBlocked}
                       title={ndaBlocked ? "Blocked: this answer needs an NDA that the ticket does not have" : "Accept this AI answer as the final answer for this question"}
                       className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${ndaBlocked ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-green-600 text-white hover:bg-green-700"}`}
@@ -1401,7 +1538,7 @@ function ReviewPanel({
                   {q.status === "Approved" && q.finalAnswer && (
                     <span title="Undo the approval — the question goes back into review">
                       <BtnSecondary
-                        onClick={() => {
+                        onClick={() => void persistReview(() => reopenReviewDecision(q), () => {
                           update(
                             q.id,
                             {
@@ -1416,11 +1553,11 @@ function ReviewPanel({
                             },
                             `Reverted approval on question #${q.row}`,
                           );
-                          revertFinalAnswer(q); // backend answer -> Draft (export prints a placeholder)
-                          reopenReviewDecision(q);
-                          syncQuestionStatus(q.backendId, "Needs Review");
+
+
+
                           actions.addToast("Approval undone — the question is back in review.", "info");
-                        }}
+                        })}
                       >
                         <RefreshCw size={11} /> Unapprove
                       </BtnSecondary>
@@ -1428,7 +1565,7 @@ function ReviewPanel({
                   )}
                   {q.status !== "SME Queued" && !q.finalAnswer && (
                     <button
-                      onClick={() => {
+                      onClick={() => void persistReview(() => recordReviewEscalation(q, "SME"), () => {
                         update(
                           q.id,
                           {
@@ -1438,10 +1575,10 @@ function ReviewPanel({
                           },
                           `Routed question #${q.row} to ${q.department} SME queue`,
                         );
-                        recordReviewEscalation(q, "SME");
+
                         actions.addToast(`Added to the ${q.department} SME queue.`, "info");
                         advance();
-                      }}
+                      })}
                       disabled={q.department === TBD_DEPARTMENT}
                       title={
                         q.department === TBD_DEPARTMENT
@@ -1456,11 +1593,11 @@ function ReviewPanel({
                   {q.status === "SME Queued" && (
                     <span title="Take this question out of the SME queue and answer it here instead">
                       <BtnSecondary
-                        onClick={() => {
+                        onClick={() => void persistReview(() => reopenReviewDecision(q), () => {
                           update(q.id, { status: q.suggested ? "Needs Review" : "New" }, `Removed question #${q.row} from SME queue`);
-                          reopenReviewDecision(q);
+
                           actions.addToast("Removed from SME queue.", "info");
-                        }}
+                        })}
                       >
                         Remove from Queue
                       </BtnSecondary>
@@ -1468,7 +1605,7 @@ function ReviewPanel({
                   )}
                   {q.status === "Waiting AE" ? (
                     <button
-                      onClick={() => {
+                      onClick={() => void persistReview(() => reopenReviewDecision(q), () => {
                         update(
                           q.id,
                           {
@@ -1478,16 +1615,16 @@ function ReviewPanel({
                           },
                           `Reopened question #${q.row} after AE clarification`,
                         );
-                        reopenReviewDecision(q);
+
                         actions.addToast("Question reopened for answer review.", "info");
-                      }}
+                      })}
                       className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold border border-[#F59E0B]/50 rounded-full text-[#92400E] hover:bg-[#FEF3C7] tracking-[0.04em] transition-all"
                     >
                       <RefreshCw size={11} /> Reopen after AE reply
                     </button>
                   ) : !q.finalAnswer && q.status !== "SME Queued" ? (
                     <button
-                      onClick={() => {
+                      onClick={() => void persistReview(() => recordReviewEscalation(q, "AE"), () => {
                         const requestedAt = new Date().toISOString();
                         update(
                           q.id,
@@ -1499,10 +1636,10 @@ function ReviewPanel({
                           },
                           `Requested AE clarification for question #${q.row}`,
                         );
-                        recordReviewEscalation(q, "AE");
+
                         actions.addToast(`Clarification request recorded for ${ticket.ae ?? "the AE"}.`, "info");
                         advance();
-                      }}
+                      })}
                       title="Request missing context from the account executive"
                       className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-semibold border border-[rgba(0,0,0,0.18)] rounded-full text-[#6B7280] hover:border-[#F96702]/50 hover:text-[#F96702] tracking-[0.04em] transition-all"
                     >
@@ -1517,32 +1654,13 @@ function ReviewPanel({
                   >
                     Next Question <ChevronRight size={11} />
                   </button>
-                  {allResolved && (
-                    queued.length > 0 ? (
-                      <span title="Package the queued questions into per-department SME emails">
-                        <BtnPrimary onClick={continueNext}>
-                          Next: SME Package ({queued.length}) <ChevronRight size={11} />
-                        </BtnPrimary>
-                      </span>
-                    ) : waitingAe.length > 0 ? (
-                      <span className="text-[11px] font-semibold text-[#92400E] bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-full px-3 py-1.5">
-                        Waiting for AE clarification ({waitingAe.length})
-                      </span>
-                    ) : (
-                      <span title="All questions answered — run the completeness checks and export">
-                        <BtnPrimary onClick={continueNext}>
-                          Next: Final Review <ChevronRight size={11} />
-                        </BtnPrimary>
-                      </span>
-                    )
-                  )}
                 </>
               )}
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -1642,10 +1760,14 @@ function SmePackagePanel({
   const [tab, setTab] = useState(depts[0] ?? "");
 
   const tabQueued = queued.filter((q) => q.department === tab);
-  const openReqFor = (dept: string) =>
-    state.smeRequests.find(
+  // A department can have a sent request and a newer unsent draft; the draft
+  // is the one this step acts on.
+  const openReqFor = (dept: string) => {
+    const open = state.smeRequests.filter(
       (r) => r.ticketId === ticket.id && r.department === dept && r.status !== "Returned",
     );
+    return open.find((r) => r.status === "Draft Prepared") ?? open[0];
+  };
   // Registered = the package exists. It only counts as sent once the user
   // confirms they sent the mail draft.
   const tabRegistered =
@@ -1686,7 +1808,7 @@ function SmePackagePanel({
   });
 
   const downloadPackage = () => {
-    const rows = tabQueued.length > 0 ? tabQueued : waiting.filter((q) => q.department === tab);
+    const rows = [...tabQueued, ...waiting.filter((q) => q.department === tab)];
     const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
     const csv = [
       "#,Question,SME Answer",
@@ -1707,26 +1829,24 @@ function SmePackagePanel({
       (q) => q.ticketId === ticket.id && q.status === "SME Queued" && q.department === dept,
     );
     if (deptQueued.length === 0) return;
-    // Do not create a duplicate open request for the same department.
+    // Add to this department's unsent draft if there is one. A request that
+    // was already sent keeps its send record and ETA, so later questions go
+    // into a new request instead.
     const open = state.smeRequests.find(
-      (r) => r.ticketId === ticket.id && r.department === dept && r.status !== "Returned",
+      r => r.ticketId === ticket.id && r.department === dept && r.status === "Draft Prepared",
     );
-    if (open) {
-      actions.addToast(
-        `${dept} already has an open SME request for this ticket — duplicate send skipped.`,
-        "warning",
-      );
-      return;
-    }
     const req: MvpSmeRequest = {
-      id: Math.max(0, ...state.smeRequests.map((r) => r.id)) + 1 + Math.floor(Math.random() * 1000),
+      ...(open ?? {}),
+      id: open?.id ?? Math.max(0, ...state.smeRequests.map(r => r.id)) + 1 + Math.floor(Math.random() * 1000),
       ticketId: ticket.id,
       department: dept,
-      assignee: `${dept} Team`,
+      assignee: open?.assignee ?? dept + " Team",
       eta: null,
       status: "Draft Prepared",
-      questionIds: deptQueued.map((q) => q.id),
+      questionIds: [...new Set([...(open?.questionIds ?? []), ...deptQueued.map(q => q.id)])],
       sentAt: new Date().toISOString(),
+      returnedAt: undefined,
+      sentEmail: undefined,
     };
     const backendQuestionIds = new Map(
       deptQueued.map((question) => [question.id, question.backendId]),
@@ -1777,8 +1897,8 @@ function SmePackagePanel({
         );
         return;
       }
-      const backendReqId = await createBackendSmeRequest(
-        ticket.backendId, dept, `${dept} Team`, deptQueued.length,
+      const backendReqId = open?.backendId ?? await createBackendSmeRequest(
+        ticket.backendId, dept, `${dept} Team`, req.questionIds.length,
       );
       if (!backendReqId) {
         actions.addToast(
@@ -1788,6 +1908,8 @@ function SmePackagePanel({
         return;
       }
       req.backendId = backendReqId;
+      // Retain a created request even if packaging fails, so retry reuses it.
+      if (!open) actions.setSmeRequests(p => [...p, { ...req, questionIds: [] }]);
       const srqByBackendQ = await packageBackendQuestions(
         backendReqId,
         ticket.backendId,
@@ -1808,7 +1930,7 @@ function SmePackagePanel({
         );
         return;
       }
-      req.srqIds = {};
+      req.srqIds = { ...open?.srqIds };
       for (const q of deptQueued) {
         const backendId = backendQuestionIds.get(q.id);
         if (backendId && srqByBackendQ[backendId] !== undefined)
@@ -1817,10 +1939,10 @@ function SmePackagePanel({
       const email = await fetchSmeEmail(backendReqId);
       if (email) req.sentEmail = email;
     }
-    actions.setSmeRequests((p) => [...p, req]);
+    actions.setSmeRequests(p => p.some(r => r.id === req.id) ? p.map(r => r.id === req.id ? req : r) : [...p, req]);
     actions.setQuestions((p) =>
       p.map((q) =>
-        req.questionIds.includes(q.id)
+        deptQueued.some(queuedQuestion => queuedQuestion.id === q.id)
           ? {
               ...q,
               status: "Waiting SME",
@@ -2450,6 +2572,7 @@ function EtaPanel({
                           >
                             {r.eta ? "Update ETA" : "Record ETA"}
                           </button>
+                          {r.status !== "Draft Prepared" && (<>
                           <button
                             onClick={() => setNudgeFor(r)}
                             title={
@@ -2470,6 +2593,7 @@ function EtaPanel({
                           >
                             <Download size={9} className="inline mr-0.5" /> Record Answers
                           </button>
+                          </>)}
                         </>
                       )}
                       {r.status === "Returned" && (
@@ -2610,65 +2734,91 @@ function RecordAnswersModal({
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const fillFromExcel = (fileName?: string) => {
+  const fillSampleAnswers = () => {
     setAnswers((p) => {
       const next = { ...p };
       for (const q of openQs) if (!next[q.id]?.trim()) next[q.id] = smeAnswerFor(q, req.assignee);
       return next;
     });
     actions.addToast(
-      `${fileName ? `Parsed ${fileName}` : "Sample answers filled"} — review and edit before saving.`,
+      "Sample answers filled — review and edit before saving.",
       "info",
     );
   };
 
+  const [importing, setImporting] = useState(false);
+  const importExcel = async (file: File) => {
+    if (importing) return;
+    setImporting(true);
+    try {
+      const result = await previewSmeAnswers(req.backendId, file);
+      if (result.kind !== "ok") {
+        actions.addToast(result.kind === "rejected" ? result.message : "The workbook could not be uploaded. Your entries are kept; try again.", "warning");
+        return;
+      }
+      const matched = openQs.filter(q => q.backendId && result.data[q.backendId]?.trim());
+      const available = matched.filter(q => !answers[q.id]?.trim());
+      if (available.length === 0) {
+        actions.addToast("No new answers to import. Existing entries have been kept.", "warning");
+        return;
+      }
+      setAnswers(p => {
+        const next = { ...p };
+        for (const q of available) if (!next[q.id]?.trim()) next[q.id] = result.data[q.backendId!];
+        return next;
+      });
+      actions.addToast(`Read ${available.length} answer(s) from ${file.name}. Review them before saving. Existing entries were kept.`, "info");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const filled = openQs.filter((q) => answers[q.id]?.trim());
 
-  const save = () => {
+  const [savingAnswers, setSavingAnswers] = useState(false);
+  const answerSavePending = useRef(false);
+  const save = async () => {
+    if (answerSavePending.current || importing) return;
     if (filled.length === 0) {
       actions.addToast("Enter at least one answer (or cancel).", "warning");
       return;
     }
-    const allAnswered = filled.length === openQs.length;
-    const returnedAt = new Date().toISOString();
-    actions.setQuestions((p) =>
-      p.map((q) => {
-        if (!answers[q.id]?.trim() || !req.questionIds.includes(q.id)) return q;
+    answerSavePending.current = true;
+    setSavingAnswers(true);
+    try {
+      for (const q of filled) {
         const text = answers[q.id].trim();
-        syncSmeAnswer(req.srqIds?.[q.id], text);
-        syncFinalAnswer(q, text, false, req.assignee);
-        return { ...q, status: "SME Complete", finalAnswer: { text, sourceType: "SME" } };
-      }),
-    );
-    if (allAnswered) {
-      actions.setSmeRequests((p) =>
-        p.map((x) => (x.id === req.id ? { ...x, status: "Returned", returnedAt } : x)),
-      );
-      syncSmeRequest(req.backendId, { status: "Returned", returnedAt });
-      actions.logActivity(
-        `Recorded ${filled.length} returned ${req.department} SME answer(s) — request complete`,
-        ticket.id,
-      );
-      actions.addToast(`${req.department} SME answers recorded — request returned.`, "success");
-    } else {
-      actions.setSmeRequests((p) =>
-        p.map((x) => (x.id === req.id ? { ...x, status: "In Progress" } : x)),
-      );
-      // Leave the backend request open until every answer is returned.
-      actions.logActivity(
-        `Recorded ${filled.length}/${openQs.length} returned ${req.department} SME answer(s) — partial return`,
-        ticket.id,
-      );
-      actions.addToast(
-        `${filled.length} of ${openQs.length} answers recorded — the rest stay with the SME.`,
-        "info",
-      );
+        if (!(await syncSmeAnswer(req.srqIds?.[q.id], text)) ||
+            !(await syncFinalAnswer(q, text, false, req.assignee, "SME"))) {
+          actions.addToast("The SME answers were not fully saved. Your entries are kept; retry to finish saving.", "warning");
+          return;
+        }
+      }
+      const allAnswered = filled.length === openQs.length;
+      const returnedAt = new Date().toISOString();
+      if (allAnswered && !(await syncSmeRequest(req.backendId, { status: "Returned", returnedAt }))) {
+        actions.addToast("The answers were saved, but the request could not be marked Returned. Retry to finish.", "warning");
+        return;
+      }
+      actions.setQuestions(p => p.map(q => filled.some(x => x.id === q.id)
+        ? { ...q, status: "SME Complete", finalAnswer: { text: answers[q.id].trim(), sourceType: "SME" } }
+        : q));
+      actions.setSmeRequests(p => p.map(r => r.id === req.id
+        ? { ...r, status: allAnswered ? "Returned" : "In Progress", ...(allAnswered ? { returnedAt } : {}) }
+        : r));
+      actions.logActivity("Recorded returned " + req.department + " SME answers", ticket.id);
+      actions.addToast(allAnswered
+        ? req.department + " SME answers recorded — request returned."
+        : filled.length + " of " + openQs.length + " answers recorded — the rest stay with the SME.", "success");
+      close();
+    } finally {
+      answerSavePending.current = false;
+      setSavingAnswers(false);
     }
-    close();
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <fieldset disabled={savingAnswers || importing} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-[640px] max-h-[88vh] overflow-hidden flex flex-col">
         <div className="px-4 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center justify-between shrink-0">
           <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide">
@@ -2687,7 +2837,7 @@ function RecordAnswersModal({
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) fillFromExcel(f.name);
+              if (f) void importExcel(f);
               e.target.value = "";
             }}
           />
@@ -2697,7 +2847,7 @@ function RecordAnswersModal({
             onDrop={(e) => {
               e.preventDefault();
               const f = e.dataTransfer.files?.[0];
-              if (f) fillFromExcel(f.name);
+              if (f) void importExcel(f);
             }}
             title="Upload the Excel the SME sent back — the answer column is read into the fields below for review"
             className="border-2 border-dashed border-green-300 bg-green-50/40 rounded-xl px-5 py-4 flex items-center gap-3 cursor-pointer hover:bg-green-50 transition-colors"
@@ -2706,13 +2856,13 @@ function RecordAnswersModal({
               <FileSpreadsheet size={16} className="text-green-600" />
             </div>
             <div className="flex-1">
-              <p className="text-[13px] font-semibold text-[#1F2937]">Upload the returned Excel</p>
+              <p className="text-[13px] font-semibold text-[#1F2937]">{importing ? "Reading workbook…" : "Upload the returned Excel"}</p>
               <p className="text-[11px] text-[#6B7280] mt-0.5">
-                Answers are read into the fields below for review — or{" "}
+                Keep the Question and SME Answer columns, and save the returned file as .xlsx. Answers are loaded for review. You can also{" "}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    fillFromExcel();
+                    fillSampleAnswers();
                   }}
                   className="font-bold text-green-700 underline"
                 >
@@ -2731,6 +2881,7 @@ function RecordAnswersModal({
               </p>
               <textarea
                 rows={2}
+                disabled={savingAnswers || importing}
                 value={answers[q.id] ?? ""}
                 onChange={(e) => setAnswers((p) => ({ ...p, [q.id]: e.target.value }))}
                 placeholder="Paste the SME's answer for this question… (leave blank if not answered yet)"
@@ -2749,18 +2900,24 @@ function RecordAnswersModal({
                   on to final review.
                 </p>
                 <button
-                  onClick={() => {
-                    const returnedAt = new Date().toISOString();
-                    actions.setSmeRequests((p) =>
-                      p.map((x) => (x.id === req.id ? { ...x, status: "Returned", returnedAt } : x)),
-                    );
-                    syncSmeRequest(req.backendId, { status: "Returned", returnedAt });
-                    actions.logActivity(
-                      `Marked ${req.department} SME request returned — no open questions remained`,
-                      ticket.id,
-                    );
-                    actions.addToast("Request marked Returned — it had no open questions left.", "success");
-                    close();
+                  onClick={async () => {
+                    if (answerSavePending.current) return;
+                    answerSavePending.current = true;
+                    setSavingAnswers(true);
+                    try {
+                      const returnedAt = new Date().toISOString();
+                      if (!(await syncSmeRequest(req.backendId, { status: "Returned", returnedAt }))) {
+                        actions.addToast("The request could not be marked Returned. Please try again.", "warning");
+                        return;
+                      }
+                      actions.setSmeRequests(p => p.map(x => x.id === req.id ? { ...x, status: "Returned", returnedAt } : x));
+                      actions.logActivity("Marked " + req.department + " SME request returned", ticket.id);
+                      actions.addToast("Request marked Returned — it had no open questions left.", "success");
+                      close();
+                    } finally {
+                      answerSavePending.current = false;
+                      setSavingAnswers(false);
+                    }
                   }}
                   className="flex items-center gap-1.5 px-3.5 py-1.5 text-[11px] font-bold bg-[#F96702] text-white rounded-full hover:bg-[#D95400] tracking-[0.06em] uppercase whitespace-nowrap transition-all"
                 >
@@ -2778,13 +2935,13 @@ function RecordAnswersModal({
           </p>
           <BtnSecondary onClick={close}>Cancel</BtnSecondary>
           <span title={filled.length === openQs.length ? "Saves every answer and marks the request Returned" : "Saves the filled answers; the request stays open for the rest"}>
-            <BtnPrimary onClick={save} disabled={filled.length === 0}>
+            <BtnPrimary onClick={save} disabled={filled.length === 0 || importing || savingAnswers}>
               <CheckCircle size={11} /> Save Answers{filled.length > 0 ? ` (${filled.length})` : ""}
             </BtnPrimary>
           </span>
         </div>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -3056,15 +3213,16 @@ function FinalPanel({
       <div className="flex gap-2.5 flex-wrap items-center">
         <span title={reqs.length > 0 ? "Go back to the SME ETA tracking for this ticket" : "Go back and review the answers again"}>
           <BtnSecondary
-            onClick={() =>
+            onClick={() => {
               actions.setTickets((p) =>
                 p.map((t) =>
                   t.id === ticket.id
                     ? { ...t, stage: reqs.length > 0 ? "eta" : "review", status: "In Progress" }
                     : t,
                 ),
-              )
-            }
+              );
+              syncTicketStatus(ticket.backendId, "In Progress");
+            }}
           >
             <ArrowLeft size={11} /> {reqs.length > 0 ? "Back: ETA Tracking" : "Back: Answer Review"}
           </BtnSecondary>

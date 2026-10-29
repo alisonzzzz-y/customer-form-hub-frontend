@@ -24,8 +24,10 @@ import {
   MvpKnowledgeEntry,
   MvpNotification,
   MvpActivity,
+  DERIVED_NOTIFICATION_BASE,
   TicketStage,
   ToastMsg,
+  deriveNotifications,
   pendingForms,
   rekeyTicketRefs,
 } from "./data/model";
@@ -267,11 +269,50 @@ export default function AppShell() {
   useEffect(() => {
     for (const t of tickets) {
       if (!t.backendId || t.isStartupDemo) continue;
+      // Demo questions exist only in this browser, so the backend cannot check
+      // (and refuses) the later steps of a demo ticket. Its step stays local.
+      if (t.formImport?.source === "demo") continue;
       const last = syncedStages.current.get(t.backendId) ?? t.savedStage;
       syncedStages.current.set(t.backendId, t.stage);
       if (last !== undefined && last !== t.stage) syncTicketStage(t.backendId, t.stage);
     }
   }, [tickets]);
+
+  // Keep notifications derived from live tickets and SME requests current.
+  // Read state is remembered in this browser only.
+  const READ_KEY = "formhub.readNotifications";
+  useEffect(() => {
+    if (!tickets.some((t) => t.backendId && !t.isStartupDemo)) return;
+    let stored: number[] = [];
+    try {
+      stored = JSON.parse(localStorage.getItem(READ_KEY) ?? "[]");
+    } catch {
+      stored = [];
+    }
+    const derived = deriveNotifications(tickets, smeRequests);
+    setNotifications((p) => {
+      const read = new Set([...stored, ...p.filter((n) => n.read).map((n) => n.id)]);
+      const next = [
+        ...derived.map((n) => ({ ...n, read: read.has(n.id) })),
+        ...p.filter((n) => n.id < DERIVED_NOTIFICATION_BASE),
+      ];
+      const same =
+        next.length === p.length && next.every((n, i) => n.id === p[i].id && n.read === p[i].read);
+      return same ? p : next;
+    });
+  }, [tickets, smeRequests]);
+  useEffect(() => {
+    try {
+      // Merge, so the first render (before live data) cannot wipe saved reads.
+      const stored: number[] = JSON.parse(localStorage.getItem(READ_KEY) ?? "[]");
+      const read = notifications
+        .filter((n) => n.read && n.id >= DERIVED_NOTIFICATION_BASE)
+        .map((n) => n.id);
+      localStorage.setItem(READ_KEY, JSON.stringify([...new Set([...stored, ...read])].slice(-500)));
+    } catch {
+      // Read state is a convenience; the list still works without storage.
+    }
+  }, [notifications]);
 
   const [toasts, setToasts] = useState<ToastMsg[]>([]);
   const idRef = useRef(0);

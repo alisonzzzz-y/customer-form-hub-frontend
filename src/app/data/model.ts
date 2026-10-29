@@ -96,6 +96,11 @@ export const QUESTION_DEPARTMENTS = [
   TBD_DEPARTMENT,
 ];
 
+export function hasQuestionDepartment(department: string | null | undefined): boolean {
+  const value = department?.trim().toLowerCase() ?? "";
+  return value !== "" && value !== "tbd" && value !== "general";
+}
+
 export type MvpFile = {
   name: string;
   size: string;
@@ -222,7 +227,16 @@ export type MvpKnowledgeEntry = {
   status: KnowledgeStatus;
   tags: string[];
   owner: string;
+  // Created in this browser and not saved to the backend yet. Such entries
+  // carry a temporary negative id, so they can never be mistaken for (or
+  // overwrite) a backend entry with the same number.
+  localOnly?: boolean;
 };
+
+// Temporary id for a knowledge entry that exists only in this browser.
+export function localKnowledgeId(): number {
+  return -(Date.now() * 1000 + Math.floor(Math.random() * 1000));
+}
 
 export type MvpNotification = {
   id: number;
@@ -482,4 +496,70 @@ export function mergeImportedQuestions(
     return { ...q, duplicateOf };
   });
   return { questions, reused };
+}
+
+// Notifications worked out from live data, so the bell reflects real work:
+// SME requests past their ETA, tickets past their deadline, and SME answers
+// returned in the last week. Ids are stable per event, so a notification
+// keeps its read state when it is derived again.
+export const DERIVED_NOTIFICATION_BASE = 1_000_000_000;
+
+function stableId(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+  return DERIVED_NOTIFICATION_BASE + (Math.abs(h) % DERIVED_NOTIFICATION_BASE);
+}
+
+export function deriveNotifications(
+  tickets: MvpTicket[],
+  smeRequests: MvpSmeRequest[],
+  now: Date = new Date(),
+): MvpNotification[] {
+  const active = new Map(
+    tickets
+      .filter((t) => t.backendId && !["Closed", "Archived", "Sent"].includes(t.status))
+      .map((t) => [t.id, t]),
+  );
+  const out: MvpNotification[] = [];
+  for (const r of smeRequests) {
+    const t = active.get(r.ticketId);
+    if (!t || !r.backendId) continue;
+    if (r.status !== "Returned" && r.eta && new Date(r.eta) < now) {
+      out.push({
+        id: stableId(`sme-overdue:${r.backendId}:${r.eta}`),
+        type: "Overdue",
+        title: `${r.department} SME answers overdue — ${t.id}`,
+        content: `${t.customer}: the ${r.department} team's ETA (${fmtDateTime(r.eta)}) has passed without answers.`,
+        createdAt: r.eta,
+        read: false,
+        ticketId: t.id,
+      });
+    }
+    if (r.status === "Returned" && r.returnedAt &&
+        now.getTime() - new Date(r.returnedAt).getTime() < 7 * 24 * 3600 * 1000) {
+      out.push({
+        id: stableId(`sme-returned:${r.backendId}:${r.returnedAt}`),
+        type: "SME Reply",
+        title: `${r.department} SME answers returned — ${t.id}`,
+        content: `${t.customer}: the ${r.department} team's answers are recorded and ready for final review.`,
+        createdAt: r.returnedAt,
+        read: false,
+        ticketId: t.id,
+      });
+    }
+  }
+  for (const t of active.values()) {
+    if (!["Approved"].includes(t.status) && t.due && new Date(`${t.due}T23:59:59Z`) < now) {
+      out.push({
+        id: stableId(`ticket-overdue:${t.backendId}:${t.due}`),
+        type: "Overdue",
+        title: `Customer deadline passed — ${t.id}`,
+        content: `${t.customer}: the response was due ${fmtDate(t.due)} and the ticket is still ${t.status}.`,
+        createdAt: `${t.due}T23:59:59Z`,
+        read: false,
+        ticketId: t.id,
+      });
+    }
+  }
+  return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

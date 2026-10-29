@@ -1,10 +1,47 @@
 import { useEffect, useState } from "react";
 import { Archive, ArrowLeft, BookOpen, CheckCircle, Edit3, Plus, RotateCcw, Search, X } from "lucide-react";
 import { BtnPrimary, BtnSecondary } from "../components/ui";
-import { DEPARTMENTS, KnowledgeStatus, SharingStatus } from "../data/model";
+import {
+  DEPARTMENTS,
+  KnowledgeStatus,
+  MvpKnowledgeEntry,
+  SharingStatus,
+  localKnowledgeId,
+} from "../data/model";
 import { AppActions, AppState } from "../AppShell";
-import { upsertBackendKnowledge } from "../services/backend";
+import { saveKnowledgeEntry } from "../services/backend";
 import { EmptyState, Pill, SharingBadge, Th } from "../components/ui";
+
+// Creates in flight for entries that are not in the backend yet, so a quick
+// second save (e.g. approving right after submitting) cannot create a copy.
+const creatingKnowledge = new Map<number, Promise<number | null>>();
+
+// Save an entry to the backend and, the first time, swap its temporary id for
+// the backend id. Resolves false if it could not be saved.
+export async function syncKnowledgeEntry(
+  entry: MvpKnowledgeEntry,
+  actions: AppActions,
+): Promise<boolean> {
+  const isNew = entry.localOnly || entry.id < 0;
+  if (isNew) {
+    const pending = creatingKnowledge.get(entry.id);
+    if (pending) {
+      const createdId = await pending;
+      if (createdId !== null)
+        return (await saveKnowledgeEntry({ ...entry, id: createdId, localOnly: false })) !== null;
+    }
+  }
+  const save = saveKnowledgeEntry(entry);
+  if (isNew) creatingKnowledge.set(entry.id, save);
+  const backendId = await save;
+  if (isNew) creatingKnowledge.delete(entry.id);
+  if (backendId === null) return false;
+  if (isNew)
+    actions.setKnowledge((p) =>
+      p.map((k) => (k.id === entry.id ? { ...k, id: backendId, localOnly: undefined } : k)),
+    );
+  return true;
+}
 
 export function KnowledgeBasePage({
   state,
@@ -57,9 +94,9 @@ export function KnowledgeBasePage({
     );
     // Keep live backend data in sync when possible.
     if (updated)
-      void upsertBackendKnowledge(
+      void syncKnowledgeEntry(
         { ...updated, status, lastUpdated: new Date().toISOString().slice(0, 10) },
-        false,
+        actions,
       );
     actions.logActivity(log);
   };
@@ -364,13 +401,14 @@ function EntryEditor({
     if (existing) {
       const next = { ...existing, title: title.trim(), content: content.trim(), department: dept, sharingStatus: sharing, source: source.trim(), tags: tagList, lastUpdated: today };
       actions.setKnowledge((p) => p.map((k) => (k.id === existing.id ? next : k)));
-      void upsertBackendKnowledge(next, false);
+      void syncKnowledgeEntry(next, actions);
       actions.logActivity(`Edited knowledge entry “${title.trim()}”`);
       actions.addToast("Entry updated.", "success");
     } else {
       // New entries require approval before they can be used.
       const entry = {
-        id: Math.max(...state.knowledge.map((k) => k.id)) + 1,
+        id: localKnowledgeId(),
+        localOnly: true,
         title: title.trim(),
         content: content.trim(),
         department: dept,
@@ -382,12 +420,7 @@ function EntryEditor({
         owner: state.currentUser,
       };
       actions.setKnowledge((p) => [entry, ...p]);
-      void upsertBackendKnowledge(entry, true).then((backendId) => {
-        if (backendId)
-          actions.setKnowledge((p) =>
-            p.map((k) => (k.id === entry.id ? { ...k, id: backendId } : k)),
-          );
-      });
+      void syncKnowledgeEntry(entry, actions);
       actions.logActivity(`Submitted knowledge entry “${title.trim()}” for review`);
       actions.addToast("Entry submitted to Pending Review.", "success");
     }

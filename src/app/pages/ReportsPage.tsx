@@ -158,7 +158,8 @@ export function ReportsPage({ state, actions }: { state: AppState; actions: AppA
       (r) =>
         selectedTicketIds.has(r.ticketId) &&
         (dept === "All" || r.department === dept) &&
-        r.returnedAt,
+        r.returnedAt &&
+        r.sentAt,
     );
     const avgSme = returned.length
       ? returned.reduce(

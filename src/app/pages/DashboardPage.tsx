@@ -47,7 +47,7 @@ export function DashboardPage({
   const dueToday = live.filter(isDueToday);
   const overdue = live.filter(isOverdueTicket);
   const aiReady = live.filter((t) => t.status === "Ready for Review");
-  const weekAgo = new Date(MOCK_NOW.getTime() - 7 * 24 * 3600 * 1000);
+  const weekAgo = new Date(referenceDate.getTime() - 7 * 24 * 3600 * 1000);
   const closedThisWeek = scoped.filter(
     (t) => t.closed && new Date(t.closed) >= weekAgo,
   );

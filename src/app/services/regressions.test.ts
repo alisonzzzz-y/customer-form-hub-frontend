@@ -7,13 +7,16 @@ import {
   matchSupport,
   mergeImportedQuestions,
   rekeyTicketRefs,
+  deriveNotifications,
+  localKnowledgeId,
+  DERIVED_NOTIFICATION_BASE,
   nextLocalTicketId,
   restoredWorkflow,
   ticketIdForBackend,
   withCurrentDeadline,
 } from "../data/model";
 import { STARTUP_TICKETS } from "../data/seeds";
-import { applyRagResult, sectionOf } from "./backend";
+import { answerSourceFromBackend, applyRagResult, sectionOf } from "./backend";
 import { extractQuestionsFor, parseIntakeEmail, sampleAeEmail } from "./simulation";
 
 describe("ticket IDs", () => {
@@ -277,5 +280,53 @@ describe("saving a ticket that was created offline", () => {
       "TK-1027",
       undefined,
     ]);
+  });
+});
+
+describe("review findings", () => {
+  it("keeps an edited knowledge answer labelled as edited after a refresh", () => {
+    expect(answerSourceFromBackend("Knowledge Base", true)).toBe("AI Edited");
+    expect(answerSourceFromBackend("Knowledge Base", false)).toBe("AI");
+    expect(answerSourceFromBackend("SME", true)).toBe("SME");
+    expect(answerSourceFromBackend("Manual", null)).toBe("Manual");
+  });
+
+  it("gives browser-only knowledge entries ids no backend entry can have", () => {
+    const a = localKnowledgeId();
+    const b = localKnowledgeId();
+    expect(a).toBeLessThan(0);
+    expect(a).not.toBe(b);
+  });
+
+  it("derives notifications from overdue and returned SME requests and late tickets", () => {
+    const now = new Date("2026-10-29T12:00:00Z");
+    const ticket = {
+      id: "TK-9001", backendId: 1, customer: "Vandelay", sorId: "—", owner: "Sarah Chen",
+      status: "Waiting SME" as const, stage: "eta" as const, due: "2026-10-27", created: "2026-10-01",
+      urgency: "High" as const, nda: "In Place" as const, region: "—", source: "Backend", files: [],
+    };
+    const req = (id: number, extra: object) => ({
+      id: 100000 + id, backendId: id, ticketId: "TK-9001", department: "Legal", assignee: "Legal Team",
+      eta: null, status: "ETA Set" as const, questionIds: [], sentAt: "2026-10-20T09:00:00Z", ...extra,
+    });
+    const list = deriveNotifications(
+      [ticket, { ...ticket, id: "TK-9002", backendId: 2, status: "Archived" as const }],
+      [
+        req(1, { eta: "2026-10-28T09:00:00Z" }),
+        req(2, { status: "Returned", returnedAt: "2026-10-28T10:00:00Z" }),
+        req(3, { ticketId: "TK-9002", eta: "2026-10-01T09:00:00Z" }),
+      ],
+      now,
+    );
+    // Newest first; the archived ticket's request is left out.
+    expect(list.map((n) => n.title)).toEqual([
+      "Legal SME answers returned — TK-9001",
+      "Legal SME answers overdue — TK-9001",
+      "Customer deadline passed — TK-9001",
+    ]);
+    expect(list.every((n) => n.id >= DERIVED_NOTIFICATION_BASE)).toBe(true);
+    // Same events give the same ids, so read state survives a re-derive.
+    expect(deriveNotifications([ticket], [req(1, { eta: "2026-10-28T09:00:00Z" })], now)[0].id)
+      .toBe(list[1].id);
   });
 });

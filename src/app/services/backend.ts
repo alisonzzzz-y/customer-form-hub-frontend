@@ -6,7 +6,9 @@ import {
   KnowledgeStatus,
   SharingStatus,
   TBD_DEPARTMENT,
+  hasQuestionDepartment,
   TicketStage,
+  answerSupportOf,
   duplicateKey,
   stageFromQuestions,
   supportFromBackend,
@@ -76,7 +78,8 @@ interface ClassifiedQuestion {
 
 // Display the backend's "General" value as "TBD" for questions.
 export function questionDeptFromBackend(d: string | null | undefined): string {
-  return d && d !== "General" ? d : TBD_DEPARTMENT;
+  const department = d?.trim() ?? "";
+  return hasQuestionDepartment(department) ? department : TBD_DEPARTMENT;
 }
 function questionDeptToBackend(d: string): string {
   return d === TBD_DEPARTMENT ? "General" : d;
@@ -593,6 +596,7 @@ type BackendTicketFull = {
   businessImpact: string | null;
   createdAt: string | null;
   workflowStage?: string | null;
+  closedAt?: string | null;
   clientRef?: string | null;
   formFileName?: string | null;
   formImportedAt?: string | null;
@@ -615,8 +619,20 @@ type QuestionWithAnswer = {
   answerText: string | null;
   sourceType: string | null;
   approvalStatus: string | null;
+  isEdited?: boolean | null;
   answered: boolean;
 };
+
+// Label of a saved final answer. A knowledge answer the reviewer edited stays
+// "AI Edited", so reports do not count it as accepted unchanged.
+export function answerSourceFromBackend(
+  sourceType: string | null | undefined,
+  isEdited: boolean | null | undefined,
+): NonNullable<MvpQuestion["finalAnswer"]>["sourceType"] {
+  if (sourceType === "SME") return "SME";
+  if (sourceType === "Manual") return "Manual";
+  return isEdited ? "AI Edited" : "AI";
+}
 
 const NDA_FROM_BACKEND: Record<string, MvpTicket["nda"]> = {
   Yes: "In Place",
@@ -769,12 +785,7 @@ export async function loadBackendWorld(
     const localQs: MvpQuestion[] = bqs.map((q, i) => {
       const fa = answerByQ.get(q.id);
       const link = linkByQ.get(q.id);
-      const sourceType =
-        fa?.sourceType === "SME"
-          ? "SME"
-          : fa?.sourceType === "Manual"
-            ? "Manual"
-            : "AI";
+      const sourceType = answerSourceFromBackend(fa?.sourceType, fa?.isEdited);
       let status: MvpQuestion["status"];
       if (fa) status = link?.returned ? "SME Complete" : "Approved";
       else if (q.status === "SME Needed")
@@ -837,7 +848,8 @@ export async function loadBackendWorld(
         eta: r.eta,
         status: statusMap[r.status] ?? "Requested",
         questionIds,
-        sentAt: r.sentAt ?? new Date().toISOString(),
+        // An unsent draft has no send time; do not make one up.
+        sentAt: r.sentAt ?? "",
         returnedAt: r.returnedAt ?? undefined,
         srqIds,
       };
@@ -875,8 +887,10 @@ export async function loadBackendWorld(
       stage,
       due: bt.deadline?.slice(0, 10) ?? "",
       created: bt.createdAt?.slice(0, 10) ?? "",
+      // Only the recorded close time; older rows without one are left out of
+      // "closed this week" and completion-time metrics instead of guessing.
       closed: ["Closed", "Archived"].includes(hydratedStatus)
-        ? (bt.createdAt?.slice(0, 10) ?? undefined)
+        ? (bt.closedAt?.slice(0, 10) ?? undefined)
         : undefined,
       urgency: (bt.urgency as MvpTicket["urgency"]) ?? "Medium",
       nda: NDA_FROM_BACKEND[bt.ndaStatus ?? "Unknown"] ?? "Unknown",
@@ -940,6 +954,14 @@ const SHARING_TO_BACKEND: Record<string, string> = {
   "NDA Required": "NDA-required",
 };
 
+// Save a knowledge entry: create it if the backend does not have it yet,
+// otherwise update it. Resolves to the backend id, or null if not saved.
+export function saveKnowledgeEntry(
+  entry: import("../data/model").MvpKnowledgeEntry,
+): Promise<number | null> {
+  return upsertBackendKnowledge(entry, !!entry.localOnly || entry.id < 0);
+}
+
 export async function upsertBackendKnowledge(
   entry: import("../data/model").MvpKnowledgeEntry,
   isNew: boolean,
@@ -971,23 +993,24 @@ export async function upsertBackendKnowledge(
   return updated?.id ?? null;
 }
 
-export function syncFinalAnswer(
+export async function syncFinalAnswer(
   q: MvpQuestion,
   answerText: string,
   edited: boolean,
   approvedBy: string,
-) {
-  if (!q.backendId) return;
+  sourceType?: "SME",
+): Promise<boolean> {
+  if (!q.backendId) return true;
   const input: FinalAnswerInput = {
     questionId: q.backendId,
-    sourceChunkId: q.suggested?.knowledgeId ?? null,
+    sourceChunkId: sourceType === "SME" ? null : q.suggested?.knowledgeId ?? null,
     answerText,
     isEdited: edited,
-    sourceType: q.suggested ? "Knowledge Base" : "Manual",
+    sourceType: sourceType ?? (q.suggested ? "Knowledge Base" : "Manual"),
     approvalStatus: "Confirmed",
     approvedBy,
   };
-  void post("/final-answers", input);
+  return (await post("/final-answers", input)) !== null;
 }
 
 // Keep reverted answers as drafts so they are excluded from exports.
@@ -1004,9 +1027,12 @@ export async function recordReviewEscalation(
   type: "SME" | "AE",
 ): Promise<boolean> {
   if (!q.backendId) return true;
+  // Only a passage that was offered as an answer counts as an AI suggestion
+  // the reviewer turned down; related knowledge was never suggested.
+  const offered = q.suggested && answerSupportOf(q) !== "related" ? q.suggested : undefined;
   return (await post(`/questions/${q.backendId}/review-escalation`, {
     type,
-    suggestionSourceId: q.suggested?.knowledgeId ?? null,
+    suggestionSourceId: offered?.knowledgeId ?? null,
   })) !== null;
 }
 
@@ -1161,11 +1187,16 @@ export async function unreturnBackendSmeRequest(
   return (await post(`/sme-requests/${backendId}/unreturn`, {})) !== null;
 }
 
-export function syncSmeAnswer(srqId: number | undefined, answer: string) {
-  if (!srqId) return;
-  void patch(`/sme-request-questions/${srqId}/answer`, {
+export async function previewSmeAnswers(backendId: number | undefined, file: File) {
+  if (!backendId) return { kind: "rejected" as const, message: "Save the SME request before importing answers." };
+  return postFile<Record<number, string>>(`/sme-request-questions/request/${backendId}/import-preview`, file);
+}
+
+export async function syncSmeAnswer(srqId: number | undefined, answer: string): Promise<boolean> {
+  if (!srqId) return true;
+  return (await patch(`/sme-request-questions/${srqId}/answer`, {
     returnedAnswer: answer,
-  });
+  })) !== null;
 }
 
 export type DashboardStats = {

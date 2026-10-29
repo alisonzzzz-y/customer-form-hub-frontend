@@ -153,6 +153,14 @@ http
         const t = tickets.find((x) => x.id === +m[1]);
         if (!t) return json(res, 404, {});
         const changes = parse();
+        // Same gate as TicketService.updateTicket: steps after grouping need
+        // saved questions that all have an owning department.
+        if (["review", "sme", "eta", "final"].includes(changes.workflowStage)) {
+          const active = questions.filter((q) => q.ticketId === t.id && !q.retiredAt);
+          const unassigned = (d) => !d || ["general", "tbd"].includes(String(d).trim().toLowerCase());
+          if (active.length === 0 || active.some((q) => unassigned(q.department)))
+            return json(res, 400, { message: "Assign an owning department to every question in Grouping before continuing" });
+        }
         for (const [k, v] of Object.entries(changes)) if (v !== null && v !== undefined) t[k] = v;
         return json(res, 200, t);
       }
@@ -165,7 +173,12 @@ http
       }
       if ((m = path.match(/^\/api\/tickets\/(\d+)\/status$/)) && req.method === "PATCH") {
         const t = tickets.find((x) => x.id === +m[1]);
-        if (t) t.status = parse().status;
+        if (t) {
+          t.status = parse().status;
+          // Mirrors TicketService.applyStatus.
+          if (t.status === "Closed") t.closedAt = t.closedAt ?? new Date().toISOString().slice(0, 19);
+          else if (t.status !== "Archived") t.closedAt = null;
+        }
         return json(res, 200, t ?? {});
       }
 
@@ -274,6 +287,7 @@ http
       if ((m = path.match(/^\/api\/questions\/(\d+)\/review-reopen$/)) && req.method === "POST") {
         const q = questions.find((x) => x.id === +m[1]);
         if (!q) return json(res, 404, {});
+        for (const answer of finalAnswers.filter(a => a.questionId === q.id)) answer.approvalStatus = "Draft";
         q.status = "Needs Review";
         q.reviewOutcome = null;
         q.reviewedAt = null;
@@ -424,8 +438,20 @@ http
       // ── sme request questions ──
       if (path === "/api/sme-request-questions/package" && req.method === "POST") {
         const { smeRequestId, ticketId, department } = parse();
+        // Mirrors SmeRequestQuestionService.packageQuestions: questions already
+        // in another open request are skipped, and a sent request takes no more.
+        const request0 = smeRequests.find((r) => r.id === smeRequestId);
+        const inOtherOpen = (qid) => srqs.some((l) => l.questionId === qid && l.smeRequestId !== smeRequestId &&
+          smeRequests.find((r) => r.id === l.smeRequestId)?.status !== "Returned");
+        const hasLinks = srqs.some((l) => l.smeRequestId === smeRequestId);
+        const sent = request0 && (request0.sentAt || request0.status !== "Draft Prepared");
+        const fresh = questions.filter((q) => q.ticketId === ticketId && q.department === department &&
+          q.status === "SME Needed" && !q.retiredAt && !inOtherOpen(q.id) &&
+          !srqs.some((l) => l.smeRequestId === smeRequestId && l.questionId === q.id));
+        if (fresh.length && hasLinks && sent)
+          return json(res, 400, { message: "This SME request was already sent. Put the new questions in a new request." });
         const linked = questions
-          .filter((q) => q.ticketId === ticketId && q.department === department && q.status === "SME Needed")
+          .filter((q) => fresh.includes(q))
           .map((q) => ({
             id: srqSeq++,
             smeRequestId,
@@ -436,7 +462,13 @@ http
             updatedAt: null,
           }));
         srqs.push(...linked);
-        return json(res, 200, linked);
+        const all = srqs.filter(link => link.smeRequestId === smeRequestId);
+        const request = smeRequests.find(r => r.id === smeRequestId);
+        if (request) {
+          request.questionCount = all.length;
+          if (linked.length) Object.assign(request, { status: "Draft Prepared", sentAt: null });
+        }
+        return json(res, 200, all);
       }
       if ((m = path.match(/^\/api\/sme-request-questions\/(\d+)\/answer$/)) && req.method === "PATCH") {
         const s = srqs.find((x) => x.id === +m[1]);
