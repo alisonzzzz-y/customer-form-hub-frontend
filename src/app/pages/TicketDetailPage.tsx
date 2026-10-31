@@ -53,6 +53,14 @@ export async function restoreTicket(ticket: MvpTicket, state: AppState, actions:
   actions.addToast(`${ticket.id} restored — ${next.status}.`, "success");
 }
 
+const TAB_HINTS: Record<Tab, string> = {
+  Overview: "Ticket details, deadline, NDA status and overall progress",
+  Workflow: "The step-by-step analysis: intake, grouping, answer review, SME and final review",
+  Files: "The customer form and any supporting files attached to this ticket",
+  Timeline: "Status milestones the ticket has passed, from intake to closed",
+  Activity: "Audit log of every action taken on this ticket",
+};
+
 export function TicketDetailPage({
   state,
   actions,
@@ -74,9 +82,9 @@ export function TicketDetailPage({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* One compact row for the ticket, so the workflow below gets the height. */}
-      <div className="px-4 sm:px-7 pt-2.5 pb-0 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0">
-        <div className="flex items-center justify-between gap-x-3 gap-y-1 flex-wrap">
+      {/* One compact row: ticket, its views and its actions, so the workflow below gets the height. */}
+      <div className="px-4 sm:px-7 py-2 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0">
+        <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap">
           <div className="flex items-center gap-2.5 min-w-0">
             <button
               onClick={() => actions.go("tickets")}
@@ -88,15 +96,36 @@ export function TicketDetailPage({
             </button>
             <div className="w-[3px] h-5 bg-[#F96702] rounded-full shrink-0" />
             <div className="flex items-baseline gap-x-3 flex-wrap min-w-0">
-              <h1 className="text-base font-bold text-[#0A0A0A] tracking-tight leading-snug">
+              <h1
+                title={`Due ${fmtDate(ticket.due)} · NDA: ${ticket.nda} · Owner ${ticket.owner} · ${ticket.sorId}`}
+                className="text-base font-bold text-[#0A0A0A] tracking-tight leading-snug"
+              >
                 {ticket.id} · {ticket.customer}
               </h1>
-              <p className="text-[11px] text-[#9CA3AF]">
+              {/* Shown on wide screens; elsewhere it is the title's tooltip and on Overview. */}
+              <p className="hidden 2xl:block text-[11px] text-[#9CA3AF]">
                 Due {fmtDate(ticket.due)} · NDA: {ticket.nda} · Owner {ticket.owner} · {ticket.sorId}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div role="tablist" aria-label="Ticket views" className="flex items-center gap-0.5 bg-[#F5F4F1] rounded-full p-0.5 overflow-x-auto max-w-full">
+            {(["Overview", "Workflow", "Files", "Timeline", "Activity"] as Tab[]).map((t) => (
+              <button
+                key={t}
+                role="tab"
+                aria-selected={tab === t}
+                onClick={() => setTab(t)}
+                title={TAB_HINTS[t]}
+                className={`px-3 py-1 shrink-0 rounded-full text-[12px] font-semibold transition-colors ${tab === t ? "bg-white text-[#C05600] shadow-sm" : "text-[#6B7280] hover:text-[#1F2937]"}`}
+              >
+                {t}
+                {t === "Workflow" && qs.length > 0 && (
+                  <span className="ml-1 text-[10px] font-bold text-[#9CA3AF]">{qs.length}</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
             <Pill value={ticket.status} />
             {ticket.status === "Archived" ? (
               <span title="Bring the ticket back to the list at the stage its questions are in">
@@ -154,20 +183,6 @@ export function TicketDetailPage({
               </BtnSecondary>
             )}
           </div>
-        </div>
-        <div className="flex gap-1 mt-1 -ml-3.5 overflow-x-auto">
-          {(["Overview", "Workflow", "Files", "Timeline", "Activity"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3.5 py-1.5 shrink-0 text-[12px] font-semibold border-b-2 transition-colors ${tab === t ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
-            >
-              {t}
-              {t === "Workflow" && qs.length > 0 && (
-                <span className="ml-1 text-[10px] font-bold text-[#9CA3AF]">{qs.length}</span>
-              )}
-            </button>
-          ))}
         </div>
       </div>
 

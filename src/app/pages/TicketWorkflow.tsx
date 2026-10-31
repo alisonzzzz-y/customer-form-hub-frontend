@@ -1250,61 +1250,6 @@ function ReviewPanel({
 
   return (
     <fieldset className="flex flex-col gap-3 min-w-0">
-      {/* Progress, status and navigation share one row, so the questions get the height. */}
-      <div className="sticky top-0 z-10 bg-[#F5F4F1] py-1 flex items-center gap-x-3 gap-y-1 flex-wrap">
-        {rematching && (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-[#6B7280]">
-            <Loader2 size={11} className="animate-spin" /> Reloading knowledge matches…
-          </span>
-        )}
-        <p className="text-[13px] text-[#6B7280]">
-          <strong className="text-[#1F2937]">{resolved.length}</strong> of{" "}
-          <strong className="text-[#1F2937]">{qs.length}</strong> resolved ·{" "}
-          <strong className="text-[#C05600]">{queued.length}</strong> queued for SME ·{" "}
-          <strong className="text-[#C05600]">{waitingAe.length}</strong> waiting for AE
-        </p>
-        <p
-          role="status"
-          aria-live="polite"
-          className={`text-[12px] empty:hidden ${waitingOnlyForAe || editing ? "text-[#92400E]" : "text-[#166534]"}`}
-        >
-          {unassigned.length === 0 && allResolved
-            ? waitingOnlyForAe
-              ? `All questions reviewed. Waiting for AE clarification on ${waitingAe.length} question(s); reopen them after the reply to continue.`
-              : editing
-                ? "All questions reviewed. Save or cancel the current edit before continuing."
-                : "All questions reviewed."
-            : ""}
-        </p>
-        {pendingSaves > 0 && (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-[#6B7280]">
-            <Loader2 size={11} className="animate-spin" /> Saving {pendingSaves} decision{pendingSaves === 1 ? "" : "s"}…
-          </span>
-        )}
-        <span className="flex-1" />
-        <span title="Go back and adjust the department grouping — decisions made here are kept">
-          <BtnSecondary
-            onClick={() =>
-              actions.setTickets((p) =>
-                p.map((t) => (t.id === ticket.id ? { ...t, stage: "grouping" } : t)),
-              )
-            }
-          >
-            <ArrowLeft size={11} /> Back: Grouping
-          </BtnSecondary>
-        </span>
-        <span
-          title={
-            allResolved
-              ? undefined
-              : `${remaining} question${remaining === 1 ? "" : "s"} left to review — approve, route to SME, or request AE clarification for each one to continue`
-          }
-        >
-          <BtnPrimary onClick={continueNext} disabled={!canContinue}>
-            {continueLabel} <ChevronRight size={11} />
-          </BtnPrimary>
-        </span>
-      </div>
       {unassigned.length > 0 && (
         <div role="alert" className="bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-lg px-4 py-3 flex items-center gap-3 flex-wrap">
           <p className="text-[12px] text-[#92400E] flex-1">
@@ -1313,8 +1258,11 @@ function ReviewPanel({
           <BtnPrimary onClick={returnToGrouping}>Assign missing departments</BtnPrimary>
         </div>
       )}
-      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100dvh-240px)] md:min-h-[360px]">
-        <div className="flex border-b border-border overflow-x-auto shrink-0">
+      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100dvh-165px)] md:min-h-[360px]">
+        {/* Department tabs and step navigation share the card's top row; the
+            progress counts sit above the question list. No separate header row. */}
+        <div className="flex items-center flex-wrap border-b border-border shrink-0">
+          <div className="flex overflow-x-auto min-w-0">
           {["All", ...depts].map((d) => {
             const count = d === "All" ? qs.length : qs.filter((x) => x.department === d).length;
             const done = d !== "All" && isResolvedDept(d);
@@ -1345,9 +1293,66 @@ function ReviewPanel({
               </button>
             );
           })}
+          </div>
+          <div className="ml-auto flex items-center gap-2 px-3 py-1.5 shrink-0">
+            <span title="Go back and adjust the department grouping — decisions made here are kept">
+              <BtnSecondary
+                onClick={() =>
+                  actions.setTickets((p) =>
+                    p.map((t) => (t.id === ticket.id ? { ...t, stage: "grouping" } : t)),
+                  )
+                }
+              >
+                <ArrowLeft size={11} /> Back: Grouping
+              </BtnSecondary>
+            </span>
+            <span
+              title={
+                allResolved
+                  ? undefined
+                  : `${remaining} question${remaining === 1 ? "" : "s"} left to review — approve, route to SME, or request AE clarification for each one to continue`
+              }
+            >
+              <BtnPrimary onClick={continueNext} disabled={!canContinue}>
+                {continueLabel} <ChevronRight size={11} />
+              </BtnPrimary>
+            </span>
+          </div>
         </div>
         <div className="flex flex-col md:flex-row flex-1 min-h-0">
-          <div ref={questionListRef} className="w-full md:w-72 max-h-40 md:max-h-none border-b md:border-b-0 md:border-r border-[rgba(0,0,0,0.06)] overflow-y-auto shrink-0 bg-[#FAFAF9]">
+          <div className="w-full md:w-72 flex flex-col min-h-0 border-b md:border-b-0 md:border-r border-[rgba(0,0,0,0.06)] shrink-0 bg-[#FAFAF9]">
+            <div className="px-4 py-2 border-b border-[rgba(0,0,0,0.06)] text-[11px] text-[#6B7280] flex flex-col gap-0.5 shrink-0">
+              <p>
+                <strong className="text-[#1F2937]">{resolved.length}</strong> of{" "}
+                <strong className="text-[#1F2937]">{qs.length}</strong> resolved ·{" "}
+                <strong className="text-[#C05600]">{queued.length}</strong> queued for SME ·{" "}
+                <strong className="text-[#C05600]">{waitingAe.length}</strong> waiting for AE
+              </p>
+              <p
+                role="status"
+                aria-live="polite"
+                className={`empty:hidden ${waitingOnlyForAe || editing ? "text-[#92400E]" : "text-[#166534]"}`}
+              >
+                {unassigned.length === 0 && allResolved
+                  ? waitingOnlyForAe
+                    ? `All questions reviewed. Waiting for AE clarification on ${waitingAe.length} question(s); reopen them after the reply to continue.`
+                    : editing
+                      ? "All questions reviewed. Save or cancel the current edit before continuing."
+                      : "All questions reviewed."
+                  : ""}
+              </p>
+              {pendingSaves > 0 && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Loader2 size={10} className="animate-spin" /> Saving {pendingSaves} decision{pendingSaves === 1 ? "" : "s"}…
+                </span>
+              )}
+              {rematching && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Loader2 size={10} className="animate-spin" /> Reloading knowledge matches…
+                </span>
+              )}
+            </div>
+          <div ref={questionListRef} className="max-h-40 md:max-h-none flex-1 min-h-0 overflow-y-auto">
             {visible.map((item) => (
               <button
                 key={item.id}
@@ -1362,6 +1367,7 @@ function ReviewPanel({
                 </div>
               </button>
             ))}
+          </div>
           </div>
           <div className="flex-1 flex flex-col min-w-0 min-h-0">
             <div ref={answerPanelRef} className="flex-1 min-h-0 md:overflow-y-auto px-6 py-4 flex flex-col gap-3 [&>*]:shrink-0">
@@ -2168,7 +2174,7 @@ function SmePackagePanel({
           </BtnPrimary>
         </span>
       </div>
-      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100dvh-240px)] md:min-h-[360px]">
+      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100dvh-215px)] md:min-h-[360px]">
         <div className="flex items-center flex-wrap border-b border-border shrink-0">
           {depts.map((d) => {
             const count =

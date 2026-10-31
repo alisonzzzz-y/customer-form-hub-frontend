@@ -113,7 +113,7 @@ await page.waitForSelector("text=SME queue.");
 // resolve everything else: walk the left list, approve or route each question
 const pendingItems = () =>
   page
-    .locator('div[class*="md:w-72"] > button')
+    .locator('div[class*="md:w-72"] div[class*="overflow-y-auto"] > button')
     .filter({ hasNot: page.locator('span:text-is("Approved")') })
     .filter({ hasNot: page.locator('span:text-is("SME Queued")') })
     .filter({ hasNot: page.locator('span:text-is("Rejected")') });
@@ -133,7 +133,7 @@ if ((await pendingItems().count()) > 0) errors.push("Review: questions left unre
 try {
   await page.waitForSelector('button:has-text("Next: SME Package")', { timeout: 8000 });
 } catch {
-  const pills = await page.locator('div[class*="md:w-72"] > button span').allTextContents();
+  const pills = await page.locator('div[class*="md:w-72"] div[class*="overflow-y-auto"] > button span').allTextContents();
   console.log("DEBUG left-list pills:", JSON.stringify(pills));
   console.log("DEBUG progress:", await page.locator("p:has-text('resolved ·')").textContent().catch(() => "n/a"));
   throw new Error("Continue button never appeared");
