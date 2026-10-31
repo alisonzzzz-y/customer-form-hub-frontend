@@ -39,7 +39,8 @@ await row.click();
 await page.waitForSelector("text=Department Grouping — 8 questions");
 if (!(await page.isVisible("text=Vandelay_Security_Q.xlsx")))
   errors.push("Persist: import summary lost the file name after reload");
-if ((await page.locator("text=AI classified").count()) === 0)
+// AI-chosen departments carry no badge; one whose source was lost shows "Saved".
+if ((await page.locator('[title^="Department saved before"]').count()) > 0)
   errors.push("Persist: classification source lost after reload");
 await page.click("text=Files");
 if (!(await page.isVisible("text=Vandelay_Security_Q.xlsx"))) errors.push("Persist: file missing from Files tab");

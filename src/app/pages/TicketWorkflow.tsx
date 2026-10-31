@@ -108,7 +108,7 @@ export function WorkflowTab({
   const reqs = state.smeRequests.filter((r) => r.ticketId === ticketId);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <StageStepper stage={ticket.stage} />
       {ticket.stage === "intake" && <IntakePanel ticket={ticket} state={state} actions={actions} />}
       {ticket.stage === "grouping" && <GroupingPanel ticket={ticket} qs={qs} actions={actions} />}
@@ -124,7 +124,7 @@ export function WorkflowTab({
 function StageStepper({ stage }: { stage: TicketStage }) {
   const idx = stage === "done" ? STAGES.length : STAGES.findIndex((s) => s.id === stage);
   return (
-    <div className="flex items-center bg-white rounded-xl border border-[rgba(0,0,0,0.06)] px-4 py-2.5 overflow-x-auto">
+    <div className="flex items-center bg-white rounded-lg border border-[rgba(0,0,0,0.06)] px-2 py-0.5 overflow-x-auto">
       {STAGES.map((s, i) => {
         const done = i < idx;
         const active = i === idx;
@@ -651,7 +651,8 @@ function GroupingPanel({
   const [tab, setTab] = useState("");
   const [customFor, setCustomFor] = useState<number | null>(null);
   const [customName, setCustomName] = useState("");
-  const savingDepartmentIds = useRef(new Set<number>());
+  // Department each question should end up in, while its save is running.
+  const savingDepartmentIds = useRef(new Map<number, string>());
   const [savingDepartments, setSavingDepartments] = useState(0);
   const unassigned = qs.filter((q) => !hasQuestionDepartment(q.department));
 
@@ -663,24 +664,44 @@ function GroupingPanel({
   const active = depts.includes(tab) ? tab : (depts[0] ?? "");
   const dq = qs.filter((q) => q.department === active);
 
-  const moveDept = async (q: MvpQuestion, dept: string) => {
-    if (savingDepartmentIds.current.has(q.id)) return;
-    savingDepartmentIds.current.add(q.id);
-    setSavingDepartments(savingDepartmentIds.current.size);
-    try {
-      const saved = await syncQuestionDepartment(q.backendId, dept, "Manual");
-      if (!saved) {
-        actions.addToast(`The department for question #${q.row} was not saved. Please try again.`, "warning");
-        return;
-      }
+  // The new department is shown at once and saved in the background. Changes
+  // made while a save runs are saved after it, so the last choice wins; a
+  // failed save puts the question back in its last saved department.
+  const moveDept = (q: MvpQuestion, dept: string) => {
+    if (dept === q.department) return;
+    const setDept = (department: string, departmentSource: MvpQuestion["departmentSource"]) =>
       actions.setQuestions((p) =>
-        p.map((x) => (x.id === q.id ? { ...x, department: dept, departmentSource: "Manual" } : x)),
+        p.map((x) => (x.id === q.id ? { ...x, department, departmentSource } : x)),
       );
-      actions.logActivity(`Moved question #${q.row} to ${dept}`, ticket.id);
-    } finally {
-      savingDepartmentIds.current.delete(q.id);
-      setSavingDepartments(savingDepartmentIds.current.size);
-    }
+    setDept(dept, "Manual");
+    actions.logActivity(`Moved question #${q.row} to ${dept}`, ticket.id);
+    const wanted = savingDepartmentIds.current;
+    const alreadySaving = wanted.has(q.id);
+    wanted.set(q.id, dept);
+    setSavingDepartments(wanted.size);
+    if (alreadySaving) return;
+
+    void (async () => {
+      let lastSaved = { department: q.department, source: q.departmentSource };
+      try {
+        for (;;) {
+          const target = wanted.get(q.id)!;
+          if (!(await syncQuestionDepartment(q.backendId, target, "Manual"))) {
+            setDept(lastSaved.department, lastSaved.source);
+            actions.addToast(
+              `The department for question #${q.row} was not saved, so it is back in ${lastSaved.department}. Please try again.`,
+              "warning",
+            );
+            return;
+          }
+          lastSaved = { department: target, source: "Manual" };
+          if (wanted.get(q.id) === target) return;
+        }
+      } finally {
+        wanted.delete(q.id);
+        setSavingDepartments(wanted.size);
+      }
+    })();
   };
 
   const confirm = async () => {
@@ -783,7 +804,6 @@ function GroupingPanel({
             <ClassificationBadge q={q} />
             <select
               value={q.department}
-              disabled={savingDepartmentIds.current.has(q.id)}
               title="Change which department this question belongs to"
               onChange={(e) => {
                 if (e.target.value === "__custom__") {
@@ -893,8 +913,10 @@ function ImportSummary({ ticket, qs }: { ticket: MvpTicket; qs: MvpQuestion[] })
 }
 
 // Department classification status. This is not the knowledge-match score,
-// which is only calculated in the next step.
+// which is only calculated in the next step. A department the AI chose needs
+// no label; only questions that need attention or were set by hand get one.
 function ClassificationBadge({ q }: { q: MvpQuestion }) {
+  if (q.department !== TBD_DEPARTMENT && q.departmentSource === "AI") return null;
   const [label, cls, title] =
     q.department === TBD_DEPARTMENT
       ? ["Needs department", "text-[#92400E] bg-[#FEF3C7] border-[#F59E0B]/40", "The AI classifier did not assign a department — pick one"]
@@ -902,9 +924,7 @@ function ClassificationBadge({ q }: { q: MvpQuestion }) {
         ? ["Set manually", "text-[#374151] bg-gray-50 border-gray-200", "A reviewer chose this department"]
         : q.departmentSource === "Demo"
           ? ["Demo data", "text-[#92400E] bg-[#FEF3C7] border-[#F59E0B]/40", "Department comes from the simulated demo set"]
-          : q.departmentSource === "AI"
-            ? ["AI classified", "text-[#4338CA] bg-[#EEF2FF] border-[#C7D2FE]", "Department chosen by the AI classifier from the question text (no confidence score is produced)"]
-            : ["Saved", "text-[#6B7280] bg-gray-50 border-gray-200", "Department saved before the app recorded whether AI or a reviewer chose it"];
+          : ["Saved", "text-[#6B7280] bg-gray-50 border-gray-200", "Department saved before the app recorded whether AI or a reviewer chose it"];
   return (
     <span
       title={title}
@@ -1166,53 +1186,88 @@ function ReviewPanel({
   // Only an answer built on the NDA-restricted passage needs the NDA. When the
   // passage is merely related, the reviewer's own answer does not use it.
   const ndaBlocked = !!offered && ndaRestrictedSource;
+  // Shown both while writing a manual answer and otherwise, so a question
+  // without a supported answer can always go to the SME team instead.
+  const routeToSmeButton = q.status !== "SME Queued" && !q.finalAnswer && (
+    <button
+      onClick={() => void persistReview(() => recordReviewEscalation(q, "SME"), () => {
+        update(
+          q.id,
+          {
+            status: "SME Queued",
+            reviewOutcome: offered ? "ESCALATED" : undefined,
+            reviewedAt: new Date().toISOString(),
+          },
+          `Routed question #${q.row} to ${q.department} SME queue`,
+        );
+
+        actions.addToast(`Added to the ${q.department} SME queue.`, "info");
+        setEditing(false);
+        advance();
+      })}
+      disabled={q.department === TBD_DEPARTMENT}
+      title={
+        q.department === TBD_DEPARTMENT
+          ? "This question has no department yet (TBD) — assign one in the Grouping stage before routing it to an SME"
+          : `Queue this question for the ${q.department} SME team — nothing is sent yet; all queued questions go out together as one package per department`
+      }
+      className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${q.department === TBD_DEPARTMENT ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)]"}`}
+    >
+      <Send size={11} /> Route to SME
+    </button>
+  );
 
   return (
     <fieldset disabled={savingReview} className="flex flex-col gap-3 min-w-0">
-      <div className="sticky top-0 z-10 bg-[#F5F4F1] py-2 flex flex-col gap-2">
-        <div className="flex items-center gap-3 flex-wrap">
-          {rematching && (
-            <span className="inline-flex items-center gap-1.5 text-[12px] text-[#6B7280]">
-              <Loader2 size={11} className="animate-spin" /> Reloading knowledge matches…
-            </span>
-          )}
-          <p className="text-[13px] text-[#6B7280]">
-            <strong className="text-[#1F2937]">{resolved.length}</strong> of{" "}
-            <strong className="text-[#1F2937]">{qs.length}</strong> resolved ·{" "}
-            <strong className="text-[#C05600]">{queued.length}</strong> queued for SME ·{" "}
-            <strong className="text-[#C05600]">{waitingAe.length}</strong> waiting for AE
-          </p>
-          <span className="flex-1" />
-          <span title="Go back and adjust the department grouping — decisions made here are kept">
-            <BtnSecondary
-              onClick={() =>
-                actions.setTickets((p) =>
-                  p.map((t) => (t.id === ticket.id ? { ...t, stage: "grouping" } : t)),
-                )
-              }
-            >
-              <ArrowLeft size={11} /> Back: Grouping
-            </BtnSecondary>
+      {/* Progress, status and navigation share one row, so the questions get the height. */}
+      <div className="sticky top-0 z-10 bg-[#F5F4F1] py-1 flex items-center gap-x-3 gap-y-1 flex-wrap">
+        {rematching && (
+          <span className="inline-flex items-center gap-1.5 text-[12px] text-[#6B7280]">
+            <Loader2 size={11} className="animate-spin" /> Reloading knowledge matches…
           </span>
-          <BtnPrimary onClick={continueNext} disabled={!canContinue}>
-            {continueLabel} <ChevronRight size={11} />
-          </BtnPrimary>
-        </div>
+        )}
+        <p className="text-[13px] text-[#6B7280]">
+          <strong className="text-[#1F2937]">{resolved.length}</strong> of{" "}
+          <strong className="text-[#1F2937]">{qs.length}</strong> resolved ·{" "}
+          <strong className="text-[#C05600]">{queued.length}</strong> queued for SME ·{" "}
+          <strong className="text-[#C05600]">{waitingAe.length}</strong> waiting for AE
+        </p>
         <p
           role="status"
           aria-live="polite"
-          className={`text-[12px] px-3.5 py-2 rounded-lg border ${allResolved ? "text-[#166534] bg-[#F0FDF4] border-green-200" : "text-[#6B7280] bg-[#F7F8FA] border-border"}`}
+          className={`text-[12px] empty:hidden ${waitingOnlyForAe || editing ? "text-[#92400E]" : "text-[#166534]"}`}
         >
-          {unassigned.length > 0
-            ? `Assign departments to ${unassigned.length} question(s) in Grouping before continuing. Existing answers are kept.`
-            : allResolved
+          {unassigned.length === 0 && allResolved
             ? waitingOnlyForAe
               ? `All questions reviewed. Waiting for AE clarification on ${waitingAe.length} question(s); reopen them after the reply to continue.`
               : editing
                 ? "All questions reviewed. Save or cancel the current edit before continuing."
-                : "All questions reviewed. Use the Next button above to continue."
-            : `${remaining} question${remaining === 1 ? "" : "s"} left to review across all departments. Approve, route to SME, or request AE clarification for each one to continue.`}
+                : "All questions reviewed."
+            : ""}
         </p>
+        <span className="flex-1" />
+        <span title="Go back and adjust the department grouping — decisions made here are kept">
+          <BtnSecondary
+            onClick={() =>
+              actions.setTickets((p) =>
+                p.map((t) => (t.id === ticket.id ? { ...t, stage: "grouping" } : t)),
+              )
+            }
+          >
+            <ArrowLeft size={11} /> Back: Grouping
+          </BtnSecondary>
+        </span>
+        <span
+          title={
+            allResolved
+              ? undefined
+              : `${remaining} question${remaining === 1 ? "" : "s"} left to review — approve, route to SME, or request AE clarification for each one to continue`
+          }
+        >
+          <BtnPrimary onClick={continueNext} disabled={!canContinue}>
+            {continueLabel} <ChevronRight size={11} />
+          </BtnPrimary>
+        </span>
       </div>
       {unassigned.length > 0 && (
         <div role="alert" className="bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-lg px-4 py-3 flex items-center gap-3 flex-wrap">
@@ -1222,7 +1277,7 @@ function ReviewPanel({
           <BtnPrimary onClick={returnToGrouping}>Assign missing departments</BtnPrimary>
         </div>
       )}
-      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100dvh-390px)] md:min-h-[360px]">
+      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100dvh-240px)] md:min-h-[360px]">
         <div className="flex border-b border-border overflow-x-auto shrink-0">
           {["All", ...depts].map((d) => {
             const count = d === "All" ? qs.length : qs.filter((x) => x.department === d).length;
@@ -1273,13 +1328,15 @@ function ReviewPanel({
             ))}
           </div>
           <div className="flex-1 flex flex-col min-w-0 min-h-0">
-            <div ref={answerPanelRef} className="flex-1 min-h-0 md:overflow-y-auto p-6 flex flex-col gap-4 [&>*]:shrink-0">
-            <div className="flex items-start justify-between gap-4 pb-4 border-b border-[rgba(0,0,0,0.06)]">
+            <div ref={answerPanelRef} className="flex-1 min-h-0 md:overflow-y-auto px-6 py-4 flex flex-col gap-3 [&>*]:shrink-0">
+            <div className="flex items-start justify-between gap-4 pb-3 border-b border-[rgba(0,0,0,0.06)]">
               <div>
                 <h3 className="text-base font-bold text-[#0A0A0A] leading-snug tracking-tight">
                   {q.normalised}
                 </h3>
-                <p className="text-[12px] text-[#9CA3AF] mt-1 italic">Customer wording: “{q.original}”</p>
+                {q.original.trim() !== q.normalised.trim() && (
+                  <p className="text-[12px] text-[#9CA3AF] mt-1 italic">Customer wording: “{q.original}”</p>
+                )}
               </div>
               <Pill value={q.status} />
             </div>
@@ -1518,6 +1575,7 @@ function ReviewPanel({
                     <CheckCircle size={11} /> Save &amp; Approve
                   </BtnPrimary>
                   <BtnSecondary onClick={() => setEditing(false)}>Cancel</BtnSecondary>
+                  {routeToSmeButton}
                 </>
               ) : (
                 <>
@@ -1583,33 +1641,7 @@ function ReviewPanel({
                       </BtnSecondary>
                     </span>
                   )}
-                  {q.status !== "SME Queued" && !q.finalAnswer && (
-                    <button
-                      onClick={() => void persistReview(() => recordReviewEscalation(q, "SME"), () => {
-                        update(
-                          q.id,
-                          {
-                            status: "SME Queued",
-                            reviewOutcome: offered ? "ESCALATED" : undefined,
-                            reviewedAt: new Date().toISOString(),
-                          },
-                          `Routed question #${q.row} to ${q.department} SME queue`,
-                        );
-
-                        actions.addToast(`Added to the ${q.department} SME queue.`, "info");
-                        advance();
-                      })}
-                      disabled={q.department === TBD_DEPARTMENT}
-                      title={
-                        q.department === TBD_DEPARTMENT
-                          ? "This question has no department yet (TBD) — assign one in the Grouping stage before routing it to an SME"
-                          : `Queue this question for the ${q.department} SME team — nothing is sent yet; all queued questions go out together as one package per department`
-                      }
-                      className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${q.department === TBD_DEPARTMENT ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400] shadow-[0_2px_8px_rgba(249,103,2,0.25)]"}`}
-                    >
-                      <Send size={11} /> Route to SME
-                    </button>
-                  )}
+                  {routeToSmeButton}
                   {q.status === "SME Queued" && (
                     <span title="Take this question out of the SME queue and answer it here instead">
                       <BtnSecondary
@@ -2053,64 +2085,55 @@ function SmePackagePanel({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="bg-[#FAFAFA] border border-[rgba(0,0,0,0.08)] rounded-xl px-4 py-3 flex items-start gap-2.5">
-        <Info size={13} className="text-[#9CA3AF] shrink-0 mt-0.5" />
+      {/* Guidance and navigation share one row, so the package and draft get the height. */}
+      <div className="sticky top-0 z-10 bg-[#F5F4F1] py-1 flex items-center gap-x-3 gap-y-1 flex-wrap">
+        <p className="text-[13px] text-[#6B7280] shrink-0">
+          <strong className="text-[#C05600]">{queued.length}</strong> question{queued.length === 1 ? "" : "s"} to send ·{" "}
+          <strong className="text-[#1F2937]">{waiting.length}</strong> with SMEs
+        </p>
         <p
-          className="text-[13px] text-[#6B7280] truncate"
+          className="flex-1 min-w-[12rem] text-[12px] text-[#9CA3AF] truncate"
           title="SMEs do not log into this system. Every question routed during review is packaged here by department into an Excel file plus an email. Sending opens a pre-filled draft in your mail app (Outlook/Gmail) — attach the downloaded package manually, browsers cannot pre-attach files. Batch send registers every package first, then offers each department's draft to open one by one."
         >
-          SMEs don't log in — send each department a package + mail draft (<strong>attach the file
-          manually</strong>). Hover for details.
+          <Info size={11} className="inline -mt-0.5 mr-1" />
+          SMEs don't log in — send each department a package + mail draft (attach the file
+          manually). Hover for details.
         </p>
+        <span title="Go back to answer review — queued and sent questions are kept as they are">
+          <BtnSecondary
+            onClick={() =>
+              actions.setTickets((p) =>
+                p.map((t) => (t.id === ticket.id ? { ...t, stage: "review" } : t)),
+              )
+            }
+          >
+            <ArrowLeft size={11} /> Back: Answer Review
+          </BtnSecondary>
+        </span>
+        <span
+          title={
+            allSent
+              ? "Track the expected return date of each SME package — you can come back here anytime"
+              : `${queued.length} question(s) not sent yet — you can still jump ahead and come back.`
+          }
+        >
+          <BtnPrimary
+            onClick={() =>
+              actions.setTickets((p) =>
+                p.map((t) =>
+                  t.id === ticket.id
+                    ? { ...t, stage: "eta", status: allSent ? "Waiting SME" : t.status }
+                    : t,
+                ),
+              )
+            }
+          >
+            Next: ETA Tracking <ChevronRight size={11} />
+          </BtnPrimary>
+        </span>
       </div>
-      {unsentDepts.length > 0 && (
-        <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] px-4 py-2.5 flex items-center gap-3 flex-wrap">
-          <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide">
-            Send packages
-          </p>
-          {unsentDepts.map((d) => (
-            <label
-              key={d}
-              title={`Include the ${d} package in the batch send`}
-              className="flex items-center gap-1.5 text-[13px] text-[#374151] cursor-pointer border border-border rounded-full px-3 py-1 hover:border-[#F96702]/40"
-            >
-              <input
-                type="checkbox"
-                className="accent-[#F96702]"
-                checked={selected.includes(d)}
-                onChange={(e) =>
-                  setSelected((p) => (e.target.checked ? [...p, d] : p.filter((x) => x !== d)))
-                }
-              />
-              {d}
-              <span className="text-[10px] font-bold text-[#C05600]">
-                {queued.filter((q) => q.department === d).length}
-              </span>
-            </label>
-          ))}
-          <span className="flex-1" />
-          <button
-            onClick={() => sendMany(selected)}
-            disabled={selected.length === 0 || busy}
-            title="Registers the ticked packages, then offers each mail draft to open one by one"
-            className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${selected.length === 0 || busy ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400]"}`}
-          >
-            {busy ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />} Send
-            Selected ({selected.length})
-          </button>
-          <button
-            onClick={() => sendMany(unsentDepts)}
-            disabled={busy}
-            title="Registers every remaining package, then offers each mail draft to open one by one"
-            className={`flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold border rounded-full tracking-[0.06em] uppercase transition-all ${busy ? "border-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "border-[#F96702]/40 text-[#C05600] hover:bg-[#FFF4EC]"}`}
-          >
-            {busy ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />} Send All (
-            {unsentDepts.length})
-          </button>
-        </div>
-      )}
-      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden">
-        <div className="flex border-b border-border overflow-x-auto">
+      <div className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] overflow-hidden flex flex-col md:h-[calc(100dvh-240px)] md:min-h-[360px]">
+        <div className="flex items-center flex-wrap border-b border-border shrink-0">
           {depts.map((d) => {
             const count =
               queued.filter((q) => q.department === d).length ||
@@ -2119,31 +2142,66 @@ function SmePackagePanel({
             const prepared = registered && openReqFor(d)?.status === "Draft Prepared";
             const sent = registered && !prepared;
             return (
-              <button
-                key={d}
-                onClick={() => setTab(d)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 shrink-0 transition-colors ${tab === d ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
-              >
-                {d}
-                <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${tab === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
-                  {count}
-                </span>
-                {sent && <CheckCircle size={11} className="text-green-500" />}
-                {prepared && <Mail size={11} className="text-[#D97706]" />}
-              </button>
+              <div key={d} className={`flex items-center border-b-2 -mb-px shrink-0 ${tab === d ? "border-[#F96702]" : "border-transparent"}`}>
+                {unsentDepts.includes(d) && (
+                  <input
+                    type="checkbox"
+                    aria-label={`Include the ${d} package in the batch send`}
+                    title={`Include the ${d} package in the batch send`}
+                    className="accent-[#F96702] ml-3"
+                    checked={selected.includes(d)}
+                    onChange={(e) =>
+                      setSelected((p) => (e.target.checked ? [...p, d] : p.filter((x) => x !== d)))
+                    }
+                  />
+                )}
+                <button
+                  onClick={() => setTab(d)}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 text-[13px] font-medium transition-colors ${tab === d ? "text-[#C05600]" : "text-[#6B7280] hover:text-[#1F2937]"}`}
+                >
+                  {d}
+                  <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${tab === d ? "bg-[#FFF1E6] text-[#F96702]" : "bg-gray-100 text-gray-500"}`}>
+                    {count}
+                  </span>
+                  {sent && <CheckCircle size={11} className="text-green-500" />}
+                  {prepared && <Mail size={11} className="text-[#D97706]" />}
+                </button>
+              </div>
             );
           })}
+          {unsentDepts.length > 0 && (
+            <div className="ml-auto flex items-center gap-2 px-3 py-1.5">
+              <button
+                onClick={() => sendMany(selected)}
+                disabled={selected.length === 0 || busy}
+                title="Tick departments in the tabs, then register their packages and open each mail draft one by one"
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-[11px] font-bold rounded-full tracking-[0.06em] uppercase transition-all ${selected.length === 0 || busy ? "bg-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "bg-[#F96702] text-white hover:bg-[#D95400]"}`}
+              >
+                {busy ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />} Send
+                Selected ({selected.length})
+              </button>
+              <button
+                onClick={() => sendMany(unsentDepts)}
+                disabled={busy}
+                title="Registers every remaining package, then offers each mail draft to open one by one"
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-[11px] font-bold border rounded-full tracking-[0.06em] uppercase transition-all ${busy ? "border-[#E8E6E3] text-[#ABABAB] cursor-not-allowed" : "border-[#F96702]/40 text-[#C05600] hover:bg-[#FFF4EC]"}`}
+              >
+                {busy ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />} Send All (
+                {unsentDepts.length})
+              </button>
+            </div>
+          )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
-          <div className="flex flex-col">
-            <div className="px-3.5 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center gap-1.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border flex-1 min-h-0">
+          <div className="flex flex-col min-h-0">
+            <div className="px-3.5 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center gap-1.5 shrink-0">
               <FileSpreadsheet size={12} className="text-green-600" />
               <p className="text-[11px] font-bold text-[#1F2937]">SME Excel Package Preview</p>
               <span className="ml-auto text-[11px] text-[#9CA3AF]">
                 {ticket.customer.replace(/\s+/g, "_")}_SME_Request_{tab}.csv
               </span>
             </div>
-            <div className="overflow-x-auto"><table className="w-full">
+            <div className="overflow-auto flex-1 min-h-0"><table className="w-full">
               <thead>
                 <tr className="bg-[#FFF7F0] border-b border-border">
                   {["#", "Question", "SME Answer"].map((h) => (
@@ -2163,7 +2221,7 @@ function SmePackagePanel({
                 ))}
               </tbody>
             </table></div>
-            <div className="px-3.5 py-2.5 border-t border-border bg-[#F7F8FA] mt-auto">
+            <div className="px-3.5 py-2.5 border-t border-border bg-[#F7F8FA] mt-auto shrink-0">
               <button
                 onClick={downloadPackage}
                 title="Downloads this department's questions as a CSV file — Excel opens it directly (a real .xlsx export is planned on the backend)"
@@ -2173,8 +2231,8 @@ function SmePackagePanel({
               </button>
             </div>
           </div>
-          <div className="flex flex-col">
-            <div className="px-3.5 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center gap-1.5">
+          <div className="flex flex-col min-h-0">
+            <div className="px-3.5 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center gap-1.5 shrink-0">
               <Mail size={12} className="text-[#F96702]" />
               <p className="text-[11px] font-bold text-[#1F2937]">SME Email Draft — {tab} Team</p>
               {tabSent && (
@@ -2191,7 +2249,7 @@ function SmePackagePanel({
                 </span>
               )}
             </div>
-            <div className="px-3.5 py-2.5 space-y-1 border-b border-border text-[11px]">
+            <div className="px-3.5 py-2.5 space-y-1 border-b border-border text-[11px] shrink-0">
               {[
                 ["To", smeTeamAddress(tab)],
                 ["Subject", `ETA request — ${ticket.customer} customer form, ${tab} tab`],
@@ -2208,7 +2266,7 @@ function SmePackagePanel({
               );
               if (sentReq?.sentEmail)
                 return (
-                  <div className="px-3.5 py-3 text-[11px] text-[#374151] leading-relaxed flex-1 whitespace-pre-wrap">
+                  <div className="px-3.5 py-3 text-[11px] text-[#374151] leading-relaxed flex-1 min-h-0 overflow-y-auto whitespace-pre-wrap">
                     <p className="text-[10px] font-bold text-green-700 uppercase tracking-[0.1em] mb-1.5">
                       Email text — composed by backend
                     </p>
@@ -2219,7 +2277,7 @@ function SmePackagePanel({
                 );
               return null;
             })() ?? (
-            <div className="px-3.5 py-3 text-[11px] text-[#374151] leading-relaxed space-y-2 flex-1">
+            <div className="px-3.5 py-3 text-[11px] text-[#374151] leading-relaxed space-y-2 flex-1 min-h-0 overflow-y-auto">
               <p>Hi {tab} Team,</p>
               <p>
                 We need your input on the <strong>{tab} tab</strong> of the attached Excel for{" "}
@@ -2236,7 +2294,7 @@ function SmePackagePanel({
               </p>
             </div>
             )}
-            <div className="px-3.5 py-2.5 border-t border-border bg-[#F7F8FA]">
+            <div className="px-3.5 py-2.5 border-t border-border bg-[#F7F8FA] shrink-0">
               {tabPrepared && tabReq ? (
                 <div className="flex gap-2">
                   <button
@@ -2282,40 +2340,6 @@ function SmePackagePanel({
             </div>
           </div>
         </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <span title="Go back to answer review — queued and sent questions are kept as they are">
-          <BtnSecondary
-            onClick={() =>
-              actions.setTickets((p) =>
-                p.map((t) => (t.id === ticket.id ? { ...t, stage: "review" } : t)),
-              )
-            }
-          >
-            <ArrowLeft size={11} /> Back: Answer Review
-          </BtnSecondary>
-        </span>
-        <span className="flex-1" />
-        {!allSent && (
-          <p className="text-[11px] text-[#9CA3AF]">
-            {queued.length} question(s) not sent yet — you can still jump ahead and come back.
-          </p>
-        )}
-        <span title="Track the expected return date of each SME package — you can come back here anytime">
-          <BtnPrimary
-            onClick={() =>
-              actions.setTickets((p) =>
-                p.map((t) =>
-                  t.id === ticket.id
-                    ? { ...t, stage: "eta", status: allSent ? "Waiting SME" : t.status }
-                    : t,
-                ),
-              )
-            }
-          >
-            Next: ETA Tracking <ChevronRight size={11} />
-          </BtnPrimary>
-        </span>
       </div>
 
       {batchDrafts && (

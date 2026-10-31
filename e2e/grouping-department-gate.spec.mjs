@@ -51,7 +51,7 @@ try {
     } else await route.continue();
   });
   await department.selectOption("Legal");
-  await page.getByText(/was not saved. Please try again/).waitFor();
+  await page.getByText(/was not saved, so it is back in TBD/).waitFor();
   assert.ok(await next.isDisabled());
   assert.equal(await department.inputValue(), "TBD");
   await page.unroute("**/api/questions/*");

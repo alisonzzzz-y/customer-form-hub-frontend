@@ -16,9 +16,9 @@ async function api(path, method = "GET", body) {
   assert.ok(r.ok, path);
   return r.json();
 }
-async function setup() {
+async function setup(workflowStage = "review") {
   await api("/_debug/reset");
-  const t = await api("/tickets", "POST", { customerName: "Edge Case Co", ndaStatus: "Yes", status: "In Progress", workflowStage: "review" });
+  const t = await api("/tickets", "POST", { customerName: "Edge Case Co", ndaStatus: "Yes", status: "In Progress", workflowStage });
   const f = new FormData(); f.append("file", new Blob(["fixture"]), "Audit.xlsx");
   await fetch(API + "/questionnaire/import?ticketId=" + t.id, { method: "POST", body: f });
   return { t, qs: await api("/questions/ticket/" + t.id) };
@@ -71,6 +71,54 @@ try {
   await page.getByRole("button", { name: "Archive TK-9001" }).click();
   await page.getByText("TK-9001 archived.", { exact: true }).waitFor();
   assert.equal((await api("/tickets/" + t.id)).status, "Archived");
+
+  // A department change shows at once while the backend is still saving it,
+  // and a failed save moves the question back.
+  ({ t } = await setup("grouping"));
+  await open();
+  const firstRow = page.locator("div:has(> select)").first();
+  await firstRow.waitFor();
+  const text = (await firstRow.locator("p").first().textContent()).trim();
+  const rowSelect = () => page.locator("div:has(> select)", { hasText: text }).locator("select");
+  const savedDept = async () =>
+    (await api("/questions/ticket/" + t.id)).find((x) => x.questionText === text).department;
+  const from = await rowSelect().inputValue();
+  const to = from === "Legal" ? "Finance" : "Legal";
+  const deptTab = (d) => page.getByRole("button", { name: new RegExp(`^${d}\\s*\\d+$`) });
+  await page.route("**/api/questions/*", async (r) => {
+    if (r.request().method() !== "PUT") return r.continue();
+    await new Promise((done) => setTimeout(done, 2000));
+    await r.continue();
+  });
+  const started = Date.now();
+  await rowSelect().selectOption(to);
+  await page.getByText("Saving department assignments…").waitFor();
+  await deptTab(to).click();
+  assert.equal(await rowSelect().inputValue(), to);
+  assert.ok(Date.now() - started < 1500, "the department was not shown before the save finished");
+  assert.ok(await page.getByRole("button", { name: /Next: Match Knowledge Answers/ }).isDisabled());
+  await page.getByText("Saving department assignments…").waitFor({ state: "detached" });
+  assert.equal(await savedDept(), to);
+  await page.unroute("**/api/questions/*");
+  await page.route("**/api/questions/*", (r) =>
+    r.request().method() === "PUT" ? r.fulfill({ status: 500, body: "fail" }) : r.continue());
+  await rowSelect().selectOption(from);
+  await page.getByText(`was not saved, so it is back in ${to}`, { exact: false }).waitFor();
+  await deptTab(to).click();
+  assert.equal(await rowSelect().inputValue(), to);
+  assert.equal(await savedDept(), to);
+  await page.unroute("**/api/questions/*");
+
+  // While writing a manual answer, the question can still be routed to SME.
+  ({ t, qs } = await setup());
+  await open();
+  assert.equal(await reviewCount("queued for SME"), 0);
+  await page.getByRole("button", { name: /^(Manual Answer|Edit)$/ }).click();
+  await page.locator("textarea").waitFor();
+  await page.getByRole("button", { name: "Route to SME" }).click();
+  await page.getByText("SME queue.", { exact: false }).first().waitFor();
+  assert.equal(await page.locator("textarea").count(), 0);
+  assert.equal(await reviewCount("queued for SME"), 1);
 
   // Demo questions of a ticket saved to the backend are saved there too, so
   // they are still there after a refresh.

@@ -74,26 +74,29 @@ export function TicketDetailPage({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="px-7 pt-5 pb-0 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0">
-        <button
-          onClick={() => actions.go("tickets")}
-          className="flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase text-[#ABABAB] hover:text-[#F96702] transition-colors mb-2"
-        >
-          <ArrowLeft size={11} /> Tickets
-        </button>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="w-[3px] h-7 bg-[#F96702] rounded-full shrink-0 mt-0.5" />
-            <div>
-              <h1 className="text-xl font-bold text-[#0A0A0A] tracking-tight leading-snug">
+      {/* One compact row for the ticket, so the workflow below gets the height. */}
+      <div className="px-4 sm:px-7 pt-2.5 pb-0 bg-white border-b border-[rgba(0,0,0,0.06)] shrink-0">
+        <div className="flex items-center justify-between gap-x-3 gap-y-1 flex-wrap">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              onClick={() => actions.go("tickets")}
+              title="Back to all tickets"
+              aria-label="Back to tickets"
+              className="p-1 -ml-1 rounded text-[#ABABAB] hover:text-[#F96702] hover:bg-[#FFF4EC] transition-colors shrink-0"
+            >
+              <ArrowLeft size={14} />
+            </button>
+            <div className="w-[3px] h-5 bg-[#F96702] rounded-full shrink-0" />
+            <div className="flex items-baseline gap-x-3 flex-wrap min-w-0">
+              <h1 className="text-base font-bold text-[#0A0A0A] tracking-tight leading-snug">
                 {ticket.id} · {ticket.customer}
               </h1>
-              <p className="text-sm text-[#6B7280] mt-0.5">
+              <p className="text-[11px] text-[#9CA3AF]">
                 Due {fmtDate(ticket.due)} · NDA: {ticket.nda} · Owner {ticket.owner} · {ticket.sorId}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 shrink-0">
             <Pill value={ticket.status} />
             {ticket.status === "Archived" ? (
               <span title="Bring the ticket back to the list at the stage its questions are in">
@@ -152,12 +155,12 @@ export function TicketDetailPage({
             )}
           </div>
         </div>
-        <div className="flex gap-1 mt-3">
+        <div className="flex gap-1 mt-1 -ml-3.5 overflow-x-auto">
           {(["Overview", "Workflow", "Files", "Timeline", "Activity"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-3.5 py-2 text-[12px] font-semibold border-b-2 transition-colors ${tab === t ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
+              className={`px-3.5 py-1.5 shrink-0 text-[12px] font-semibold border-b-2 transition-colors ${tab === t ? "border-[#F96702] text-[#C05600]" : "border-transparent text-[#6B7280] hover:text-[#1F2937]"}`}
             >
               {t}
               {t === "Workflow" && qs.length > 0 && (
@@ -168,7 +171,7 @@ export function TicketDetailPage({
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto px-4 sm:px-8 py-7">
+      <div className={`flex-1 overflow-auto px-4 sm:px-8 ${tab === "Workflow" ? "pt-3 pb-4" : "py-7"}`}>
         {tab === "Overview" && (
           <OverviewTab state={state} ticketId={ticketId} progress={progress} />
         )}
