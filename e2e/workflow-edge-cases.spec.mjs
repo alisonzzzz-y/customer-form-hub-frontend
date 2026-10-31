@@ -64,11 +64,14 @@ try {
   await open();
   await page.getByRole("button", { name: "Approve", exact: true }).waitFor();
   await page.route("**/api/final-answers", r => r.fulfill({ status: 500, body: "Save failed" }));
+  // The decision shows at once; when its save fails the question goes back
+  // to review and nothing is recorded on the backend.
   await page.getByRole("button", { name: "Approve", exact: true }).click();
-  await page.getByText("The review decision was not saved.", { exact: false }).waitFor();
-  await page.locator("h3").filter({ hasText: "Do you hold ISO27001" }).waitFor();
-  assert.equal(await page.getByText("Answer approved.", { exact: true }).count(), 0);
+  await page.getByText("was not saved, so it is back as it was", { exact: false }).waitFor();
+  assert.notEqual((await api("/questions/ticket/" + t.id))[0].status, "Answered");
   await page.unroute("**/api/final-answers");
+  await page.getByRole("button").filter({ hasText: "Do you hold ISO27001?" }).click();
+  await page.locator("h3").filter({ hasText: "Do you hold ISO27001" }).waitFor();
   await page.getByRole("button", { name: "Approve", exact: true }).click();
   await page.locator("h3").filter({ hasText: "Describe how data is encrypted" }).waitFor();
   assert.equal((await api("/questions/ticket/" + t.id))[0].status, "Answered");

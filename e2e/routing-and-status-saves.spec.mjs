@@ -109,6 +109,27 @@ try {
   assert.equal(await savedDept(), to);
   await page.unroute("**/api/questions/*");
 
+  // Review decisions move on at once while the backend is still saving them;
+  // the next step waits until every decision is saved.
+  ({ t, qs } = await setup());
+  await page.route(/\/api\/(final-answers|questions\/\d+\/review-escalation)$/, async (r) => {
+    await new Promise((done) => setTimeout(done, 2000));
+    await r.continue();
+  });
+  await open();
+  const shownQuestion = async () => (await page.locator("h3").first().textContent()).trim();
+  const first = await shownQuestion();
+  const clicked = Date.now();
+  await page.getByRole("button", { name: "Route to SME", exact: true }).click();
+  await page.waitForFunction((was) => document.querySelector("h3")?.textContent.trim() !== was, first);
+  assert.ok(Date.now() - clicked < 1000, "the next question was not shown before the save finished");
+  await page.getByText("Saving 1 decision…").waitFor();
+  assert.equal(await reviewCount("queued for SME"), 1);
+  await page.getByText("Saving 1 decision…").waitFor({ state: "detached" });
+  const routed = (await api("/questions/ticket/" + t.id)).find((x) => x.questionText === first);
+  assert.equal(routed.status, "SME Needed");
+  await page.unroute(/\/api\/(final-answers|questions\/\d+\/review-escalation)$/);
+
   // While writing a manual answer, the question can still be routed to SME.
   ({ t, qs } = await setup());
   await open();

@@ -959,8 +959,10 @@ function ReviewPanel({
   const [saveToKb, setSaveToKb] = useState(false);
   const [showAlternatives, setShowAlternatives] = useState(true);
   const [rematching, setRematching] = useState(false);
-  const [savingReview, setSavingReview] = useState(false);
-  const reviewSavePending = useRef(false);
+  // Review decisions still being saved, and the save queue of each question.
+  const [pendingSaves, setPendingSaves] = useState(0);
+  const saveChains = useRef(new Map<number, Promise<void>>());
+  const failedSaves = useRef(new Set<number>());
   const questionListRef = useRef<HTMLDivElement>(null);
   const answerPanelRef = useRef<HTMLDivElement>(null);
 
@@ -1014,7 +1016,7 @@ function ReviewPanel({
   const allResolved = qs.length > 0 && resolved.length === qs.length;
   const remaining = qs.length - resolved.length;
   const waitingOnlyForAe = queued.length === 0 && waitingSme.length === 0 && waitingAe.length > 0;
-  const canContinue = allResolved && unassigned.length === 0 && !waitingOnlyForAe && !editing && !savingReview;
+  const canContinue = allResolved && unassigned.length === 0 && !waitingOnlyForAe && !editing && pendingSaves === 0;
   const continueLabel = queued.length > 0
     ? `Next: SME Package (${queued.length})`
     : waitingSme.length > 0
@@ -1042,20 +1044,36 @@ function ReviewPanel({
     actions.logActivity(log, ticket.id);
   };
 
-  const persistReview = async (save: () => Promise<boolean>, onSaved: () => void) => {
-    if (reviewSavePending.current) return;
-    reviewSavePending.current = true;
-    setSavingReview(true);
-    try {
-      if (!(await save())) {
-        actions.addToast("The review decision was not saved. Your work is kept here; please try again.", "warning");
-        return;
-      }
-      onSaved();
-    } finally {
-      reviewSavePending.current = false;
-      setSavingReview(false);
-    }
+  // A decision on the selected question is shown, and the next question
+  // selected, at once; the save runs in the background. Saves for one question
+  // run in order. When one fails the question goes back to how it was before
+  // that decision, and its later queued decisions are dropped.
+  const persistReview = (save: () => Promise<boolean>, onSaved: () => void) => {
+    const before = q;
+    if (!before) return;
+    onSaved();
+    setPendingSaves((n) => n + 1);
+    const previous = saveChains.current.get(before.id) ?? Promise.resolve();
+    const chain: Promise<void> = previous
+      .then(async () => {
+        if (failedSaves.current.has(before.id)) return;
+        const saved = await save().catch(() => false);
+        if (saved) return;
+        failedSaves.current.add(before.id);
+        actions.setQuestions((p) => p.map((x) => (x.id === before.id ? before : x)));
+        actions.addToast(
+          `The decision on question #${before.row} was not saved, so it is back as it was. Please try again.`,
+          "warning",
+        );
+      })
+      .finally(() => {
+        setPendingSaves((n) => n - 1);
+        if (saveChains.current.get(before.id) === chain) {
+          saveChains.current.delete(before.id);
+          failedSaves.current.delete(before.id);
+        }
+      });
+    saveChains.current.set(before.id, chain);
   };
 
   const select = (id: number) => {
@@ -1218,7 +1236,7 @@ function ReviewPanel({
   );
 
   return (
-    <fieldset disabled={savingReview} className="flex flex-col gap-3 min-w-0">
+    <fieldset className="flex flex-col gap-3 min-w-0">
       {/* Progress, status and navigation share one row, so the questions get the height. */}
       <div className="sticky top-0 z-10 bg-[#F5F4F1] py-1 flex items-center gap-x-3 gap-y-1 flex-wrap">
         {rematching && (
@@ -1245,6 +1263,11 @@ function ReviewPanel({
                 : "All questions reviewed."
             : ""}
         </p>
+        {pendingSaves > 0 && (
+          <span className="inline-flex items-center gap-1.5 text-[12px] text-[#6B7280]">
+            <Loader2 size={11} className="animate-spin" /> Saving {pendingSaves} decision{pendingSaves === 1 ? "" : "s"}…
+          </span>
+        )}
         <span className="flex-1" />
         <span title="Go back and adjust the department grouping — decisions made here are kept">
           <BtnSecondary
