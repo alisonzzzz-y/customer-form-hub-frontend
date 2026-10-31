@@ -653,6 +653,8 @@ function GroupingPanel({
   const [customName, setCustomName] = useState("");
   // Department each question should end up in, while its save is running.
   const savingDepartmentIds = useRef(new Map<number, string>());
+  // The running save of each question's department, resolving to whether it was saved.
+  const departmentSaves = useRef(new Map<number, Promise<boolean>>());
   const [savingDepartments, setSavingDepartments] = useState(0);
   const unassigned = qs.filter((q) => !hasQuestionDepartment(q.department));
 
@@ -681,7 +683,7 @@ function GroupingPanel({
     setSavingDepartments(wanted.size);
     if (alreadySaving) return;
 
-    void (async () => {
+    const save = (async () => {
       let lastSaved = { department: q.department, source: q.departmentSource };
       try {
         for (;;) {
@@ -692,20 +694,24 @@ function GroupingPanel({
               `The department for question #${q.row} was not saved, so it is back in ${lastSaved.department}. Please try again.`,
               "warning",
             );
-            return;
+            return false;
           }
           lastSaved = { department: target, source: "Manual" };
-          if (wanted.get(q.id) === target) return;
+          if (wanted.get(q.id) === target) return true;
         }
       } finally {
         wanted.delete(q.id);
         setSavingDepartments(wanted.size);
       }
     })();
+    departmentSaves.current.set(q.id, save);
+    void save.finally(() => {
+      if (departmentSaves.current.get(q.id) === save) departmentSaves.current.delete(q.id);
+    });
   };
 
   const confirm = async () => {
-    if (processing || savingDepartmentIds.current.size > 0) return;
+    if (processing) return;
     if (qs.length === 0 || unassigned.length > 0) {
       actions.addToast("Assign an owning department to every question before matching answers.", "warning");
       if (unassigned[0]) setTab(unassigned[0].department);
@@ -718,11 +724,18 @@ function GroupingPanel({
     const isOpen = (q: MvpQuestion) => !q.finalAnswer && !ROUTED_STATUSES.includes(q.status);
     const pending = qs.filter(isOpen);
 
+    // Department changes still being saved finish while the knowledge search
+    // runs; the next step needs them saved, so a failed one stops here.
     // Search in small batches to avoid backend timeouts.
     let updates: Map<number, MvpQuestion> | null = null;
-    const resultMap = await ragSearchAll(
-      pending.map((q) => ({ id: q.id, text: q.normalised || q.original })),
-    );
+    const [departmentsSaved, resultMap] = await Promise.all([
+      Promise.all([...departmentSaves.current.values()]),
+      ragSearchAll(pending.map((q) => ({ id: q.id, text: q.normalised || q.original }))),
+    ]);
+    if (departmentsSaved.includes(false)) {
+      setProcessing(false);
+      return;
+    }
     if (resultMap !== null) {
       updates = new Map();
       for (const q of pending) {
@@ -825,7 +838,7 @@ function GroupingPanel({
       </div>
       <div className="px-4 py-3 border-t border-border bg-[#FAFAFA]">
         <span title={unassigned.length > 0 ? "Assign every TBD question to a department first" : "Search approved knowledge for answers; questions without a supported answer can be routed to SME"}>
-          <BtnPrimary onClick={confirm} disabled={qs.length === 0 || unassigned.length > 0 || savingDepartments > 0}>
+          <BtnPrimary onClick={confirm} disabled={qs.length === 0 || unassigned.length > 0}>
             Next: Match Knowledge Answers <ChevronRight size={11} />
           </BtnPrimary>
         </span>

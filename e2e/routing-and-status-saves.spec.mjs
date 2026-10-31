@@ -96,7 +96,6 @@ try {
   await deptTab(to).click();
   assert.equal(await rowSelect().inputValue(), to);
   assert.ok(Date.now() - started < 1500, "the department was not shown before the save finished");
-  assert.ok(await page.getByRole("button", { name: /Next: Match Knowledge Answers/ }).isDisabled());
   await page.getByText("Saving department assignments…").waitFor({ state: "detached" });
   assert.equal(await savedDept(), to);
   await page.unroute("**/api/questions/*");
@@ -107,6 +106,23 @@ try {
   await deptTab(to).click();
   assert.equal(await rowSelect().inputValue(), to);
   assert.equal(await savedDept(), to);
+  await page.unroute("**/api/questions/*");
+
+  // Next can be clicked while a department change is still saving; it waits
+  // for the save and moves on once it is done.
+  await page.route("**/api/questions/*", async (r) => {
+    if (r.request().method() !== "PUT") return r.continue();
+    await new Promise((done) => setTimeout(done, 2000));
+    await r.continue();
+  });
+  const back = await rowSelect().inputValue();
+  const other = back === "Legal" ? "Finance" : "Legal";
+  await rowSelect().selectOption(other);
+  const nextStep = page.getByRole("button", { name: /Next: Match Knowledge Answers/ });
+  assert.ok(await nextStep.isEnabled());
+  await nextStep.click();
+  await page.getByText("Knowledge matches ready", { exact: false }).waitFor();
+  assert.equal(await savedDept(), other);
   await page.unroute("**/api/questions/*");
 
   // Review decisions move on at once while the backend is still saving them;

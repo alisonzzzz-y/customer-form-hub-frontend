@@ -14,6 +14,7 @@ import {
   ChevronDown,
   AlertTriangle,
   Menu,
+  RefreshCw,
 } from "lucide-react";
 import {
   ModuleId,
@@ -261,6 +262,31 @@ export default function AppShell() {
     if (backendLive) void hydrate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendLive]);
+
+  // A tab left open keeps running the version it loaded, so fixes deployed
+  // since then do not reach it. Check now and then whether a newer build is
+  // deployed, and offer a reload.
+  const [newVersion, setNewVersion] = useState(false);
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+    const loaded = [...document.scripts].map((s) => s.src).find((src) => src.includes("/assets/"));
+    if (!loaded) return;
+    const check = async () => {
+      try {
+        const html = await (await fetch("/", { cache: "no-store" })).text();
+        const deployed = html.match(/\/assets\/[^"']+\.js/)?.[0];
+        if (deployed && !loaded.endsWith(deployed)) setNewVersion(true);
+      } catch {
+        // Offline: check again later.
+      }
+    };
+    const timer = window.setInterval(check, 5 * 60 * 1000);
+    window.addEventListener("focus", check);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", check);
+    };
+  }, []);
 
   // Save each ticket's workflow step whenever it changes, so a refresh
   // reopens the same step. The first time a ticket is seen, the step the
@@ -553,6 +579,21 @@ export default function AppShell() {
             </div>
           </div>
         </header>
+
+        {newVersion && (
+          <div role="status" className="bg-[#EEF2FF] border-b border-[#C7D2FE] px-6 py-2 flex items-center gap-2 shrink-0">
+            <RefreshCw size={13} className="text-[#4338CA] shrink-0" />
+            <p className="text-[12px] text-[#3730A3] font-medium flex-1">
+              A newer version of the app has been deployed. Reload to use it — your saved work is kept.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-[11px] font-bold text-[#3730A3] border border-[#C7D2FE] rounded-full px-3 py-1 hover:bg-[#E0E7FF] whitespace-nowrap transition-colors"
+            >
+              Reload
+            </button>
+          </div>
+        )}
 
         {backendLive === false && !initialLiveLoad && (
           <div className="bg-[#FEF3C7] border-b border-[#F59E0B]/30 px-6 py-2 flex items-center gap-2 shrink-0">
