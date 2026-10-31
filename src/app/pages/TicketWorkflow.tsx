@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
-  Bell,
   Brain,
   CheckCircle,
   CheckSquare,
@@ -42,7 +41,6 @@ import {
   mergeImportedQuestions,
   ticketIdForBackend,
   pendingForms,
-  smeRequestReferenceNow,
   withCurrentDeadline,
 } from "../data/model";
 import { AppActions, AppState } from "../AppShell";
@@ -2482,7 +2480,6 @@ function EtaPanel({
   const [etaModal, setEtaModal] = useState<MvpSmeRequest | null>(null);
   const [etaValue, setEtaValue] = useState("");
   const [confirmedBy, setConfirmedBy] = useState("");
-  const [nudgeFor, setNudgeFor] = useState<MvpSmeRequest | null>(null);
   const [recordFor, setRecordFor] = useState<MvpSmeRequest | null>(null);
   const [undoingId, setUndoingId] = useState<number | null>(null);
 
@@ -2660,19 +2657,6 @@ function EtaPanel({
                           </button>
                           {r.status !== "Draft Prepared" && (<>
                           <button
-                            onClick={() => setNudgeFor(r)}
-                            title={
-                              over
-                                ? "Overdue — drafts a follow-up email in your mail app"
-                                : !r.eta
-                                  ? "No ETA yet — drafts an ETA-confirmation chaser in your mail app"
-                                  : "Drafts a context-aware check-in email in your mail app"
-                            }
-                            className={`px-3 py-1 text-[10px] font-bold rounded-full tracking-[0.06em] uppercase whitespace-nowrap transition-all ${over ? "border border-[#FCA5A5]/50 bg-[#FEF2F2] text-[#991B1B] hover:bg-[#FEE2E2]" : "border border-[#F96702]/40 text-[#C05600] hover:bg-[#FFF4EC]"}`}
-                          >
-                            <Bell size={9} className="inline mr-0.5" /> Nudge
-                          </button>
-                          <button
                             onClick={() => setRecordFor(r)}
                             title="The SME replied? Upload their returned Excel or paste the answers per question"
                             className="px-3 py-1 text-[10px] font-bold border border-green-600/40 bg-green-50 rounded-full text-green-700 hover:bg-green-100 tracking-[0.06em] uppercase whitespace-nowrap transition-all"
@@ -2786,9 +2770,6 @@ function EtaPanel({
         </div>
       )}
 
-      {nudgeFor && (
-        <NudgeModal ticket={ticket} req={nudgeFor} actions={actions} close={() => setNudgeFor(null)} />
-      )}
       {recordFor && (
         <RecordAnswersModal
           ticket={ticket}
@@ -3028,130 +3009,6 @@ function RecordAnswersModal({
         </div>
       </div>
     </fieldset>
-  );
-}
-
-// Draft a reminder based on the current SME request status.
-function NudgeModal({
-  ticket,
-  req,
-  actions,
-  close,
-}: {
-  ticket: MvpTicket;
-  req: MvpSmeRequest;
-  actions: AppActions;
-  close: () => void;
-}) {
-  const clock = smeRequestReferenceNow(req);
-  const over = isOverdueSmeRequest(req);
-  const dueSoon =
-    !over && req.eta !== null && new Date(req.eta).getTime() - clock.getTime() < 24 * 3600 * 1000;
-  const variant = !req.eta ? "no-eta" : over ? "overdue" : dueSoon ? "due-soon" : "check-in";
-
-  const templates: Record<string, { label: string; subject: string; lines: string[] }> = {
-    "no-eta": {
-      label: "ETA confirmation chaser",
-      subject: `ETA needed — ${ticket.customer} customer form, ${req.department} tab (${ticket.id})`,
-      lines: [
-        `Hi ${req.assignee},`,
-        "",
-        `We sent the ${req.department} tab of the ${ticket.customer} questionnaire on ${fmtDate(req.sentAt)} and haven't received an ETA yet.`,
-        "",
-        `Could you reply with a realistic return date? Our customer deadline is ${fmtDate(ticket.due)} and we plan the final review around your ETA.`,
-      ],
-    },
-    "due-soon": {
-      label: "ETA due soon — friendly heads-up",
-      subject: `Heads-up: ${req.department} tab due ${req.eta ? fmtDateTime(req.eta) : ""} — ${ticket.customer} (${ticket.id})`,
-      lines: [
-        `Hi ${req.assignee},`,
-        "",
-        `A quick heads-up that the agreed ETA for the ${req.department} tab (${req.eta ? fmtDateTime(req.eta) : "—"}) is coming up.`,
-        "",
-        `If anything blocks the return, let us know early so we can re-plan — the customer deadline is ${fmtDate(ticket.due)}.`,
-      ],
-    },
-    overdue: {
-      label: "Overdue follow-up",
-      subject: `Follow-up: ${req.department} tab overdue — ${ticket.customer} customer form (${ticket.id})`,
-      lines: [
-        `Hi ${req.assignee},`,
-        "",
-        `Following up on the ${req.department} tab for the ${ticket.customer} customer form — the agreed ETA (${req.eta ? fmtDateTime(req.eta) : "—"}) has passed. Could you confirm when this can be returned?`,
-        "",
-        `Our customer deadline is ${fmtDate(ticket.due)} and we need time for final review.`,
-      ],
-    },
-    "check-in": {
-      label: "Progress check-in",
-      subject: `Checking in: ${req.department} tab — ${ticket.customer} customer form (${ticket.id})`,
-      lines: [
-        `Hi ${req.assignee},`,
-        "",
-        `Just checking in on the ${req.department} tab ahead of your ETA (${req.eta ? fmtDateTime(req.eta) : "—"}). No action needed if everything is on track.`,
-        "",
-        `If any question is out of scope or blocked, flag it now so we can reroute before the ${fmtDate(ticket.due)} customer deadline.`,
-      ],
-    },
-  };
-  const t = templates[variant];
-  const to = smeTeamAddress(req.department);
-  const [subject, setSubject] = useState(t.subject);
-  const [body, setBody] = useState(
-    [...t.lines, "", "Thanks,", "Sarah Chen, GOM Analyst"].join("\n"),
-  );
-
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-[520px] max-h-[85vh] overflow-hidden flex flex-col">
-        <div className="px-4 py-2.5 bg-[#F7F8FA] border-b border-border flex items-center justify-between shrink-0">
-          <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wide">
-            {t.label} — auto-drafted, editable
-          </p>
-          {variant === "overdue" && (
-            <span className="flex items-center gap-1 text-[11px] text-red-600 font-medium">
-              <AlertTriangle size={10} /> {req.department} tab overdue
-            </span>
-          )}
-        </div>
-        <div className="px-4 py-2.5 space-y-2 border-b border-border text-[13px] shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-[#9CA3AF] w-14 shrink-0">To:</span>
-            <span className="text-[#1F2937]">{to}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[#9CA3AF] w-14 shrink-0">Subject:</span>
-            <input
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="flex-1 border border-border rounded-md px-2 py-1 text-[13px]"
-            />
-          </div>
-        </div>
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={10}
-          className="flex-1 px-4 py-3 text-[13px] text-[#374151] leading-relaxed resize-none focus:outline-none"
-        />
-        <div className="px-4 py-3 border-t border-border flex items-center gap-2 bg-[#FAFAFA] shrink-0">
-          <span title="Opens the draft in your mail app (Outlook/Gmail) — the system never sends email itself">
-            <BtnPrimary
-              onClick={() => {
-                openMailDraft(to, subject, body);
-                actions.logActivity(`Nudged ${req.assignee} (${t.label.toLowerCase()})`, ticket.id);
-                actions.addToast("Draft opened in your mail app.", "info");
-                close();
-              }}
-            >
-              <Send size={11} /> Open in Mail App
-            </BtnPrimary>
-          </span>
-          <BtnSecondary onClick={close}>Cancel</BtnSecondary>
-        </div>
-      </div>
-    </div>
   );
 }
 
