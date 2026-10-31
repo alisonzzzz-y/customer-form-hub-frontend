@@ -299,8 +299,8 @@ export function TicketsPage({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (t.status === "Archived") restoreTicket(t, state, actions);
-                            else archiveTicket(t, actions);
+                            if (t.status === "Archived") void restoreTicket(t, state, actions);
+                            else void archiveTicket(t, actions);
                           }}
                           title={
                             t.status === "Archived"

@@ -396,16 +396,40 @@ export async function syncQuestionDepartment(
 export async function createBackendQuestion(
   ticketId: number,
   question: Pick<MvpQuestion, "original" | "department" | "risk" | "row">,
+  status = "SME Needed",
 ): Promise<number | null> {
   const created = await post<FormQuestion>("/questions", {
     ticketId,
     questionText: question.original,
     department: questionDeptToBackend(question.department),
-    status: "SME Needed",
+    status,
     riskLevel: question.risk,
     rowReference: `Q${question.row}`,
   });
   return created?.id ?? null;
+}
+
+// Save the demo questions of a ticket that exists on the backend, so they
+// survive a refresh and the review, SME and export steps include them. A retry
+// after a partial failure reuses the rows already saved instead of adding them
+// twice. Resolves to local question id -> backend id, or null if not saved.
+export async function saveDemoQuestions(
+  ticketId: number,
+  questions: MvpQuestion[],
+): Promise<Map<number, number> | null> {
+  const saved = await get<FormQuestion[]>(`/questions/ticket/${ticketId}`);
+  if (saved === null) return null;
+  const unused = [...saved];
+  const ids = new Map<number, number>();
+  for (const q of questions) {
+    const i = unused.findIndex((b) => b.questionText === q.original);
+    const backendId = i >= 0
+      ? unused.splice(i, 1)[0].id
+      : await createBackendQuestion(ticketId, q, "Needs Review");
+    if (backendId === null) return null;
+    ids.set(q.id, backendId);
+  }
+  return ids;
 }
 
 // Step changes are single clicks, so they are saved at once rather than
@@ -415,12 +439,26 @@ export function syncTicketStage(backendId: number | undefined, stage: TicketStag
   void put(`/tickets/${backendId}`, { workflowStage: stage });
 }
 
-export function syncTicketStatus(
+// Save a status the user chose, and say so when the backend did not keep it.
+// Callers change the ticket here only after this resolves to true.
+export async function saveTicketStatus(
+  ticket: Pick<MvpTicket, "id" | "backendId">,
+  status: string,
+  addToast: (message: string, kind: "warning") => void,
+): Promise<boolean> {
+  if (await syncTicketStatus(ticket.backendId, status)) return true;
+  addToast(`${ticket.id} was not set to ${status} — the backend did not confirm it. Nothing was changed; try again.`, "warning");
+  return false;
+}
+
+// Resolves to whether the backend saved the status (true when the ticket
+// exists only in this browser).
+export async function syncTicketStatus(
   backendId: number | undefined,
   status: string,
-) {
-  if (!backendId) return;
-  void patch(`/tickets/${backendId}/status`, { status });
+): Promise<boolean> {
+  if (!backendId) return true;
+  return (await patch(`/tickets/${backendId}/status`, { status })) !== null;
 }
 
 export type ParsedBackendQuestion = {
@@ -768,17 +806,23 @@ export async function loadBackendWorld(
     );
 
     // Map questions to their SME requests.
+    // A question routed to SME again after its request was returned has a link
+    // to that closed request too; the link to an open request wins.
     const linkByQ = new Map<
       number,
-      { reqId: number; srqId: number; returned: boolean }
+      { reqId: number; srqId: number; returned: boolean; requestOpen: boolean }
     >();
     breqs.forEach((r, i) => {
-      for (const l of linkLists[i] ?? [])
+      const requestOpen = r.status !== "Returned";
+      for (const l of linkLists[i] ?? []) {
+        if (linkByQ.get(l.questionId)?.requestOpen && !requestOpen) continue;
         linkByQ.set(l.questionId, {
           reqId: r.id,
           srqId: l.id,
           returned: l.status === "Returned",
+          requestOpen,
         });
+      }
     });
 
     const firstByText = new Map<string, number>();
@@ -789,7 +833,7 @@ export async function loadBackendWorld(
       let status: MvpQuestion["status"];
       if (fa) status = link?.returned ? "SME Complete" : "Approved";
       else if (q.status === "SME Needed")
-        status = link ? "Waiting SME" : "SME Queued";
+        status = link?.requestOpen ? "Waiting SME" : "SME Queued";
       else if (q.status === "Waiting AE") status = "Waiting AE";
       else status = "Needs Review";
       // Questions the customer form itself repeats are flagged again on reload.

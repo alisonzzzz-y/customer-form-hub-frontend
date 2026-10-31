@@ -269,9 +269,6 @@ export default function AppShell() {
   useEffect(() => {
     for (const t of tickets) {
       if (!t.backendId || t.isStartupDemo) continue;
-      // Demo questions exist only in this browser, so the backend cannot check
-      // (and refuses) the later steps of a demo ticket. Its step stays local.
-      if (t.formImport?.source === "demo") continue;
       const last = syncedStages.current.get(t.backendId) ?? t.savedStage;
       syncedStages.current.set(t.backendId, t.stage);
       if (last !== undefined && last !== t.stage) syncTicketStage(t.backendId, t.stage);

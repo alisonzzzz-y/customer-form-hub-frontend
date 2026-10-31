@@ -49,6 +49,7 @@ import { AppActions, AppState } from "../AppShell";
 import {
   applyRagResult,
   createBackendQuestion,
+  saveDemoQuestions,
   createBackendSmeRequest,
   createBackendTicket,
   downloadTicketExport,
@@ -69,6 +70,7 @@ import {
   syncSmeAnswer,
   previewSmeAnswers,
   syncSmeRequest,
+  saveTicketStatus,
   syncTicketStatus,
   unreturnBackendSmeRequest,
 } from "../services/backend";
@@ -400,6 +402,19 @@ function IntakePanel({
     } else {
       // Analysing the same ticket twice must not add a second demo set.
       newQs = existing.length > 0 ? [] : extractQuestionsFor(tid, base);
+      // A ticket saved to the backend keeps its demo questions there as well,
+      // so a refresh, the review decisions and the export all include them.
+      if (backendId && newQs.length > 0) {
+        const ids = await saveDemoQuestions(backendId, newQs);
+        if (!ids) {
+          setProcessing(false);
+          setThisTicket({ status: "Intake Review" });
+          actions.addToast("The demo questions could not be saved to the backend. Nothing was analysed; try again.", "warning");
+          actions.logActivity("Backend did not save the demo questions — analysis aborted", tid);
+          return;
+        }
+        newQs = newQs.map((q) => ({ ...q, backendId: ids.get(q.id) }));
+      }
       formImport = {
         source: "demo",
         questionCount: existing.length || newQs.length,
@@ -621,6 +636,8 @@ function ProcessingCard({ text }: { text: string }) {
   );
 }
 
+const ROUTED_STATUSES: MvpQuestion["status"][] = ["SME Queued", "Waiting SME", "Waiting AE"];
+
 function GroupingPanel({
   ticket,
   qs,
@@ -675,7 +692,10 @@ function GroupingPanel({
     }
     setProcessing(true);
     actions.logActivity("Confirmed department grouping — matching approved knowledge", ticket.id);
-    const pending = qs.filter((q) => !q.finalAnswer && q.status !== "SME Queued");
+    // Questions already routed to an SME or the AE keep that decision; only
+    // the ones still open for review are matched (again).
+    const isOpen = (q: MvpQuestion) => !q.finalAnswer && !ROUTED_STATUSES.includes(q.status);
+    const pending = qs.filter(isOpen);
 
     // Search in small batches to avoid backend timeouts.
     let updates: Map<number, MvpQuestion> | null = null;
@@ -693,7 +713,7 @@ function GroupingPanel({
     setTimeout(() => {
       actions.setQuestions((p) =>
         p.map((q) => {
-          if (q.ticketId !== ticket.id || q.finalAnswer || q.status === "SME Queued") return q;
+          if (q.ticketId !== ticket.id || !isOpen(q)) return q;
           return updates ? (updates.get(q.id) ?? q) : attachSuggestions(q);
         }),
       );
@@ -1079,7 +1099,7 @@ function ReviewPanel({
     p.map((t) => t.id === ticket.id ? { ...t, stage: "grouping" } : t),
   );
 
-  const continueNext = () => {
+  const continueNext = async () => {
     if (!canContinue) return;
     if (queued.length > 0) {
       actions.setTickets((p) => p.map((t) => (t.id === ticket.id ? { ...t, stage: "sme" } : t)));
@@ -1087,10 +1107,10 @@ function ReviewPanel({
     } else if (waitingSme.length > 0) {
       actions.setTickets((p) => p.map((t) => (t.id === ticket.id ? { ...t, stage: "eta" } : t)));
     } else if (waitingAe.length === 0) {
+      if (!(await saveTicketStatus(ticket, "Ready for Review", actions.addToast))) return;
       actions.setTickets((p) =>
         p.map((t) => (t.id === ticket.id ? { ...t, stage: "final", status: "Ready for Review" } : t)),
       );
-      syncTicketStatus(ticket.backendId, "Ready for Review");
       actions.logActivity("Answer review complete — no SME input needed", ticket.id);
     } else {
       actions.addToast(
@@ -2632,13 +2652,13 @@ function EtaPanel({
         {allReturned && waitingAe.length === 0 && (
           <span title="All SME answers are back — run the completeness checks and export">
             <BtnPrimary
-              onClick={() => {
+              onClick={async () => {
+                if (!(await saveTicketStatus(ticket, "Ready for Review", actions.addToast))) return;
                 actions.setTickets((p) =>
                   p.map((t) =>
                     t.id === ticket.id ? { ...t, stage: "final", status: "Ready for Review" } : t,
                   ),
                 );
-                syncTicketStatus(ticket.backendId, "Ready for Review");
                 actions.logActivity("All SME tabs returned — final review unlocked", ticket.id);
               }}
             >
@@ -3213,7 +3233,8 @@ function FinalPanel({
       <div className="flex gap-2.5 flex-wrap items-center">
         <span title={reqs.length > 0 ? "Go back to the SME ETA tracking for this ticket" : "Go back and review the answers again"}>
           <BtnSecondary
-            onClick={() => {
+            onClick={async () => {
+              if (!(await saveTicketStatus(ticket, "In Progress", actions.addToast))) return;
               actions.setTickets((p) =>
                 p.map((t) =>
                   t.id === ticket.id
@@ -3221,7 +3242,6 @@ function FinalPanel({
                     : t,
                 ),
               );
-              syncTicketStatus(ticket.backendId, "In Progress");
             }}
           >
             <ArrowLeft size={11} /> {reqs.length > 0 ? "Back: ETA Tracking" : "Back: Answer Review"}
@@ -3282,11 +3302,11 @@ function FinalPanel({
               ? "Blocked: complete step 2 (export) first"
               : "Step 3 — locks the ticket as Approved; finish with 'Mark Sent & Close' in the header"
           }
-          onClick={() => {
+          onClick={async () => {
+            if (!(await saveTicketStatus(ticket, "Approved", actions.addToast))) return;
             actions.setTickets((p) =>
               p.map((t) => (t.id === ticket.id ? { ...t, status: "Approved", stage: "done" } : t)),
             );
-            syncTicketStatus(ticket.backendId, "Approved");
             actions.logActivity("Approved final response — ticket ready to send", ticket.id);
             actions.addToast("Ticket approved. Use Mark Sent & Close in the header to finish.", "success");
           }}

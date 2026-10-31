@@ -21,34 +21,34 @@ import {
 import { AppActions, AppState } from "../AppShell";
 import { WorkflowTab } from "./TicketWorkflow";
 import { Card, Pill } from "../components/ui";
-import { syncTicketStatus } from "../services/backend";
+import { saveTicketStatus } from "../services/backend";
 
 type Tab = "Overview" | "Workflow" | "Files" | "Timeline" | "Activity";
 
 // Archiving hides a ticket from the list and reports; nothing is deleted, so
 // its questions, SME requests and answers come back on restore.
-export function archiveTicket(ticket: MvpTicket, actions: AppActions): boolean {
+export async function archiveTicket(ticket: MvpTicket, actions: AppActions): Promise<boolean> {
   if (
     !window.confirm(
       `Archive ${ticket.id} · ${ticket.customer}?\n\nIt will be hidden from the ticket list and reports. Nothing is deleted — tick "Include archived" to find and restore it.`,
     )
   )
     return false;
+  if (!(await saveTicketStatus(ticket, "Archived", actions.addToast))) return false;
   actions.setTickets((p) =>
     p.map((t) => (t.id === ticket.id ? { ...t, status: "Archived", stage: "done" } : t)),
   );
-  syncTicketStatus(ticket.backendId, "Archived");
   actions.logActivity(`Archived ticket (was ${ticket.status})`, ticket.id);
   actions.addToast(`${ticket.id} archived.`, "success");
   return true;
 }
 
-export function restoreTicket(ticket: MvpTicket, state: AppState, actions: AppActions) {
+export async function restoreTicket(ticket: MvpTicket, state: AppState, actions: AppActions) {
   const next = restoredWorkflow(state.questions.filter((q) => q.ticketId === ticket.id));
+  if (!(await saveTicketStatus(ticket, next.status, actions.addToast))) return;
   actions.setTickets((p) =>
     p.map((t) => (t.id === ticket.id ? { ...t, ...next, closed: undefined } : t)),
   );
-  syncTicketStatus(ticket.backendId, next.status);
   actions.logActivity(`Restored ticket from archive (now ${next.status})`, ticket.id);
   actions.addToast(`${ticket.id} restored — ${next.status}.`, "success");
 }
@@ -97,7 +97,7 @@ export function TicketDetailPage({
             <Pill value={ticket.status} />
             {ticket.status === "Archived" ? (
               <span title="Bring the ticket back to the list at the stage its questions are in">
-                <BtnSecondary onClick={() => restoreTicket(ticket, state, actions)}>
+                <BtnSecondary onClick={() => void restoreTicket(ticket, state, actions)}>
                   <ArchiveRestore size={11} /> Restore
                 </BtnSecondary>
               </span>
@@ -105,7 +105,7 @@ export function TicketDetailPage({
               <span title="Hide this ticket from the list and reports. Nothing is deleted; it can be restored.">
                 <BtnSecondary
                   onClick={() => {
-                    if (archiveTicket(ticket, actions)) actions.go("tickets");
+                    void archiveTicket(ticket, actions).then((archived) => archived && actions.go("tickets"));
                   }}
                 >
                   <Archive size={11} /> Archive
@@ -115,7 +115,8 @@ export function TicketDetailPage({
             {["Approved", "Sent", "Closed"].includes(ticket.status) && (
               <span title="Reopen the ticket — it returns to Final Review so answers can be revisited">
                 <BtnSecondary
-                  onClick={() => {
+                  onClick={async () => {
+                    if (!(await saveTicketStatus(ticket, "Ready for Review", actions.addToast))) return;
                     actions.setTickets((p) =>
                       p.map((t) =>
                         t.id === ticket.id
@@ -123,7 +124,6 @@ export function TicketDetailPage({
                           : t,
                       ),
                     );
-                    syncTicketStatus(ticket.backendId, "Ready for Review");
                     actions.logActivity("Reopened ticket for further review", ticket.id);
                     actions.addToast("Ticket reopened — back in final review.", "info");
                   }}
@@ -134,7 +134,8 @@ export function TicketDetailPage({
             )}
             {ticket.status === "Approved" && (
               <BtnSecondary
-                onClick={() => {
+                onClick={async () => {
+                  if (!(await saveTicketStatus(ticket, "Closed", actions.addToast))) return;
                   actions.setTickets((p) =>
                     p.map((t) =>
                       t.id === ticket.id
@@ -142,7 +143,6 @@ export function TicketDetailPage({
                         : t,
                     ),
                   );
-                  syncTicketStatus(ticket.backendId, "Closed");
                   actions.logActivity("Marked response sent and closed the ticket", ticket.id);
                   actions.addToast("Ticket marked Sent and Closed.", "success");
                 }}

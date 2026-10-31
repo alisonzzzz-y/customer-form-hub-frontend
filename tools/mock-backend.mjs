@@ -164,6 +164,21 @@ http
         for (const [k, v] of Object.entries(changes)) if (v !== null && v !== undefined) t[k] = v;
         return json(res, 200, t);
       }
+      if (path === "/api/questions" && req.method === "POST") {
+        const q = {
+          aiSuggestionSourceId: null,
+          reviewOutcome: null,
+          reviewedAt: null,
+          aeClarificationRequestedAt: null,
+          retiredAt: null,
+          departmentSource: null,
+          ...parse(),
+          id: questionSeq++,
+          createdAt: new Date().toISOString(),
+        };
+        questions.push(q);
+        return json(res, 200, q);
+      }
       if ((m = path.match(/^\/api\/questions\/(\d+)$/)) && req.method === "PUT") {
         const q = questions.find((x) => x.id === +m[1]);
         if (!q) return json(res, 404, {});
