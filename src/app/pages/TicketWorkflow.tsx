@@ -3012,6 +3012,33 @@ function RecordAnswersModal({
   );
 }
 
+// The browser's "Save as" dialog (File System Access API, Chrome and Edge).
+interface SaveFileHandle {
+  name: string;
+  createWritable(): Promise<{ write(data: Blob): Promise<void>; close(): Promise<void> }>;
+}
+type SaveFilePicker = (options: {
+  suggestedName: string;
+  types: { description: string; accept: Record<string, string[]> }[];
+}) => Promise<SaveFileHandle>;
+
+function canChooseSaveLocation(): boolean {
+  return typeof window !== "undefined" && "showSaveFilePicker" in window && window.self === window.top;
+}
+
+function chooseSaveLocation(suggestedName: string): Promise<SaveFileHandle> {
+  const picker = (window as unknown as { showSaveFilePicker: SaveFilePicker }).showSaveFilePicker;
+  return picker({
+    suggestedName,
+    types: [
+      {
+        description: "Excel workbook",
+        accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] },
+      },
+    ],
+  });
+}
+
 function FinalPanel({
   ticket,
   qs,
@@ -3042,7 +3069,20 @@ function FinalPanel({
     (q) => q.sharingStatus === "NDA Required" && ticket.nda !== "In Place" && q.finalAnswer,
   );
 
+  const exportFileName = `${ticket.customer.trim().replace(/[^\w-]+/g, "_")}_Response_${ticket.id}.xlsx`;
+
   const handleExport = async () => {
+    // Ask where to save first, while the click still counts as a user action.
+    // Browsers without a save dialog (Safari, Firefox) download as before.
+    let target: SaveFileHandle | null = null;
+    if (ticket.backendId && canChooseSaveLocation()) {
+      try {
+        target = await chooseSaveLocation(exportFileName);
+      } catch (e) {
+        if ((e as DOMException).name === "AbortError") return; // cancelled: the dialog stays open
+        target = null;
+      }
+    }
     setExportModal(false);
     setExporting(true);
     actions.addToast("Exporting response…", "info");
@@ -3057,19 +3097,40 @@ function FinalPanel({
         );
         return;
       }
-      const url = URL.createObjectURL(file.blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = file.filename;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      if (target) {
+        try {
+          const writable = await target.createWritable();
+          await writable.write(file.blob);
+          await writable.close();
+        } catch {
+          setExporting(false);
+          setExported(false);
+          actions.addToast(
+            `${target.name} could not be saved there. Try again or pick another folder. Ticket approval is still locked.`,
+            "warning",
+          );
+          return;
+        }
+      } else {
+        const url = URL.createObjectURL(file.blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = exportFileName;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      }
       setExporting(false);
       setExported(true);
       actions.logActivity(
-        "Downloaded backend-generated Excel response package",
+        target
+          ? `Saved backend-generated Excel response package as ${target.name}`
+          : "Downloaded backend-generated Excel response package",
         ticket.id,
       );
-      actions.addToast("Excel exported from the live backend.", "success");
+      actions.addToast(
+        target ? `Saved ${target.name} to the folder you chose.` : "Excel exported from the live backend.",
+        "success",
+      );
       return;
     }
     setTimeout(() => {
@@ -3249,9 +3310,16 @@ function FinalPanel({
             <div className="bg-[#F7F8FA] rounded-md p-3 border border-border mb-4 space-y-1 text-[13px]">
               <p><strong>Customer:</strong> {ticket.customer}</p>
               <p><strong>NDA status:</strong> {ticket.nda}</p>
-              <p><strong>File:</strong> {ticket.customer.replace(/\s+/g, "_")}_Response_{ticket.id.replace("TK-", "T")}.zip</p>
+              <p><strong>File:</strong> {exportFileName}</p>
               <p><strong>Sections:</strong> {depts.join(", ")}</p>
             </div>
+            {ticket.backendId && (
+              <p className="text-[12px] text-[#6B7280] mb-4">
+                {canChooseSaveLocation()
+                  ? "Next you choose the folder and file name to save it under."
+                  : "This browser saves it to your Downloads folder. To pick a folder each time, turn on “Ask where to save each file” in the browser's download settings."}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
               <BtnSecondary onClick={() => setExportModal(false)}>Cancel</BtnSecondary>
               <BtnPrimary onClick={() => void handleExport()}>

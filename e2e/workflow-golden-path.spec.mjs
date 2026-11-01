@@ -207,14 +207,39 @@ await page.click("text=Next: Final Review");
 await page.waitForSelector("text=Completeness Checklist");
 await page.click("text=1 · Mark Review Complete");
 await page.waitForSelector("text=Review Complete");
+// Export asks where to save. The browser's Save dialog is replaced by a stub:
+// the first time it is cancelled (the export dialog stays open), then it saves.
+await page.evaluate(() => {
+  window.__saved = [];
+  window.__cancelNext = true;
+  window.showSaveFilePicker = async ({ suggestedName }) => {
+    if (window.__cancelNext) {
+      window.__cancelNext = false;
+      throw new DOMException("cancelled", "AbortError");
+    }
+    return {
+      name: suggestedName,
+      createWritable: async () => {
+        let size = 0;
+        return {
+          write: async (blob) => { size += blob.size; },
+          close: async () => { window.__saved.push({ name: suggestedName, size }); },
+        };
+      },
+    };
+  };
+});
 await page.click("text=2 · Export Response");
 await page.waitForSelector("text=Confirm Export");
-const dl = page.waitForEvent("download", { timeout: 10000 }).catch(() => null);
+await page.waitForSelector("text=Next you choose the folder and file name");
 await page.click('div.fixed >> button:has-text("Export")');
-await page.waitForSelector("text=exported", { timeout: 10000 });
-const download = await dl;
-if (download && !(await download.suggestedFilename()).includes("answers"))
-  errors.push("Export: unexpected filename " + (await download.suggestedFilename()));
+await page.waitForTimeout(300);
+if (!(await page.isVisible("text=Confirm Export"))) errors.push("Export: cancelling the save dialog closed the export");
+await page.click('div.fixed >> button:has-text("Export")');
+await page.waitForSelector("text=to the folder you chose", { timeout: 10000 });
+const saved = await page.evaluate(() => window.__saved);
+if (saved.length !== 1 || !/_Response_TK-\d+\.xlsx$/.test(saved[0].name) || saved[0].size === 0)
+  errors.push("Export: unexpected saved file " + JSON.stringify(saved));
 await page.getByRole("button", { name: "3 · Approve Ticket" }).click();
 await page.waitForSelector('header ~ * >> text=Mark Sent & Close', { timeout: 5000 }).catch(() => {});
 await page.click("text=Mark Sent & Close");
