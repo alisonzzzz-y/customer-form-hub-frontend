@@ -664,7 +664,6 @@ type QuestionWithAnswer = {
   sourceType: string | null;
   approvalStatus: string | null;
   isEdited?: boolean | null;
-  answered: boolean;
 };
 
 // Label of a saved final answer. A knowledge answer the reviewer edited stays
@@ -751,7 +750,15 @@ export type BackendWorld = {
 export async function loadBackendWorld(
   knownBackendIds: Set<number>,
 ): Promise<(BackendWorld & { complete: boolean }) | null> {
-  const raw = await get<BackendTicketFull[]>("/tickets");
+  // A few bulk requests instead of several per ticket, so the first screen
+  // does not wait for hundreds of requests.
+  const [raw, allQuestions, allAnswers, allRequests, allLinks] = await Promise.all([
+    get<BackendTicketFull[]>("/tickets"),
+    get<(FormQuestion & { retiredAt?: string | null })[]>("/questions"),
+    get<QuestionWithAnswer[]>("/final-answers"),
+    get<BackendSmeRequestFull[]>("/sme-requests"),
+    get<SmeRequestQuestion[]>("/sme-request-questions"),
+  ]);
   if (raw === null) return null;
   const world: BackendWorld & { complete: boolean } = {
     tickets: [],
@@ -759,55 +766,46 @@ export async function loadBackendWorld(
     smeRequests: [],
     complete: true,
   };
+  if (allQuestions === null || allAnswers === null || allRequests === null || allLinks === null) {
+    world.complete = false;
+    return world;
+  }
 
-  // Fetch ticket details in parallel and retry incomplete results later.
-  const perTicket = await Promise.all(
-    raw
-      .filter((bt) => !knownBackendIds.has(bt.id))
-      .map(async (bt) => {
-        const [bqs, answers, breqsRaw] = await Promise.all([
-          get<FormQuestion[]>(`/questions/ticket/${bt.id}`),
-          get<QuestionWithAnswer[]>(`/final-review/ticket/${bt.id}`),
-          get<BackendSmeRequestFull[]>(`/sme-requests/ticket/${bt.id}`),
-        ]);
-        if (bqs === null || answers === null || breqsRaw === null)
-          return {
-            bt,
-            failed: true as const,
-            bqs: [],
-            answers: [],
-            breqs: [],
-            linkLists: [],
-          };
-        const breqs = breqsRaw;
-        const linkLists = await Promise.all(
-          breqs.map((r) =>
-            get<SmeRequestQuestion[]>(`/sme-request-questions/request/${r.id}`),
-          ),
-        );
-        if (linkLists.some((l) => l === null))
-          return {
-            bt,
-            failed: true as const,
-            bqs: [],
-            answers: [],
-            breqs: [],
-            linkLists: [],
-          };
-        return { bt, failed: false as const, bqs, answers, breqs, linkLists };
-      }),
-  );
-
-  for (const { bt, failed, bqs, answers, breqs, linkLists } of perTicket) {
-    if (failed) {
-      world.complete = false;
-      continue;
+  const groupBy = <T, K>(items: T[], keyOf: (item: T) => K) => {
+    const groups = new Map<K, T[]>();
+    for (const item of items) {
+      const group = groups.get(keyOf(item));
+      if (group) group.push(item);
+      else groups.set(keyOf(item), [item]);
     }
+    return groups;
+  };
+  const questionsByTicket = groupBy(allQuestions.filter((q) => !q.retiredAt), (q) => q.ticketId);
+  const answersByQuestion = groupBy(allAnswers, (a) => a.questionId);
+  const requestsByTicket = groupBy(allRequests, (r) => r.ticketId);
+  const linksByRequest = groupBy(allLinks, (l) => l.smeRequestId);
+
+  const perTicket = raw
+    .filter((bt) => !knownBackendIds.has(bt.id))
+    .map((bt) => {
+      const bqs = questionsByTicket.get(bt.id) ?? [];
+      const breqs = requestsByTicket.get(bt.id) ?? [];
+      return {
+        bt,
+        bqs,
+        // One answer per question, the same one the final review shows.
+        answers: bqs.flatMap((q) => (answersByQuestion.get(q.id) ?? []).slice(0, 1)),
+        breqs,
+        linkLists: breqs.map((r) => linksByRequest.get(r.id) ?? []),
+      };
+    });
+
+  for (const { bt, bqs, answers, breqs, linkLists } of perTicket) {
     const localId = ticketIdForBackend(bt.id);
     // Only confirmed answers are treated as approved.
     const answerByQ = new Map(
       answers
-        .filter((a) => a.answered && a.approvalStatus === "Confirmed")
+        .filter((a) => a.approvalStatus === "Confirmed")
         .map((a) => [a.questionId, a]),
     );
 

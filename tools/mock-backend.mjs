@@ -252,6 +252,10 @@ http
       }
 
       // ── read endpoints used by the app's startup load ──
+      if (path === "/api/questions" && req.method === "GET") return json(res, 200, questions);
+      if (path === "/api/final-answers" && req.method === "GET") return json(res, 200, finalAnswers);
+      if (path === "/api/sme-requests" && req.method === "GET") return json(res, 200, smeRequests);
+      if (path === "/api/sme-request-questions" && req.method === "GET") return json(res, 200, srqs);
       if ((m = path.match(/^\/api\/questions\/ticket\/(\d+)$/)) && req.method === "GET")
         return json(res, 200, questions.filter((q) => q.ticketId === +m[1] && !q.retiredAt));
       if ((m = path.match(/^\/api\/sme-requests\/ticket\/(\d+)$/)) && req.method === "GET")

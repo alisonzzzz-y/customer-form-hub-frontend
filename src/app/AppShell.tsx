@@ -124,9 +124,10 @@ export default function AppShell() {
   const [kbReturnTicket, setKbReturnTicket] = useState<string | null>(null);
   const [globalQuery, setGlobalQuery] = useState("");
   const [backendLive, setBackendLive] = useState<boolean | null>(null);
-  // Show a complete demo workspace immediately. Live data refreshes it quietly
-  // in the background so a cold hosted backend never leaves the screen blank.
-  const [initialLiveLoad, setInitialLiveLoad] = useState(false);
+  // The dashboard shows its loading state until live data arrives, so demo
+  // numbers are not swapped for real ones in front of the user. A cold hosted
+  // backend does not leave it waiting: see the first ping below.
+  const [initialLiveLoad, setInitialLiveLoad] = useState(!USE_TEST_DEMO_DATA);
 
   const [tickets, setTickets] = useState<MvpTicket[]>(
     USE_TEST_DEMO_DATA ? SEED_TICKETS : STARTUP_TICKETS,
@@ -208,7 +209,6 @@ export default function AppShell() {
             p.filter((a) => !SEED_ACTIVITY_IDS.has(a.id)),
           );
         }
-        setInitialLiveLoad(false);
       }
       if (kb !== null)
         setKnowledge(
@@ -216,6 +216,7 @@ export default function AppShell() {
         );
     } finally {
       hydratingRef.current = false;
+      setInitialLiveLoad(false);
     }
   };
 
@@ -229,6 +230,8 @@ export default function AppShell() {
     void (async () => {
       // Retry while the hosted backend starts.
       let live = await pingBackend();
+      // Still starting: show the demo workspace, marked as such, while it wakes.
+      if (!live) setInitialLiveLoad(false);
       for (const delay of [2000, 4000, 8000, 16000, 30000]) {
         if (live) break;
         await new Promise((r) => setTimeout(r, delay));

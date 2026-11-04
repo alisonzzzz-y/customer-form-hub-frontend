@@ -12,6 +12,26 @@ import { Card, EmptyState, Pill, Th } from "../components/ui";
 import { useEffect, useState } from "react";
 import { fetchDashboardStats, type DashboardStats } from "../services/backend";
 
+// The latest KPI numbers, so a return visit shows them at once while the
+// backend works out the current ones.
+const STATS_CACHE_KEY = "formhub.dashboardStats";
+
+function readCachedStats(): DashboardStats | null {
+  try {
+    return JSON.parse(localStorage.getItem(STATS_CACHE_KEY) ?? "null");
+  } catch {
+    return null;
+  }
+}
+
+function cacheStats(stats: DashboardStats) {
+  try {
+    localStorage.setItem(STATS_CACHE_KEY, JSON.stringify(stats));
+  } catch {
+    // Blocked storage only means no instant numbers on the next visit.
+  }
+}
+
 export function DashboardPage({
   state,
   actions,
@@ -22,11 +42,15 @@ export function DashboardPage({
   const { tickets, smeRequests, activity, knowledge, role, currentUser, isInitialLiveLoad } =
     state;
   // Hide live metrics when the backend is unavailable.
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(readCachedStats);
+  const [statsLoading, setStatsLoading] = useState(true);
   useEffect(() => {
     let alive = true;
     fetchDashboardStats().then((s) => {
-      if (alive) setStats(s);
+      if (s) cacheStats(s);
+      if (!alive) return;
+      setStats(s);
+      setStatsLoading(false);
     });
     return () => {
       alive = false;
@@ -130,21 +154,19 @@ export function DashboardPage({
         </span>
       </div>
 
-      {isInitialLiveLoad ? (
-        <DashboardLoading />
-      ) : (
       <div className="flex-1 overflow-auto px-4 sm:px-8 py-7 flex flex-col gap-5">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {metrics.map((m) => (
             <button
               key={m.label}
+              disabled={isInitialLiveLoad}
               onClick={() => actions.openTicketsFiltered(m.filter)}
               className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] shadow-sm px-4 py-3.5 text-left hover:border-[#F96702]/40 transition-all group"
             >
               <p
-                className={`text-[26px] font-black tracking-tight leading-none ${m.accent && m.value > 0 ? "text-red-600" : "text-[#0A0A0A]"}`}
+                className={`text-[26px] font-black tracking-tight leading-none ${isInitialLiveLoad ? "text-[#D6D3CE] animate-pulse" : m.accent && m.value > 0 ? "text-red-600" : "text-[#0A0A0A]"}`}
               >
-                {m.value}
+                {isInitialLiveLoad ? "—" : m.value}
               </p>
               <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#B8B5B0] mt-1.5 group-hover:text-[#C05600] transition-colors">
                 {m.label}
@@ -153,54 +175,18 @@ export function DashboardPage({
           ))}
         </div>
 
-        {stats && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card title="AI Coverage" className="overflow-hidden">
-              <div className="px-4 py-4 flex items-center gap-4">
-                <DonutChart percent={stats.aiCoveragePercent} />
-                <div className="min-w-0">
-                  <p className="text-[26px] font-black tracking-tight leading-none text-[#0A0A0A]">
-                    {stats.aiCoveragePercent}%
-                  </p>
-                  <p className="text-[11px] text-[#6B7280] mt-1 leading-snug">
-                    of confirmed answers came
-                    <br />
-                    from the knowledge base
-                  </p>
-                  <p className="text-[10px] text-[#9CA3AF] mt-1.5">
-                    {stats.answeredFromKnowledgeBase} AI · {stats.answeredBySme}{" "}
-                    SME/manual
-                  </p>
-                </div>
-              </div>
-            </Card>
-
-            <Card title="SME Bottleneck" className="overflow-hidden">
-              <div className="px-4 py-4">
-                <p
-                  className={`text-[26px] font-black tracking-tight leading-none ${overdueSmeCount > 0 ? "text-red-600" : "text-[#0A0A0A]"}`}
-                >
-                  {overdueSmeCount}
-                </p>
-                <p className="text-[11px] text-[#6B7280] mt-1.5">
-                  overdue SME request{overdueSmeCount === 1 ? "" : "s"}
-                </p>
-              </div>
-            </Card>
-
-            <Card title="Processed" className="overflow-hidden">
-              <div className="px-4 py-4">
-                <p className="text-[26px] font-black tracking-tight leading-none text-[#0A0A0A]">
-                  {stats.totalQuestions}
-                </p>
-                <p className="text-[11px] text-[#6B7280] mt-1.5">
-                  questions across {stats.totalTickets} tickets
-                </p>
-              </div>
-            </Card>
-          </div>
+        {/* The cards keep their place while the numbers load, so nothing below moves. */}
+        {(stats || statsLoading) && (
+          <KpiCards
+            stats={stats}
+            overdueSme={isInitialLiveLoad ? stats?.overdueSmeRequests ?? null : overdueSmeCount}
+          />
         )}
 
+        {isInitialLiveLoad ? (
+          <DashboardLoading />
+        ) : (
+        <>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           <Card
             title="My Priority Tickets"
@@ -383,33 +369,69 @@ export function DashboardPage({
             )}
           </Card>
         </div>
+        </>
+        )}
       </div>
-      )}
+    </div>
+  );
+}
+
+function KpiCards({ stats, overdueSme }: { stats: DashboardStats | null; overdueSme: number | null }) {
+  const number = (value: number | string | null | undefined) =>
+    value === null || value === undefined ? "—" : value;
+  const loadingClass = stats ? "" : "text-[#D6D3CE] animate-pulse";
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <Card title="AI Coverage" className="overflow-hidden">
+        <div className="px-4 py-4 flex items-center gap-4">
+          <DonutChart percent={stats?.aiCoveragePercent ?? 0} />
+          <div className="min-w-0">
+            <p className={`text-[26px] font-black tracking-tight leading-none text-[#0A0A0A] ${loadingClass}`}>
+              {stats ? `${stats.aiCoveragePercent}%` : "—"}
+            </p>
+            <p className="text-[11px] text-[#6B7280] mt-1 leading-snug">
+              of confirmed answers came
+              <br />
+              from the knowledge base
+            </p>
+            <p className="text-[10px] text-[#9CA3AF] mt-1.5">
+              {number(stats?.answeredFromKnowledgeBase)} AI · {number(stats?.answeredBySme)}{" "}
+              SME/manual
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="SME Bottleneck" className="overflow-hidden">
+        <div className="px-4 py-4">
+          <p
+            className={`text-[26px] font-black tracking-tight leading-none ${overdueSme === null ? "text-[#D6D3CE] animate-pulse" : overdueSme > 0 ? "text-red-600" : "text-[#0A0A0A]"}`}
+          >
+            {number(overdueSme)}
+          </p>
+          <p className="text-[11px] text-[#6B7280] mt-1.5">
+            overdue SME request{overdueSme === 1 ? "" : "s"}
+          </p>
+        </div>
+      </Card>
+
+      <Card title="Processed" className="overflow-hidden">
+        <div className="px-4 py-4">
+          <p className={`text-[26px] font-black tracking-tight leading-none text-[#0A0A0A] ${loadingClass}`}>
+            {number(stats?.totalQuestions)}
+          </p>
+          <p className="text-[11px] text-[#6B7280] mt-1.5">
+            questions across {number(stats?.totalTickets)} tickets
+          </p>
+        </div>
+      </Card>
     </div>
   );
 }
 
 function DashboardLoading() {
   return (
-    <div className="flex-1 overflow-auto px-4 sm:px-8 py-7 flex flex-col gap-5" aria-busy="true" aria-label="Loading live workspace data">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] shadow-sm px-4 py-3.5 animate-pulse">
-            <div className="h-7 w-12 rounded bg-[#EEECE8]" />
-            <div className="h-2.5 w-20 rounded bg-[#F3F1EE] mt-2.5" />
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <div key={index} className="bg-white rounded-xl border border-[rgba(0,0,0,0.06)] shadow-sm px-4 py-4 animate-pulse">
-            <div className="h-2.5 w-24 rounded bg-[#EEECE8]" />
-            <div className="h-7 w-14 rounded bg-[#F3F1EE] mt-3" />
-          </div>
-        ))}
-      </div>
-
+    <div className="flex flex-col gap-5" aria-busy="true" aria-label="Loading live workspace data">
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <LoadingCard title="My Priority Tickets" className="lg:col-span-3" rows={5} />
         <LoadingCard title="SME ETA Tracker" className="lg:col-span-2" rows={5} />
@@ -462,16 +484,18 @@ function DonutChart({ percent }: { percent: number }) {
         stroke="#F1EFEC"
         strokeWidth="5"
       />
-      <circle
-        cx="20"
-        cy="20"
-        r={r}
-        fill="none"
-        stroke="#F96702"
-        strokeWidth="5"
-        strokeLinecap="round"
-        strokeDasharray={`${filled} ${c - filled}`}
-      />
+      {filled > 0 && (
+        <circle
+          cx="20"
+          cy="20"
+          r={r}
+          fill="none"
+          stroke="#F96702"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeDasharray={`${filled} ${c - filled}`}
+        />
+      )}
     </svg>
   );
 }
