@@ -16,7 +16,7 @@ import {
   withCurrentDeadline,
 } from "../data/model";
 import { STARTUP_TICKETS } from "../data/seeds";
-import { answerSourceFromBackend, applyRagResult, sectionOf } from "./backend";
+import { answerSourceFromBackend, applyRagResult, parseQuestionnaire, sectionOf } from "./backend";
 import { extractQuestionsFor, parseIntakeEmail, sampleAeEmail } from "./simulation";
 
 describe("ticket IDs", () => {
@@ -328,5 +328,26 @@ describe("review findings", () => {
     // Same events give the same ids, so read state survives a re-derive.
     expect(deriveNotifications([ticket], [req(1, { eta: "2026-10-28T09:00:00Z" })], now)[0].id)
       .toBe(list[1].id);
+  });
+});
+
+describe("questionnaire upload", () => {
+  it("rejects a file over the limit with a clear message, without sending it", async () => {
+    const realFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = (() => {
+      calls++;
+      return Promise.reject(new Error("not expected"));
+    }) as typeof fetch;
+    try {
+      const file = new File([new Uint8Array(10 * 1024 * 1024 + 1)], "big.xlsx");
+      expect(await parseQuestionnaire(file, 1)).toEqual({
+        kind: "rejected",
+        message: "This file is larger than the 10 MB upload limit.",
+      });
+      expect(calls).toBe(0);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 });

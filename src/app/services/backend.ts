@@ -220,7 +220,13 @@ type FileOutcome<T> =
   | { kind: "rejected"; message: string }
   | { kind: "offline" };
 
+// Matches the backend's upload limit. A much larger file is not sent at all: the
+// server drops the connection, which would look like the backend being offline.
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
 async function postFile<T>(path: string, file: File): Promise<FileOutcome<T>> {
+  if (file.size > MAX_UPLOAD_BYTES)
+    return { kind: "rejected", message: "This file is larger than the 10 MB upload limit." };
   const form = new FormData();
   form.append("file", file);
   try {
