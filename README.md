@@ -8,6 +8,12 @@ Customer Forms Hub helps a reviewer upload a questionnaire, find relevant intern
 
 This is the frontend for the project. The [Spring Boot backend](https://github.com/alisonzzzz-y/customer-form-hub) handles document processing, AI calls, storage, exports, and the AI Performance data.
 
+## Demo video
+
+[![Customer Forms Hub product demo on YouTube](https://img.youtube.com/vi/jKkGkgNqsO4/maxresdefault.jpg)](https://youtu.be/jKkGkgNqsO4)
+
+[▶ Watch the 5-minute demo on YouTube](https://youtu.be/jKkGkgNqsO4)
+
 ## Deployment architecture
 
 The deployed demo is split into four small services:
