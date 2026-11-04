@@ -8,12 +8,6 @@ Customer Forms Hub 让审核者可以上传问卷、找到相关内部知识、�
 
 这是项目的前端仓库。后端负责处理文档、调用 AI、保存数据、导出文件和提供 AI Performance 数据。
 
-## 演示视频
-
-[![在 YouTube 观看 Customer Forms Hub 产品演示](https://img.youtube.com/vi/jKkGkgNqsO4/maxresdefault.jpg)](https://youtu.be/jKkGkgNqsO4)
-
-[▶ 在 YouTube 观看 5 分钟演示](https://youtu.be/jKkGkgNqsO4)
-
 ## 部署架构
 
 在线演示由四个小型服务组成：
